@@ -1,0 +1,14 @@
+[tool.pyrefly]
+search-path = ["frontend", "backend"]
+
+[tool.pyright]
+extraPaths = ["frontend", "backend"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["frontend", "backend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "RUF"]
+ignore = ["RUF012"]
