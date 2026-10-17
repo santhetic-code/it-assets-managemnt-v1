@@ -49,7 +49,9 @@ class APIClient:
             response.raise_for_status()
             return response.json()
 
-    async def login(self, username: str, password: str, remember_me: bool = False) -> dict[str, Any]:
+    async def login(
+        self, username: str, password: str, remember_me: bool = False
+    ) -> dict[str, Any]:
         """Autentikasi pengguna ke Mock Service atau Backend FastAPI."""
         if USE_MOCK:
             # Simulasi jeda jaringan agar spinner loading tombol terlihat halus
