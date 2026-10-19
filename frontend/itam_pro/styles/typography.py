@@ -29,7 +29,8 @@ class FontSize:
     SUBTITLE = "16px"
     LOGO = "18px"
     TITLE = "28px"
-    HERO = "44px"
+    HERO_FORM = "34px"          # Headline panel biru saat state form
+    HERO_WELCOME = "42px"       # Headline panel biru saat state welcome
 
 
 BASE_STYLE = rx.Style(

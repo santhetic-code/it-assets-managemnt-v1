@@ -17,6 +17,7 @@ def form_input_field(
     on_change: Any,
     input_type: Any = "text",
     name: str | None = None,
+    input_id: str | None = None,
     right_element: rx.Component | None = None,
     required: bool = False,
 ) -> rx.Component:
@@ -38,6 +39,7 @@ def form_input_field(
                 flex_shrink="0",
             ),
             rx.el.input(
+                id=input_id,
                 type=input_type,
                 name=name,
                 placeholder=placeholder,
