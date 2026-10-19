@@ -1,7 +1,7 @@
 """
 Komponen Detail Drawer Generik ITAM Pro.
-Lebar 440px (100% di <900px), scrim rgba(10,26,68,.35), ID internal tampil kecil,
-2 grup ('Informasi umum' & 'Penggunaan & lokasi'), tab 'Riwayat & Log', dan footer aksi.
+Mendukung 2 atau 3 grup informasi yang dapat dikonfigurasi dari luar,
+tab 'Riwayat & Log', serta aksi Edit, Duplikat, dan Hapus.
 """
 from typing import Any
 
@@ -40,7 +40,7 @@ def _kv_row(item: dict[str, Any]) -> rx.Component:
 
 
 def _drawer_section(title: str, items_var: Any) -> rx.Component:
-    """Bagian bergrup di dalam drawer ('Informasi umum' / 'Penggunaan & lokasi')."""
+    """Bagian bergrup di dalam drawer."""
     return rx.vstack(
         rx.text(
             title.upper(),
@@ -147,8 +147,6 @@ def detail_drawer(
     code_var: Any,
     title_var: Any,
     category_var: Any,
-    condition_var: Any,
-    status_var: Any,
     active_tab: Any,
     on_tab_change: Any,
     general_items: Any,
@@ -157,6 +155,13 @@ def detail_drawer(
     on_edit: Any,
     on_duplicate: Any,
     on_delete: Any,
+    condition_var: Any | None = None,
+    status_var: Any | None = None,
+    section1_title: str = "Informasi umum",
+    section2_title: str = "Penggunaan & lokasi",
+    section3_title: str | None = None,
+    section3_items: Any | None = None,
+    duplicate_label: str = "Duplikat x N",
     on_key_down: Any | None = None,
     tabs: tuple[tuple[str, str], tuple[str, str]] = (
         ("detail", "Rincian Aset"),
@@ -165,7 +170,7 @@ def detail_drawer(
 ) -> rx.Component:
     """
     Komponen Drawer Kanan Generik (440px).
-    Menampilkan grup 'Informasi umum' dan 'Penggunaan & lokasi', serta tab 'Riwayat & Log'.
+    Mendukung 2 atau 3 seksi informasi bergrup serta tab Riwayat & Log.
     """
     tab1_key, tab1_label = tabs[0]
     tab2_key, tab2_label = tabs[1]
@@ -173,7 +178,6 @@ def detail_drawer(
     return rx.cond(
         is_open,
         rx.box(
-            # Listener tombol Escape untuk menutup drawer & mengembalikan fokus ke baris
             rx.script(
                 """
                 if (!window._itamDrawerEscBound) {
@@ -214,9 +218,13 @@ def detail_drawer(
                                 font_weight=FontWeight.BOLD,
                                 color=Color.MUTED,
                             ),
-                            app_badge(label=category_var, variant="neutral"),
-                            asset_condition_badge(condition_var),
-                            asset_status_badge(status_var),
+                            app_badge(label=category_var, variant="info"),
+                            asset_condition_badge(condition_var)
+                            if condition_var is not None
+                            else rx.fragment(),
+                            asset_status_badge(status_var)
+                            if status_var is not None
+                            else rx.fragment(),
                             spacing="2",
                             align="center",
                             wrap="wrap",
@@ -291,8 +299,11 @@ def detail_drawer(
                     rx.cond(
                         active_tab == tab1_key,
                         rx.vstack(
-                            _drawer_section("Informasi umum", general_items),
-                            _drawer_section("Penggunaan & lokasi", usage_items),
+                            _drawer_section(section1_title, general_items),
+                            _drawer_section(section2_title, usage_items),
+                            _drawer_section(section3_title, section3_items)
+                            if section3_title is not None and section3_items is not None
+                            else rx.fragment(),
                             spacing="5",
                             width="100%",
                             align="start",
@@ -349,7 +360,7 @@ def detail_drawer(
                         rx.hstack(
                             rx.icon(tag="copy", size=Size.ICON_SM, color=Color.ACCENT),
                             rx.text(
-                                "Duplikat x N",
+                                duplicate_label,
                                 font_size=FontSize.SM,
                                 font_weight=FontWeight.BOLD,
                                 color=Color.ACCENT,
@@ -416,7 +427,7 @@ def detail_drawer(
                 id="global-detail-drawer",
                 role="dialog",
                 aria_modal="true",
-                aria_label="Rincian Aset",
+                aria_label="Rincian Item",
                 tab_index=-1,
                 style=rx.Style(
                     {

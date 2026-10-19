@@ -43,6 +43,12 @@ MASTER_STATUS: list[str] = [
     "Tidak Digunakan",
 ]
 
+MASTER_JENIS_PC: list[str] = [
+    "Operasional",
+    "Server",
+    "Backup",
+]
+
 
 def get_all_master_options() -> dict[str, list[str]]:
     """Kembalikan seluruh daftar opsi master untuk kebutuhan State dan Form."""
@@ -52,10 +58,12 @@ def get_all_master_options() -> dict[str, list[str]]:
         "lokasi": list(MASTER_LOKASI),
         "kondisi": list(MASTER_KONDISI),
         "status": list(MASTER_STATUS),
+        "jenis_pc": list(MASTER_JENIS_PC),
     }
 
 
 __all__ = [
+    "MASTER_JENIS_PC",
     "MASTER_KATEGORI",
     "MASTER_KEPEMILIKAN",
     "MASTER_KONDISI",

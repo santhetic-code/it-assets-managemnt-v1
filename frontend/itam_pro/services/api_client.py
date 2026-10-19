@@ -17,6 +17,12 @@ from itam_pro.services.mock.asset_mock import (
 )
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
+from itam_pro.services.mock.pc_mock import (
+    create_mock_pc,
+    delete_mock_pc,
+    query_mock_pcs,
+    update_mock_pc,
+)
 
 load_dotenv()
 
@@ -174,6 +180,87 @@ class APIClient:
         await self.request(
             method="DELETE",
             endpoint=f"/api/v1/assets/{asset_id}",
+            token=token,
+        )
+        return True
+
+    async def get_pcs(
+        self,
+        jenis: str,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Ambil daftar PC per jenis dengan filter & paginasi ({items, total, page, page_size})."""
+        if USE_MOCK:
+            await asyncio.sleep(0.1)
+            return query_mock_pcs(jenis=jenis, filters=filters, page=page, page_size=page_size)
+
+        params: dict[str, Any] = {
+            "jenis": jenis,
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        response = await self.request(
+            method="GET",
+            endpoint="/api/v1/pcs",
+            token=token,
+            params=params,
+        )
+        return response  # type: ignore[return-value]
+
+    async def create_pc(
+        self,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Tambah satu data spesifikasi PC baru."""
+        if USE_MOCK:
+            await asyncio.sleep(0.12)
+            return create_mock_pc(payload=payload)
+
+        response = await self.request(
+            method="POST",
+            endpoint="/api/v1/pcs",
+            token=token,
+            json_data=payload,
+        )
+        return response  # type: ignore[return-value]
+
+    async def update_pc(
+        self,
+        pc_id: str,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Perbarui data spesifikasi satu PC."""
+        if USE_MOCK:
+            await asyncio.sleep(0.12)
+            return update_mock_pc(pc_id=pc_id, payload=payload)
+
+        response = await self.request(
+            method="PUT",
+            endpoint=f"/api/v1/pcs/{pc_id}",
+            token=token,
+            json_data=payload,
+        )
+        return response  # type: ignore[return-value]
+
+    async def delete_pc(
+        self,
+        pc_id: str,
+        token: str | None = None,
+    ) -> bool:
+        """Hapus satu data PC."""
+        if USE_MOCK:
+            await asyncio.sleep(0.1)
+            return delete_mock_pc(pc_id=pc_id)
+
+        await self.request(
+            method="DELETE",
+            endpoint=f"/api/v1/pcs/{pc_id}",
             token=token,
         )
         return True

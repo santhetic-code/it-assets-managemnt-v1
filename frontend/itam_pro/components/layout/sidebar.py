@@ -19,7 +19,7 @@ SIDEBAR_GROUPS: list[tuple[str, list[tuple[str, str, str, bool]]]] = [
         "Inventory",
         [
             ("Assets Inventory", "box", "/assets", True),
-            ("Daftar PC", "hard-drive", "/inventory/pc", False),
+            ("Daftar PC", "hard-drive", "/pc", True),
             ("Rekap Monitor", "monitor", "/inventory/monitors", False),
             ("Rekap UPS", "battery", "/inventory/ups", False),
         ],

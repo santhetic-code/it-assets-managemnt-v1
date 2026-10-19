@@ -1,6 +1,7 @@
 """
 Komponen Data Table Generik ITAM Pro.
-Mendukung kolom sticky di kiri, condition_badge, status_badge, dan header nowrap.
+Mendukung kolom sticky di kiri, header dinamis, tooltip teks panjang,
+condition_badge, status_badge, dan empty state kustom.
 """
 from typing import Any, Literal, TypedDict
 
@@ -8,14 +9,14 @@ import reflex as rx
 
 from itam_pro.components.ui.badge import app_badge
 from itam_pro.components.ui.status_badge import asset_condition_badge, asset_status_badge
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size, Space
 
 RenderType = Literal["text", "bold_blue", "badge", "condition_badge", "status_badge", "date"]
 
 
 class ColumnDef(TypedDict, total=False):
     key: str
-    header: str
+    header: Any
     width: str
     render_type: RenderType
     sticky_left: bool
@@ -24,7 +25,7 @@ class ColumnDef(TypedDict, total=False):
 
 
 def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
-    """Render isi sel berdasarkan render_type yang didefinisikan pada kolom."""
+    """Render isi sel berdasarkan render_type dengan dukungan pemotongan 1 baris + tooltip."""
     key = col["key"]
     rtype = col.get("render_type", "text")
     is_sticky = col.get("sticky_left", False)
@@ -32,10 +33,17 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
     if rtype == "bold_blue":
         return rx.text(
             row[key],
+            title=row[key],
             font_size=FontSize.SM,
             font_weight=FontWeight.BOLD,
             color=Color.ACCENT,
-            white_space="nowrap",
+            style=rx.Style(
+                {
+                    "white_space": "nowrap",
+                    "overflow": "hidden",
+                    "text_overflow": "ellipsis",
+                }
+            ),
         )
 
     if rtype == "status_badge":
@@ -60,6 +68,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
 
     return rx.text(
         row[key],
+        title=row[key],
         font_size=FontSize.SM,
         font_weight=FontWeight.BOLD if is_sticky else FontWeight.MEDIUM,
         color=rx.cond(row[key] == "—", Color.MUTED, Color.TEXT),
@@ -86,6 +95,7 @@ def _header_cell(col: ColumnDef) -> rx.Component:
         "font_weight": FontWeight.BOLD,
         "color": Color.MUTED,
         "letter_spacing": "0.05em",
+        "text_transform": "uppercase",
         "background_color": Color.TABLE_HEADER_BG,
         "border_bottom": f"1px solid {Color.BORDER}",
         "white_space": "nowrap",
@@ -101,7 +111,7 @@ def _header_cell(col: ColumnDef) -> rx.Component:
         )
 
     return rx.el.th(
-        col["header"].upper(),
+        col["header"],
         style=rx.Style(header_style),
     )
 
@@ -112,6 +122,7 @@ def _row_action_menu(
     on_edit: Any,
     on_duplicate: Any,
     on_delete: Any,
+    duplicate_label: str = "Duplikat x N",
 ) -> rx.Component:
     """Menu aksi '⋯' per baris."""
     return rx.menu.root(
@@ -155,7 +166,7 @@ def _row_action_menu(
                 on_click=on_edit(row_id),
             ),
             rx.menu.item(
-                "Duplikat × N",
+                duplicate_label,
                 on_click=on_duplicate(row_id),
             ),
             rx.menu.separator(),
@@ -236,14 +247,16 @@ def _skeleton_row(col_count: int) -> rx.Component:
 
 
 def _empty_table_state(
-    empty_message: str,
-    on_reset: Any,
+    empty_message: Any,
+    empty_subtitle: Any,
+    action_label: Any,
+    on_action: Any,
 ) -> rx.Component:
-    """Tampilan kosong dengan pesan dan tombol Reset filter."""
+    """Tampilan kosong dengan pesan dan tombol aksi yang dapat dikonfigurasi."""
     return rx.center(
         rx.vstack(
             rx.center(
-                rx.icon(tag="search-x", size=24, color=Color.MUTED),
+                rx.icon(tag="inbox", size=24, color=Color.MUTED),
                 width="48px",
                 height="48px",
                 background_color=Color.TABLE_HEADER_BG,
@@ -256,23 +269,23 @@ def _empty_table_state(
                 color=Color.TEXT,
             ),
             rx.text(
-                "Coba ubah kata kunci pencarian atau atur ulang kriteria filter Anda.",
+                empty_subtitle,
                 font_size=FontSize.SM,
                 font_weight=FontWeight.REGULAR,
                 color=Color.MUTED,
             ),
             rx.el.button(
-                "Reset filter",
+                action_label,
                 type="button",
-                on_click=on_reset,
+                on_click=on_action,
                 style=rx.Style(
                     {
-                        "margin_top": "8px",
+                        "margin_top": Space.S2,
                         "height": Size.FILTER_CONTROL_H,
                         "padding": "0 18px",
-                        "background_color": Color.SURFACE,
-                        "color": Color.ACCENT,
-                        "border": f"1px solid {Color.INPUT_BORDER}",
+                        "background_color": Color.ACCENT,
+                        "color": Color.WHITE,
+                        "border": "none",
                         "border_radius": Radius.CONTROL,
                         "font_family": FONT_FAMILY,
                         "font_size": FontSize.SM,
@@ -280,7 +293,7 @@ def _empty_table_state(
                         "cursor": "pointer",
                     }
                 ),
-                _hover=rx.Style({"background_color": Color.SURFACE_HOVER}),
+                _hover=rx.Style({"background_color": Color.ACCENT_BRIGHT}),
             ),
             spacing="2",
             align="center",
@@ -306,12 +319,17 @@ def reusable_data_table(
     on_delete_row: Any,
     on_reset_filter: Any,
     on_duplicate_row: Any | None = None,
-    empty_message: str = "Tidak ada aset yang cocok",
+    duplicate_action_label: str = "Duplikat x N",
+    empty_message: Any = "Tidak ada aset yang cocok",
+    empty_subtitle: Any = "Coba ubah kata kunci pencarian atau atur ulang kriteria filter Anda.",
+    empty_action_label: Any = "Reset filter",
+    on_empty_action: Any | None = None,
 ) -> rx.Component:
     """
     Komponen Tabel Data Generik ITAM Pro dengan dukungan kolom sticky di kiri.
     """
     dup_handler = on_duplicate_row if on_duplicate_row is not None else on_edit_row
+    empty_handler = on_empty_action if on_empty_action is not None else on_reset_filter
 
     def _render_data_cell(
         row: dict[str, Any],
@@ -322,7 +340,7 @@ def reusable_data_table(
         cell_style: dict[str, Any] = {
             "width": col.get("width", "auto"),
             "min_width": col.get("width", "120px"),
-            "max_width": col.get("width", "260px"),
+            "max_width": col.get("width", "240px"),
             "height": Size.TABLE_ROW_H,
             "padding": "0 16px",
             "border_bottom": f"1px solid {Color.DIVIDER}",
@@ -352,7 +370,7 @@ def reusable_data_table(
                 rx.el.input(
                     type="checkbox",
                     checked=selected_ids.contains(row_id),
-                    on_change=lambda _: on_toggle_row(row_id),
+                    on_change=on_toggle_row(row_id),
                     on_click=rx.stop_propagation,
                     aria_label="Pilih baris",
                     style=rx.Style(
@@ -388,6 +406,7 @@ def reusable_data_table(
                     on_edit=on_edit_row,
                     on_duplicate=dup_handler,
                     on_delete=on_delete_row,
+                    duplicate_label=duplicate_action_label,
                 ),
                 on_click=rx.stop_propagation,
                 style=rx.Style(
@@ -505,15 +524,16 @@ def reusable_data_table(
     return rx.box(
         rx.cond(
             (~is_loading) & (rows.length() == 0),
-            _empty_table_state(empty_message=empty_message, on_reset=on_reset_filter),
+            _empty_table_state(
+                empty_message=empty_message,
+                empty_subtitle=empty_subtitle,
+                action_label=empty_action_label,
+                on_action=empty_handler,
+            ),
             table_element,
         ),
         width="100%",
     )
 
 
-__all__ = [
-    "ColumnDef",
-    "RenderType",
-    "reusable_data_table",
-]
+__all__ = ["ColumnDef", "RenderType", "reusable_data_table"]

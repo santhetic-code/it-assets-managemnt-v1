@@ -7,12 +7,15 @@ from .input import form_input_field
 from .progress_bar import metric_progress_bar
 from .stat_card import stat_card
 from .status_badge import asset_condition_badge, asset_status_badge
+from .tabs import TabItemConfig, app_tabs
 
 __all__ = [
+    "TabItemConfig",
     "action_primary_button",
     "app_badge",
     "app_card",
     "app_checkbox",
+    "app_tabs",
     "asset_condition_badge",
     "asset_status_badge",
     "detail_drawer",
