@@ -6,6 +6,7 @@ import reflex as rx
 from itam_pro.pages.auth import login_page
 from itam_pro.pages.overview import dashboard_page
 from itam_pro.states.auth_state import AuthState
+from itam_pro.states.dashboard_state import DashboardState
 from itam_pro.states.nav_state import NavState
 from itam_pro.styles import BASE_STYLE, FONT_FAMILY, GOOGLE_FONTS_URL
 
@@ -41,7 +42,7 @@ app.add_page(
     title="Masuk · ITAM Pro",
 )
 
-# Route halaman Dashboard (dilindungi guard AuthState.check_auth)
+# Route halaman Dashboard (dilindungi guard AuthState.check_auth + muat data DashboardState)
 app.add_page(
     dashboard_page,
     route="/dashboard",
@@ -49,5 +50,6 @@ app.add_page(
     on_load=[
         AuthState.check_auth,
         NavState.set_page_context("Overview", "Dashboard"),
+        DashboardState.load_dashboard,
     ],
 )

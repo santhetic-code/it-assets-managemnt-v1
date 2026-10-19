@@ -10,6 +10,7 @@ import httpx
 from dotenv import load_dotenv
 
 from itam_pro.services.mock.auth_mock import verify_mock_login
+from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
 
 load_dotenv()
 
@@ -50,11 +51,13 @@ class APIClient:
             return response.json()
 
     async def login(
-        self, username: str, password: str, remember_me: bool = False
+        self,
+        username: str,
+        password: str,
+        remember_me: bool = False,
     ) -> dict[str, Any]:
         """Autentikasi pengguna ke Mock Service atau Backend FastAPI."""
         if USE_MOCK:
-            # Simulasi jeda jaringan agar spinner loading tombol terlihat halus
             await asyncio.sleep(0.6)
             result = verify_mock_login(username, password)
             if not result:
@@ -76,6 +79,18 @@ class APIClient:
             raise AuthenticationError("Username atau password salah") from exc
         except httpx.RequestError as exc:
             raise AuthenticationError("Gagal terhubung ke layanan autentikasi") from exc
+
+    async def get_dashboard_summary(self, token: str | None = None) -> dict[str, Any]:
+        """Ambil ringkasan data Dashboard dari Mock Service atau Backend FastAPI."""
+        if USE_MOCK:
+            return get_mock_dashboard_summary()
+
+        response = await self.request(
+            method="GET",
+            endpoint="/api/v1/dashboard/summary",
+            token=token,
+        )
+        return response  # type: ignore[return-value]
 
 
 api_client = APIClient()

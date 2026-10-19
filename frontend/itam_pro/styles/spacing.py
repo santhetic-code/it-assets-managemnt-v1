@@ -16,25 +16,28 @@ class Space:
 
 class Size:
     # Layout Dimensions
-    SIDEBAR_WIDTH = "248px"     # Lebar tetap sidebar desktop
-    TOPBAR_HEIGHT = "68px"      # Tinggi topbar
-    SEARCH_WIDTH = "340px"      # Lebar kotak pencarian di topbar
+    SIDEBAR_WIDTH = "248px"
+    TOPBAR_HEIGHT = "68px"
+    SEARCH_WIDTH = "340px"
 
     # Control & Box Dimensions
-    CONTROL_HEIGHT = "48px"     # Tinggi standar input dan tombol form login
-    TOPBAR_CONTROL_H = "44px"   # Tinggi kotak pencarian & tombol lonceng topbar
-    BUTTON_MD_H = "42px"        # Tinggi tombol aksi header halaman
-    NAV_ITEM_HEIGHT = "40px"    # Tinggi item menu di sidebar
-    SIDEBAR_LOGO_BOX = "40px"   # Ukuran kotak biru logo di sidebar
-    AVATAR_BOX = "40px"         # Ukuran lingkaran avatar di topbar
-    LOGO_BOX = "44px"           # Ukuran kotak putih logo di panel login
+    CONTROL_HEIGHT = "48px"
+    TOPBAR_CONTROL_H = "44px"
+    BUTTON_MD_H = "42px"
+    NAV_ITEM_HEIGHT = "40px"
+    SIDEBAR_LOGO_BOX = "40px"
+    AVATAR_BOX = "40px"
+    STAT_ICON_CHIP = "36px"     # Chip ikon 36x36px di kanan atas kartu KPI
+    LOGO_BOX = "44px"
 
     # Icon & Indicator Sizes
     ICON_SM = 16
-    ICON_MD = 18                # Ukuran ikon standar sidebar, input, topbar
+    ICON_MD = 18
     ICON_LG = 20
-    CHECKBOX = "18px"           # Ukuran kotak checkbox
-    NOTIF_DOT = "8px"           # Ukuran titik merah lonceng notifikasi
+    CHECKBOX = "18px"
+    NOTIF_DOT = "8px"
+    LEGEND_DOT = "10px"
+    PROGRESS_H = "7px"
 
     # Login Card Dimensions
     LOGIN_CARD_MAX_W = "1040px"
@@ -42,12 +45,13 @@ class Size:
 
 
 class Radius:
-    BADGE_KBD = "6px"           # Badge shortcut Ctrl K
-    CONTROL = "10px"            # Input, tombol, item sidebar, logo sidebar
-    LOGO_BOX = "12px"           # Kotak ikon logo ITAM Pro di login
-    CARD = "14px"               # Kartu umum
-    LOGIN_CARD = "24px"         # Kartu tengah halaman login
-    FULL = "9999px"             # Lingkaran penuh (avatar, titik notifikasi)
+    BADGE_KBD = "6px"
+    CHIP = "10px"
+    CONTROL = "10px"
+    LOGO_BOX = "12px"
+    CARD = "14px"               # Radius kartu standar (20px padding)
+    LOGIN_CARD = "24px"
+    FULL = "9999px"
 
 
 class Shadow:

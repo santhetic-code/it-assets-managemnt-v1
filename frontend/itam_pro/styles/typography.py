@@ -20,33 +20,34 @@ class FontWeight:
 
 
 class FontSize:
-    GROUP_LABEL = "11px"        # Label uppercase grup menu di sidebar & Ctrl K
-    XS = "12px"                 # Subjudul brand sidebar & role user di topbar
-    FOOTER = "12.5px"
-    SM = "13px"
+    GROUP_LABEL = "11px"
+    XS = "12px"
+    FOOTER = "12.5px"           # Keterangan bawah KPI & waktu relatif
+    SM = "13px"                 # Label kartu KPI & tautan kartu
     BASE = "14px"
     MD = "15px"
-    SUBTITLE = "16px"
+    SUBTITLE = "16px"           # Judul dalam kartu (Card Title)
     LOGO = "18px"
-    TITLE = "28px"
-    HERO_FORM = "34px"          # Headline panel biru saat state form
-    HERO_WELCOME = "42px"       # Headline panel biru saat state welcome
+    DONUT_TOTAL = "24px"        # Angka total di tengah donut chart
+    TITLE = "28px"              # Judul halaman
+    KPI_VALUE = "32px"          # Angka utama kartu KPI (weight 800)
+    HERO_FORM = "34px"
+    HERO_WELCOME = "42px"
 
 
 BASE_STYLE: dict = {
-    **{
+    "font_family": FONT_FAMILY,
+    "background_color": Color.BG,
+    "color": Color.TEXT,
+    "box_sizing": "border-box",
+    "-webkit-font-smoothing": "antialiased",
+    "-moz-osx-font-smoothing": "grayscale",
+    "input, button, select, textarea": {
         "font_family": FONT_FAMILY,
-        "background_color": Color.BG,
-        "color": Color.TEXT,
-        "box_sizing": "border-box",
-        "-webkit-font-smoothing": "antialiased",
-        "-moz-osx-font-smoothing": "grayscale",
-        "input, button, select, textarea": {
-            "font_family": FONT_FAMILY,
-        },
-        "input::placeholder": {
-            "color": Color.MUTED,
-            "opacity": "0.75",
-        },
-    }
+    },
+    "input::placeholder": {
+        "color": Color.MUTED,
+        "opacity": "0.75",
+    },
 }
+

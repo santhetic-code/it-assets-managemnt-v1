@@ -1,6 +1,5 @@
 """
-Komponen Tombol Utama Reusable ITAM Pro.
-Tinggi 48px, radius 10px, warna #1D4ED8, teks putih 15px weight 700.
+Komponen Tombol Reusable ITAM Pro.
 """
 from typing import Any, Literal
 
@@ -17,7 +16,7 @@ def primary_button(
     full_width: bool = True,
     margin_top: str = "0px",
 ) -> rx.Component:
-    """Tombol aksi utama dengan dukungan state loading."""
+    """Tombol aksi utama (tinggi 48px) dengan dukungan state loading."""
     return rx.el.button(
         rx.cond(
             is_loading,
@@ -58,6 +57,93 @@ def primary_button(
                 "cursor": rx.cond(is_loading, "not-allowed", "pointer"),
                 "opacity": rx.cond(is_loading, "0.8", "1"),
                 "transition": "background-color 0.15s ease, opacity 0.15s ease",
+            }
+        ),
+        _hover=rx.Style(
+            {
+                "background_color": Color.ACCENT_BRIGHT,
+            }
+        ),
+    )
+
+
+def secondary_button(
+    label: str,
+    on_click: Any | None = None,
+    icon_tag: str | None = None,
+) -> rx.Component:
+    """Tombol sekunder putih dengan border #D5DEEE (contoh: 'Export Laporan')."""
+    return rx.el.button(
+        rx.hstack(
+            rx.icon(tag=icon_tag, size=Size.ICON_SM, color=Color.TEXT)
+            if icon_tag
+            else rx.fragment(),
+            rx.text(
+                label,
+                font_size=FontSize.SM,
+                font_weight=FontWeight.BOLD,
+                color=Color.TEXT,
+            ),
+            spacing="2",
+            align="center",
+        ),
+        type="button",
+        on_click=on_click,
+        style=rx.Style(
+            {
+                "height": Size.BUTTON_MD_H,
+                "padding": "0 18px",
+                "background_color": Color.SURFACE,
+                "color": Color.TEXT,
+                "border": f"1px solid {Color.INPUT_BORDER}",
+                "border_radius": Radius.CONTROL,
+                "font_family": FONT_FAMILY,
+                "display": "inline-flex",
+                "align_items": "center",
+                "justify_content": "center",
+                "cursor": "pointer",
+                "white_space": "nowrap",
+                "transition": "background-color 0.15s ease, border-color 0.15s ease",
+            }
+        ),
+        _hover=rx.Style(
+            {
+                "background_color": Color.SURFACE_HOVER,
+                "border_color": Color.ACCENT,
+            }
+        ),
+    )
+
+
+def action_primary_button(
+    label: str,
+    on_click: Any | None = None,
+) -> rx.Component:
+    """Tombol utama di header halaman (tinggi 42px, warna #1D4ED8, contoh: '+ Tambah Aset')."""
+    return rx.el.button(
+        rx.text(
+            label,
+            font_size=FontSize.SM,
+            font_weight=FontWeight.BOLD,
+            color=Color.WHITE,
+        ),
+        type="button",
+        on_click=on_click,
+        style=rx.Style(
+            {
+                "height": Size.BUTTON_MD_H,
+                "padding": "0 18px",
+                "background_color": Color.ACCENT,
+                "color": Color.WHITE,
+                "border": "none",
+                "border_radius": Radius.CONTROL,
+                "font_family": FONT_FAMILY,
+                "display": "inline-flex",
+                "align_items": "center",
+                "justify_content": "center",
+                "cursor": "pointer",
+                "white_space": "nowrap",
+                "transition": "background-color 0.15s ease",
             }
         ),
         _hover=rx.Style(
