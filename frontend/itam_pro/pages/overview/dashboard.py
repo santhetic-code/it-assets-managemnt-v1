@@ -8,11 +8,11 @@ import reflex as rx
 from itam_pro.components.layout import base_layout
 from itam_pro.components.ui import (
     action_primary_button,
+    app_badge,
     app_card,
     metric_progress_bar,
     secondary_button,
     stat_card,
-    status_badge,
 )
 from itam_pro.states.dashboard_state import (
     ActivityItem,
@@ -329,7 +329,7 @@ def _attention_row(item: AttentionItem, index: int) -> rx.Component:
             spacing="1",
             align="start",
         ),
-        status_badge(
+        app_badge(
             label=item["badge_label"],
             variant=item["badge_variant"],
         ),

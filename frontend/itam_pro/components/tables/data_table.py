@@ -1,16 +1,16 @@
 """
 Komponen Data Table Generik ITAM Pro.
-Menerima definisi kolom dan daftar baris dari luar (reusable untuk seluruh halaman).
+Mendukung kolom sticky di kiri, condition_badge, status_badge, dan header nowrap.
 """
 from typing import Any, Literal, TypedDict
 
 import reflex as rx
 
-from itam_pro.components.ui.badge import status_badge
-from itam_pro.components.ui.status_badge import asset_status_badge
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size, Space
+from itam_pro.components.ui.badge import app_badge
+from itam_pro.components.ui.status_badge import asset_condition_badge, asset_status_badge
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size
 
-RenderType = Literal["text", "bold_blue", "badge", "status_badge", "date"]
+RenderType = Literal["text", "bold_blue", "badge", "condition_badge", "status_badge", "date"]
 
 
 class ColumnDef(TypedDict, total=False):
@@ -18,14 +18,16 @@ class ColumnDef(TypedDict, total=False):
     header: str
     width: str
     render_type: RenderType
+    sticky_left: bool
     badge_variant_key: str
     date_tone_key: str
 
 
 def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
     """Render isi sel berdasarkan render_type yang didefinisikan pada kolom."""
-    key = col.get("key", "")
+    key = col["key"]
     rtype = col.get("render_type", "text")
+    is_sticky = col.get("sticky_left", False)
 
     if rtype == "bold_blue":
         return rx.text(
@@ -39,42 +41,28 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
     if rtype == "status_badge":
         return asset_status_badge(row[key])
 
+    if rtype == "condition_badge":
+        return asset_condition_badge(row[key])
+
     if rtype == "badge":
         variant_key = col.get("badge_variant_key", "")
         variant = row[variant_key] if variant_key else "neutral"
-        return status_badge(label=row[key], variant=variant)
+        return app_badge(label=row[key], variant=variant)
 
     if rtype == "date":
-        tone_key = col.get("date_tone_key", "")
-        if tone_key:
-            date_color = rx.match(
-                row[tone_key],
-                ("danger", Color.DANGER_FG),
-                ("warning", Color.WARNING_FG),
-                Color.TEXT,
-            )
-            date_weight = rx.cond(
-                row[tone_key] != "normal",
-                FontWeight.SEMIBOLD,
-                FontWeight.REGULAR,
-            )
-        else:
-            date_color = Color.TEXT
-            date_weight = FontWeight.REGULAR
-
         return rx.text(
             row[key],
             font_size=FontSize.SM,
-            font_weight=date_weight,
-            color=date_color,
+            font_weight=FontWeight.REGULAR,
+            color=rx.cond(row[key] == "—", Color.MUTED, Color.TEXT),
             white_space="nowrap",
         )
 
     return rx.text(
         row[key],
         font_size=FontSize.SM,
-        font_weight=FontWeight.MEDIUM,
-        color=Color.TEXT,
+        font_weight=FontWeight.BOLD if is_sticky else FontWeight.MEDIUM,
+        color=rx.cond(row[key] == "—", Color.MUTED, Color.TEXT),
         style=rx.Style(
             {
                 "white_space": "nowrap",
@@ -86,26 +74,35 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
 
 
 def _header_cell(col: ColumnDef) -> rx.Component:
-    """Sel header tabel: teks 12px uppercase muted, latar #F7F9FD."""
-    header_text = col.get("header", "")
-    return rx.el.th(
-        header_text.upper(),
-        style=rx.Style(
+    """Sel header tabel: teks 12px uppercase muted, latar #F7F9FD, tidak membungkus teks."""
+    is_sticky = col.get("sticky_left", False)
+    header_style: dict[str, Any] = {
+        "width": col.get("width", "auto"),
+        "min_width": col.get("width", "120px"),
+        "height": Size.TABLE_HEADER_H,
+        "padding": "0 16px",
+        "text_align": "left",
+        "font_size": FontSize.XS,
+        "font_weight": FontWeight.BOLD,
+        "color": Color.MUTED,
+        "letter_spacing": "0.05em",
+        "background_color": Color.TABLE_HEADER_BG,
+        "border_bottom": f"1px solid {Color.BORDER}",
+        "white_space": "nowrap",
+    }
+    if is_sticky:
+        header_style.update(
             {
-                "width": col.get("width", "auto"),
-                "min_width": col.get("width", "120px"),
-                "height": Size.TABLE_HEADER_H,
-                "padding": "0 16px",
-                "text_align": "left",
-                "font_size": FontSize.XS,
-                "font_weight": FontWeight.BOLD,
-                "color": Color.MUTED,
-                "letter_spacing": "0.05em",
-                "background_color": Color.TABLE_HEADER_BG,
-                "border_bottom": f"1px solid {Color.BORDER}",
-                "white_space": "nowrap",
+                "position": "sticky",
+                "left": "48px",
+                "z_index": "4",
+                "border_right": f"1px solid {Color.BORDER}",
             }
-        ),
+        )
+
+    return rx.el.th(
+        col["header"].upper(),
+        style=rx.Style(header_style),
     )
 
 
@@ -113,6 +110,7 @@ def _row_action_menu(
     row_id: Any,
     on_view: Any,
     on_edit: Any,
+    on_duplicate: Any,
     on_delete: Any,
 ) -> rx.Component:
     """Menu aksi '⋯' per baris."""
@@ -149,12 +147,16 @@ def _row_action_menu(
         ),
         rx.menu.content(
             rx.menu.item(
-                "Lihat Detail",
+                "Lihat Rincian",
                 on_click=on_view(row_id),
             ),
             rx.menu.item(
                 "Edit",
                 on_click=on_edit(row_id),
+            ),
+            rx.menu.item(
+                "Duplikat × N",
+                on_click=on_duplicate(row_id),
             ),
             rx.menu.separator(),
             rx.menu.item(
@@ -265,7 +267,7 @@ def _empty_table_state(
                 on_click=on_reset,
                 style=rx.Style(
                     {
-                        "margin_top": Space.S2,
+                        "margin_top": "8px",
                         "height": Size.FILTER_CONTROL_H,
                         "padding": "0 18px",
                         "background_color": Color.SURFACE,
@@ -303,18 +305,49 @@ def reusable_data_table(
     on_edit_row: Any,
     on_delete_row: Any,
     on_reset_filter: Any,
+    on_duplicate_row: Any | None = None,
     empty_message: str = "Tidak ada aset yang cocok",
 ) -> rx.Component:
     """
-    Komponen Tabel Data Generik ITAM Pro.
+    Komponen Tabel Data Generik ITAM Pro dengan dukungan kolom sticky di kiri.
     """
+    dup_handler = on_duplicate_row if on_duplicate_row is not None else on_edit_row
+
+    def _render_data_cell(
+        row: dict[str, Any],
+        col: ColumnDef,
+        row_bg: Any,
+    ) -> rx.Component:
+        is_sticky = col.get("sticky_left", False)
+        cell_style: dict[str, Any] = {
+            "width": col.get("width", "auto"),
+            "min_width": col.get("width", "120px"),
+            "max_width": col.get("width", "260px"),
+            "height": Size.TABLE_ROW_H,
+            "padding": "0 16px",
+            "border_bottom": f"1px solid {Color.DIVIDER}",
+            "background_color": row_bg,
+        }
+        if is_sticky:
+            cell_style.update(
+                {
+                    "position": "sticky",
+                    "left": "48px",
+                    "z_index": "2",
+                    "border_right": f"1px solid {Color.DIVIDER}",
+                }
+            )
+        return rx.el.td(
+            _render_cell_content(row, col),
+            style=rx.Style(cell_style),
+        )
 
     def _render_row(row: dict[str, Any]) -> rx.Component:
         row_id = row[id_key]
         is_highlighted = selected_ids.contains(row_id) | (active_row_id == row_id)
+        row_bg = rx.cond(is_highlighted, Color.ROW_SELECTED, Color.SURFACE)
 
         return rx.el.tr(
-            # Kolom 1: Checkbox Pilih Baris
             rx.el.td(
                 rx.el.input(
                     type="checkbox",
@@ -336,34 +369,24 @@ def reusable_data_table(
                 style=rx.Style(
                     {
                         "width": "48px",
+                        "min_width": "48px",
                         "height": Size.TABLE_ROW_H,
                         "padding": "0 16px",
                         "border_bottom": f"1px solid {Color.DIVIDER}",
+                        "background_color": row_bg,
+                        "position": "sticky",
+                        "left": "0",
+                        "z_index": "2",
                     }
                 ),
             ),
-            # Kolom-kolom Data Dinamis
-            *[
-                rx.el.td(
-                    _render_cell_content(row, col),
-                    style=rx.Style(
-                        {
-                            "width": col.get("width", "auto"),
-                            "max_width": col.get("width", "260px"),
-                            "height": Size.TABLE_ROW_H,
-                            "padding": "0 16px",
-                            "border_bottom": f"1px solid {Color.DIVIDER}",
-                        }
-                    ),
-                )
-                for col in columns
-            ],
-            # Kolom Terakhir: Menu Aksi '⋯'
+            *[_render_data_cell(row, col, row_bg) for col in columns],
             rx.el.td(
                 _row_action_menu(
                     row_id=row_id,
                     on_view=on_row_click,
                     on_edit=on_edit_row,
+                    on_duplicate=dup_handler,
                     on_delete=on_delete_row,
                 ),
                 on_click=rx.stop_propagation,
@@ -383,11 +406,7 @@ def reusable_data_table(
             style=rx.Style(
                 {
                     "height": Size.TABLE_ROW_H,
-                    "background_color": rx.cond(
-                        is_highlighted,
-                        Color.ROW_SELECTED,
-                        Color.SURFACE,
-                    ),
+                    "background_color": row_bg,
                     "cursor": "pointer",
                     "transition": "background-color 0.12s ease",
                 }
@@ -426,24 +445,34 @@ def reusable_data_table(
                         style=rx.Style(
                             {
                                 "width": "48px",
+                                "min_width": "48px",
                                 "height": Size.TABLE_HEADER_H,
                                 "padding": "0 16px",
                                 "text_align": "left",
                                 "background_color": Color.TABLE_HEADER_BG,
                                 "border_bottom": f"1px solid {Color.BORDER}",
+                                "position": "sticky",
+                                "left": "0",
+                                "z_index": "4",
                             }
                         ),
                     ),
                     *[_header_cell(col) for col in columns],
                     rx.el.th(
-                        "",
+                        "AKSI",
                         style=rx.Style(
                             {
-                                "width": "56px",
+                                "width": "64px",
                                 "height": Size.TABLE_HEADER_H,
                                 "padding": "0 12px",
+                                "text_align": "right",
+                                "font_size": FontSize.XS,
+                                "font_weight": FontWeight.BOLD,
+                                "color": Color.MUTED,
+                                "letter_spacing": "0.05em",
                                 "background_color": Color.TABLE_HEADER_BG,
                                 "border_bottom": f"1px solid {Color.BORDER}",
+                                "white_space": "nowrap",
                             }
                         ),
                     ),
@@ -459,7 +488,8 @@ def reusable_data_table(
             style=rx.Style(
                 {
                     "width": "100%",
-                    "border_collapse": "collapse",
+                    "border_collapse": "separate",
+                    "border_spacing": "0",
                     "font_family": FONT_FAMILY,
                 }
             ),
@@ -480,3 +510,10 @@ def reusable_data_table(
         ),
         width="100%",
     )
+
+
+__all__ = [
+    "ColumnDef",
+    "RenderType",
+    "reusable_data_table",
+]

@@ -10,7 +10,7 @@ from itam_pro.states.asset_state import AssetState
 from itam_pro.states.auth_state import AuthState
 from itam_pro.states.dashboard_state import DashboardState
 from itam_pro.states.nav_state import NavState
-from itam_pro.styles import BASE_STYLE, FONT_FAMILY, GOOGLE_FONTS_URL
+from itam_pro.styles import BASE_STYLE, GOOGLE_FONTS_URL
 
 
 def root_redirect_page() -> rx.Component:
@@ -21,12 +21,6 @@ def root_redirect_page() -> rx.Component:
 app = rx.App(
     stylesheets=[GOOGLE_FONTS_URL],
     style=BASE_STYLE,
-    theme=rx.theme(
-        appearance="light",
-        has_background=True,
-        accent_color="blue",
-        font_family=FONT_FAMILY,
-    ),
 )
 
 # Route "/" -> redirect ke /dashboard bila sudah login, selain itu /login

@@ -1,28 +1,16 @@
 """
 Komponen Detail Drawer Generik ITAM Pro.
-Lebar 440px (100% di <900px), scrim rgba(10,26,68,.35), tab, 3 grup informasi,
-footer aksi, tutup dengan Escape atau klik scrim.
+Lebar 440px (100% di <900px), scrim rgba(10,26,68,.35), ID internal tampil kecil,
+2 grup ('Informasi umum' & 'Penggunaan & lokasi'), tab 'Riwayat & Log', dan footer aksi.
 """
 from typing import Any
 
-from reflex_components_radix.themes.layout.box import Box
 import reflex as rx
 
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Size, Space
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Size
 
-from .badge import status_badge
-from .status_badge import asset_status_badge
-
-
-class DrawerBox(Box):
-    """Subclass Radix Box untuk mendukung trigger event on_key_down."""
-
-    @classmethod
-    def get_event_triggers(cls) -> dict[str, Any]:
-        return {
-            **super().get_event_triggers(),
-            "on_key_down": rx.event.key_event,
-        }
+from .badge import app_badge
+from .status_badge import asset_condition_badge, asset_status_badge
 
 
 def _kv_row(item: dict[str, Any]) -> rx.Component:
@@ -52,7 +40,7 @@ def _kv_row(item: dict[str, Any]) -> rx.Component:
 
 
 def _drawer_section(title: str, items_var: Any) -> rx.Component:
-    """Bagian bergrup di dalam drawer (contoh: Informasi umum / Spesifikasi / Terkait)."""
+    """Bagian bergrup di dalam drawer ('Informasi umum' / 'Penggunaan & lokasi')."""
     return rx.vstack(
         rx.text(
             title.upper(),
@@ -156,27 +144,28 @@ def _drawer_tab_button(
 def detail_drawer(
     is_open: Any,
     on_close: Any,
-    on_key_down: Any,
     code_var: Any,
     title_var: Any,
     category_var: Any,
+    condition_var: Any,
     status_var: Any,
     active_tab: Any,
     on_tab_change: Any,
     general_items: Any,
-    spec_items: Any,
-    related_items: Any,
+    usage_items: Any,
     history_items: Any,
     on_edit: Any,
+    on_duplicate: Any,
     on_delete: Any,
+    on_key_down: Any | None = None,
     tabs: tuple[tuple[str, str], tuple[str, str]] = (
-        ("detail", " Rincian Aset"),
+        ("detail", "Rincian Aset"),
         ("history", "Riwayat & Log"),
     ),
 ) -> rx.Component:
     """
     Komponen Drawer Kanan Generik (440px).
-    Menampilkan Informasi umum, Spesifikasi, dan Terkait, serta mendukung Escape & klik scrim.
+    Menampilkan grup 'Informasi umum' dan 'Penggunaan & lokasi', serta tab 'Riwayat & Log'.
     """
     tab1_key, tab1_label = tabs[0]
     tab2_key, tab2_label = tabs[1]
@@ -184,6 +173,22 @@ def detail_drawer(
     return rx.cond(
         is_open,
         rx.box(
+            # Listener tombol Escape untuk menutup drawer & mengembalikan fokus ke baris
+            rx.script(
+                """
+                if (!window._itamDrawerEscBound) {
+                    window._itamDrawerEscBound = true;
+                    window.addEventListener("keydown", function(e) {
+                        if (e.key === "Escape") {
+                            var closeBtn = document.getElementById("drawer-close-btn");
+                            if (closeBtn) {
+                                closeBtn.click();
+                            }
+                        }
+                    });
+                }
+                """
+            ),
             # Scrim rgba(10, 26, 68, 0.35)
             rx.box(
                 on_click=on_close,
@@ -198,21 +203,23 @@ def detail_drawer(
                 ),
             ),
             # Panel Drawer Kanan 440px (Layar penuh di <900px)
-            DrawerBox.create(
-                # 1. Header Drawer + Tombol Tutup Berlabel
+            rx.box(
+                # 1. Header Drawer + ID Internal Kecil + Tombol Tutup Berlabel
                 rx.vstack(
                     rx.hstack(
                         rx.hstack(
                             rx.text(
                                 code_var,
-                                font_size=FontSize.SM,
-                                font_weight=FontWeight.EXTRABOLD,
-                                color=Color.ACCENT,
+                                font_size=FontSize.XS,
+                                font_weight=FontWeight.BOLD,
+                                color=Color.MUTED,
                             ),
-                            status_badge(label=category_var, variant="neutral"),
+                            app_badge(label=category_var, variant="neutral"),
+                            asset_condition_badge(condition_var),
                             asset_status_badge(status_var),
                             spacing="2",
                             align="center",
+                            wrap="wrap",
                         ),
                         rx.el.button(
                             rx.hstack(
@@ -226,6 +233,7 @@ def detail_drawer(
                                 spacing="1",
                                 align="center",
                             ),
+                            id="drawer-close-btn",
                             type="button",
                             aria_label="Tutup panel detail",
                             on_click=on_close,
@@ -238,6 +246,7 @@ def detail_drawer(
                                     "cursor": "pointer",
                                     "display": "inline-flex",
                                     "align_items": "center",
+                                    "flex_shrink": "0",
                                 }
                             ),
                             _hover=rx.Style({"background_color": Color.SURFACE_HOVER}),
@@ -283,8 +292,7 @@ def detail_drawer(
                         active_tab == tab1_key,
                         rx.vstack(
                             _drawer_section("Informasi umum", general_items),
-                            _drawer_section("Spesifikasi", spec_items),
-                            _drawer_section("Terkait", related_items),
+                            _drawer_section("Penggunaan & lokasi", usage_items),
                             spacing="5",
                             width="100%",
                             align="start",
@@ -311,7 +319,7 @@ def detail_drawer(
                         rx.hstack(
                             rx.icon(tag="pencil", size=Size.ICON_SM, color=Color.TEXT),
                             rx.text(
-                                "Edit Aset",
+                                "Edit",
                                 font_size=FontSize.SM,
                                 font_weight=FontWeight.BOLD,
                                 color=Color.TEXT,
@@ -339,6 +347,35 @@ def detail_drawer(
                     ),
                     rx.el.button(
                         rx.hstack(
+                            rx.icon(tag="copy", size=Size.ICON_SM, color=Color.ACCENT),
+                            rx.text(
+                                "Duplikat x N",
+                                font_size=FontSize.SM,
+                                font_weight=FontWeight.BOLD,
+                                color=Color.ACCENT,
+                            ),
+                            spacing="2",
+                            align="center",
+                        ),
+                        type="button",
+                        on_click=on_duplicate,
+                        style=rx.Style(
+                            {
+                                "flex": "1",
+                                "height": Size.FILTER_CONTROL_H,
+                                "background_color": Color.INFO_BG,
+                                "border": "none",
+                                "border_radius": Radius.CONTROL,
+                                "font_family": FONT_FAMILY,
+                                "display": "inline-flex",
+                                "align_items": "center",
+                                "justify_content": "center",
+                                "cursor": "pointer",
+                            }
+                        ),
+                    ),
+                    rx.el.button(
+                        rx.hstack(
                             rx.icon(tag="trash-2", size=Size.ICON_SM, color=Color.DANGER_FG),
                             rx.text(
                                 "Hapus",
@@ -354,7 +391,7 @@ def detail_drawer(
                         style=rx.Style(
                             {
                                 "height": Size.FILTER_CONTROL_H,
-                                "padding": "0 18px",
+                                "padding": "0 16px",
                                 "background_color": Color.DANGER_BG,
                                 "border": "none",
                                 "border_radius": Radius.CONTROL,
@@ -366,7 +403,7 @@ def detail_drawer(
                             }
                         ),
                     ),
-                    spacing="3",
+                    spacing="2",
                     width="100%",
                     padding="16px 24px",
                     style=rx.Style(
@@ -379,9 +416,8 @@ def detail_drawer(
                 id="global-detail-drawer",
                 role="dialog",
                 aria_modal="true",
-                aria_label="Detail item",
+                aria_label="Rincian Aset",
                 tab_index=-1,
-                on_key_down=on_key_down,
                 style=rx.Style(
                     {
                         "position": "fixed",
@@ -405,3 +441,6 @@ def detail_drawer(
         ),
         rx.fragment(),
     )
+
+
+__all__ = ["detail_drawer"]

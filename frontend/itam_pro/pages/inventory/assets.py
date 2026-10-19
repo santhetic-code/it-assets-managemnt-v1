@@ -1,10 +1,12 @@
 """
 Halaman Inventory -> Assets Inventory (/assets).
-Menggunakan komponen tabel, filter bar, pagination, dan detail drawer generik.
+Sesuai struktur spreadsheet asli: 10 kolom data (Nama Aset sticky di kiri) + aksi,
+5 dropdown filter dari master data, Detail Drawer 2 grup, dan Form Modal Tambah/Edit/Duplikat.
 """
 import reflex as rx
 
 from itam_pro.components.feedback import confirm_delete_dialog
+from itam_pro.components.forms import asset_form_modal
 from itam_pro.components.layout import base_layout
 from itam_pro.components.tables import (
     ColumnDef,
@@ -14,64 +16,73 @@ from itam_pro.components.tables import (
     table_pagination,
 )
 from itam_pro.components.ui import action_primary_button, detail_drawer, secondary_button
-from itam_pro.states.asset_state import (
-    CATEGORY_OPTIONS,
-    LOCATION_OPTIONS,
-    STATUS_OPTIONS,
-    AssetState,
-)
+from itam_pro.states.asset_state import AssetState
 from itam_pro.styles import Color, FontSize, FontWeight, Radius, Space
 
-# Definisi kolom diberikan dari luar ke komponen reusable_data_table
+# Urutan kolom sesuai spreadsheet asli:
+# Nama Aset (sticky di kiri) | Kategori | SN/PID | Tgl Masuk Gudang | Tgl Keluar Gudang |
+# Kepemilikan | Lokasi | Kondisi | Status | Digunakan Oleh | aksi
 ASSET_TABLE_COLUMNS: list[ColumnDef] = [
     {
-        "key": "id",
-        "header": "Kode Aset",
-        "width": "120px",
-        "render_type": "bold_blue",
-    },
-    {
-        "key": "name",
+        "key": "nama_aset",
         "header": "Nama Aset",
-        "width": "230px",
+        "width": "240px",
         "render_type": "text",
+        "sticky_left": True,
     },
     {
-        "key": "category",
+        "key": "kategori",
         "header": "Kategori",
-        "width": "110px",
+        "width": "130px",
         "render_type": "badge",
     },
     {
-        "key": "serial",
-        "header": "Serial Number",
-        "width": "145px",
+        "key": "sn_pid",
+        "header": "SN/PID",
+        "width": "155px",
         "render_type": "text",
     },
     {
-        "key": "location",
-        "header": "Lokasi",
-        "width": "185px",
-        "render_type": "text",
-    },
-    {
-        "key": "pic",
-        "header": "PIC / Pengguna",
+        "key": "tanggal_masuk_gudang",
+        "header": "Tgl Masuk Gudang",
         "width": "150px",
+        "render_type": "date",
+    },
+    {
+        "key": "tanggal_keluar_gudang",
+        "header": "Tgl Keluar Gudang",
+        "width": "150px",
+        "render_type": "date",
+    },
+    {
+        "key": "kepemilikan",
+        "header": "Kepemilikan",
+        "width": "115px",
+        "render_type": "badge",
+    },
+    {
+        "key": "lokasi",
+        "header": "Lokasi",
+        "width": "170px",
         "render_type": "text",
+    },
+    {
+        "key": "kondisi",
+        "header": "Kondisi",
+        "width": "185px",
+        "render_type": "condition_badge",
     },
     {
         "key": "status",
         "header": "Status",
-        "width": "130px",
+        "width": "150px",
         "render_type": "status_badge",
     },
     {
-        "key": "warranty",
-        "header": "Garansi",
+        "key": "digunakan_oleh",
+        "header": "Digunakan Oleh",
         "width": "165px",
-        "render_type": "date",
-        "date_tone_key": "warranty_tone",
+        "render_type": "text",
     },
 ]
 
@@ -89,7 +100,8 @@ def _assets_header() -> rx.Component:
                 letter_spacing="-0.02em",
             ),
             rx.text(
-                "Daftar seluruh aset perangkat keras, server, dan UPS di semua lokasi.",
+                "Rekapitulasi seluruh unit fisik perangkat IT berdasarkan lokasi, kondisi, "
+                "dan status pemakaian.",
                 font_size=FontSize.BASE,
                 font_weight=FontWeight.REGULAR,
                 color=Color.MUTED,
@@ -106,11 +118,11 @@ def _assets_header() -> rx.Component:
             secondary_button(
                 label="Export",
                 icon_tag="download",
-                on_click=AssetState.trigger_coming_soon("Export Data Aset"),
+                on_click=AssetState.trigger_coming_soon("Export Spreadsheet"),
             ),
             action_primary_button(
                 label="+ Tambah Aset",
-                on_click=AssetState.trigger_coming_soon("Form Tambah Aset"),
+                on_click=AssetState.open_add_modal,
             ),
             spacing="3",
             align="center",
@@ -130,25 +142,37 @@ def _assets_header() -> rx.Component:
 
 
 def _assets_table_card() -> rx.Component:
-    """Kartu pembungkus Filter Bar + Data Table + Pagination."""
+    """Kartu pembungkus Filter Bar (5 dropdown dari master) + Data Table + Pagination."""
     dropdown_configs: list[FilterDropdownConfig] = [
         {
             "label": "Semua Kategori",
-            "value": AssetState.category_filter,
-            "options": CATEGORY_OPTIONS,
-            "on_change": AssetState.set_category_filter,
+            "value": AssetState.kategori_filter,
+            "options": AssetState.master_kategori_options,
+            "on_change": AssetState.set_kategori_filter,
+        },
+        {
+            "label": "Semua Kepemilikan",
+            "value": AssetState.kepemilikan_filter,
+            "options": AssetState.master_kepemilikan_options,
+            "on_change": AssetState.set_kepemilikan_filter,
+        },
+        {
+            "label": "Semua Lokasi",
+            "value": AssetState.lokasi_filter,
+            "options": AssetState.master_lokasi_options,
+            "on_change": AssetState.set_lokasi_filter,
+        },
+        {
+            "label": "Semua Kondisi",
+            "value": AssetState.kondisi_filter,
+            "options": AssetState.master_kondisi_options,
+            "on_change": AssetState.set_kondisi_filter,
         },
         {
             "label": "Semua Status",
             "value": AssetState.status_filter,
-            "options": STATUS_OPTIONS,
+            "options": AssetState.master_status_options,
             "on_change": AssetState.set_status_filter,
-        },
-        {
-            "label": "Semua Lokasi",
-            "value": AssetState.location_filter,
-            "options": LOCATION_OPTIONS,
-            "on_change": AssetState.set_location_filter,
         },
     ]
 
@@ -156,7 +180,7 @@ def _assets_table_card() -> rx.Component:
         table_filter_bar(
             search_value=AssetState.search_query,
             on_search_change=AssetState.set_search_query,
-            search_placeholder="Cari kode aset, nama, serial, PIC...",
+            search_placeholder="Cari nama aset, SN/PID, digunakan oleh...",
             dropdowns=dropdown_configs,
             on_reset=AssetState.reset_filters,
             result_count_text=AssetState.result_count_label,
@@ -172,7 +196,8 @@ def _assets_table_card() -> rx.Component:
             on_toggle_all=AssetState.toggle_select_all,
             on_toggle_row=AssetState.toggle_row_selection,
             on_row_click=AssetState.open_drawer,
-            on_edit_row=AssetState.edit_asset,
+            on_edit_row=AssetState.open_edit_modal,
+            on_duplicate_row=AssetState.open_duplicate_modal,
             on_delete_row=AssetState.confirm_delete_asset,
             on_reset_filter=AssetState.reset_filters,
             empty_message="Tidak ada aset yang cocok",
@@ -211,22 +236,24 @@ def assets_inventory_page() -> rx.Component:
             code_var=AssetState.active_code,
             title_var=AssetState.active_name,
             category_var=AssetState.active_category,
+            condition_var=AssetState.active_condition,
             status_var=AssetState.active_status,
             active_tab=AssetState.drawer_tab,
             on_tab_change=AssetState.set_drawer_tab,
             general_items=AssetState.active_general_info,
-            spec_items=AssetState.active_specs_info,
-            related_items=AssetState.active_related_info,
+            usage_items=AssetState.active_usage_info,
             history_items=AssetState.active_history_info,
-            on_edit=lambda: AssetState.edit_asset(""),
+            on_edit=lambda: AssetState.open_edit_modal(""),
+            on_duplicate=lambda: AssetState.open_duplicate_modal(""),
             on_delete=lambda: AssetState.confirm_delete_asset(""),
         ),
+        asset_form_modal(),
         confirm_delete_dialog(
             is_open=AssetState.delete_dialog_open,
-            title="Hapus Aset?",
+            title="Hapus Unit Aset?",
             description=(
-                f"Apakah Anda yakin ingin menghapus aset {AssetState.asset_to_delete}? "
-                "Tindakan ini akan dicatat pada Audit Log."
+                f"Apakah Anda yakin ingin menghapus '{AssetState.asset_to_delete_name}' "
+                f"({AssetState.asset_to_delete})? Tindakan ini akan dicatat pada Audit Log."
             ),
             on_cancel=AssetState.cancel_delete,
             on_confirm=AssetState.execute_delete_asset,
@@ -240,3 +267,9 @@ def assets_inventory_page() -> rx.Component:
         content=content,
         breadcrumb=("Inventory", "Assets Inventory"),
     )
+
+
+__all__ = [
+    "ASSET_TABLE_COLUMNS",
+    "assets_inventory_page",
+]

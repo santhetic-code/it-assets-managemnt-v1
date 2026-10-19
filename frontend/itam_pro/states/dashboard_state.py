@@ -54,7 +54,7 @@ class ActivityItem(TypedDict):
 def format_id_number(value: int | float, decimals: int = 0) -> str:
     """Format angka ke gaya Indonesia (titik ribuan, koma desimal)."""
     if decimals == 0:
-        return f"{int(round(value)):,}".replace(",", ".")
+        return f"{round(value):,}".replace(",", ".")
     formatted = f"{float(value):,.{decimals}f}"
     parts = formatted.split(".")
     integer_part = parts[0].replace(",", ".")
@@ -76,9 +76,9 @@ CATEGORY_COLOR_MAP: dict[str, str] = {
 class DashboardState(rx.State):
     is_loading: bool = False
     kpi_cards: list[KPICardItem] = []
-    monthly_purchases: list[MonthlyPurchaseItem] = []
+    monthly_purchases: list[dict[str, Any]] = []
     purchase_subtitle: str = "Juta rupiah · total 6 bulan Rp 0 jt"
-    category_assets: list[CategoryAssetItem] = []
+    category_assets: list[dict[str, Any]] = []
     total_assets_formatted: str = "0"
     ups_loads: list[UPSLoadItem] = []
     attention_items: list[AttentionItem] = []
@@ -206,7 +206,7 @@ class DashboardState(rx.State):
         self.is_loading = False
 
     @rx.event
-    def show_coming_soon(self, feature_name: str = "Fitur ini") -> Any:
+    def show_coming_soon(self, feature_name: str) -> Any:
         """Tampilkan toast 'Segera hadir' untuk tombol/tautan placeholder."""
         return rx.toast.info(
             f"{feature_name} — Segera hadir.",

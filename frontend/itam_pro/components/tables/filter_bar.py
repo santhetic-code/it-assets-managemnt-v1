@@ -1,6 +1,6 @@
 """
 Komponen Filter Bar Generik ITAM Pro.
-Kotak pencarian 320px + N dropdown + tautan 'Reset filter' + jumlah hasil di kanan.
+Kotak pencarian 320px + N dropdown master + tautan 'Reset filter' + jumlah hasil di kanan.
 """
 from typing import Any, TypedDict
 
@@ -12,16 +12,19 @@ from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Si
 class FilterDropdownConfig(TypedDict):
     label: str
     value: Any
-    options: list[str]
+    options: Any
     on_change: Any
 
 
 def _filter_dropdown(cfg: FilterDropdownConfig) -> rx.Component:
-    """Render satu dropdown filter dari konfigurasi luar."""
+    """Render satu dropdown filter dari konfigurasi master."""
     return rx.box(
         rx.el.select(
             rx.el.option(cfg["label"], value="Semua"),
-            *[rx.el.option(opt, value=opt) for opt in cfg["options"]],
+            rx.foreach(
+                cfg["options"],
+                lambda opt: rx.el.option(opt, value=opt),
+            ),
             value=cfg["value"],
             on_change=cfg["on_change"],
             aria_label=cfg["label"],
@@ -71,7 +74,6 @@ def table_filter_bar(
 ) -> rx.Component:
     """Bar filter generik untuk halaman bertabel."""
     return rx.box(
-        # Kelompok Kiri: Search 320px + N Dropdown + Reset Filter
         rx.hstack(
             rx.hstack(
                 rx.icon(
@@ -145,7 +147,6 @@ def table_filter_bar(
             align="center",
             wrap="wrap",
         ),
-        # Kanan: Jumlah Hasil
         rx.text(
             result_count_text,
             font_size=FontSize.SM,
@@ -166,3 +167,9 @@ def table_filter_bar(
             }
         ),
     )
+
+
+__all__ = [
+    "FilterDropdownConfig",
+    "table_filter_bar",
+]

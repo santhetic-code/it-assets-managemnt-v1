@@ -1,5 +1,5 @@
 """
-Komponen Badge Status Reusable ITAM Pro.
+Komponen Badge Reusable ITAM Pro.
 Mendukung varian: success, warning, danger, info, neutral.
 """
 from typing import Any
@@ -9,11 +9,11 @@ import reflex as rx
 from itam_pro.styles import Color, FontSize, FontWeight, Radius
 
 
-def status_badge(
+def app_badge(
     label: Any,
     variant: Any = "info",
 ) -> rx.Component:
-    """Badge pil semantik untuk status aset, peringatan, dan kategori."""
+    """Badge pil semantik untuk status, peringatan, dan kategori."""
     fg_color = rx.match(
         variant,
         ("success", Color.SUCCESS_FG),
