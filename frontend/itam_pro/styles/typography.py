@@ -1,8 +1,6 @@
 """
 Konfigurasi Tipografi ITAM Pro (Plus Jakarta Sans).
 """
-import reflex as rx
-
 from .colors import Color
 
 FONT_FAMILY = "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
@@ -22,6 +20,8 @@ class FontWeight:
 
 
 class FontSize:
+    GROUP_LABEL = "11px"        # Label uppercase grup menu di sidebar & Ctrl K
+    XS = "12px"                 # Subjudul brand sidebar & role user di topbar
     FOOTER = "12.5px"
     SM = "13px"
     BASE = "14px"
@@ -33,8 +33,8 @@ class FontSize:
     HERO_WELCOME = "42px"       # Headline panel biru saat state welcome
 
 
-BASE_STYLE = rx.Style(
-    {
+BASE_STYLE: dict = {
+    **{
         "font_family": FONT_FAMILY,
         "background_color": Color.BG,
         "color": Color.TEXT,
@@ -49,4 +49,4 @@ BASE_STYLE = rx.Style(
             "opacity": "0.75",
         },
     }
-)
+}

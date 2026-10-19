@@ -9,8 +9,8 @@ MOCK_USERS: dict[str, dict[str, Any]] = {
         "user": {
             "id": 1,
             "username": "admin",
-            "full_name": "Administrator IT",
-            "role": "Admin",
+            "full_name": "Admin IT",
+            "role": "Administrator",
             "is_active": True,
         },
         "access_token": "mock-jwt-token-admin-itam-pro",
@@ -20,7 +20,7 @@ MOCK_USERS: dict[str, dict[str, Any]] = {
         "user": {
             "id": 2,
             "username": "member",
-            "full_name": "Tim IT Support",
+            "full_name": "Teknisi 1",
             "role": "Member",
             "is_active": True,
         },

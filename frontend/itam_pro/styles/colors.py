@@ -8,7 +8,13 @@ class Color:
     ACCENT = "#1D4ED8"          # Tombol utama, tautan, bar aktif, checkbox
     ACCENT_BRIGHT = "#2563EB"   # Menu aktif, hover tombol utama, fokus
     BRAND = "#1340C7"           # Panel branding login & teks logo mobile
+
+    # Sidebar Tokens
     SIDEBAR = "#0A1A44"         # Latar sidebar navy
+    SIDEBAR_TEXT = "#C7D4F5"    # Teks & ikon item menu nonaktif di sidebar
+    SIDEBAR_MUTED = "#8EA3D6"   # Subjudul brand & label grup uppercase di sidebar
+    SIDEBAR_HOVER_BG = "rgba(255, 255, 255, 0.08)"  # Latar hover item sidebar
+    SIDEBAR_DIVIDER = "rgba(255, 255, 255, 0.08)"   # Garis pemisah halus di sidebar
 
     # Login Page & Ornaments Tokens
     LOGIN_BG = "#DCE6FB"        # Latar halaman login di belakang kartu
@@ -17,9 +23,12 @@ class Color:
 
     # Neutral & Surface Tokens
     BG = "#F2F5FB"              # Latar halaman utama aplikasi
-    SURFACE = "#FFFFFF"         # Latar kartu, panel form, input
-    BORDER = "#E1E8F5"          # Garis batas kartu & tabel
+    SURFACE = "#FFFFFF"         # Latar topbar, kartu, panel form, input
+    SEARCH_BG = "#F6F8FC"       # Latar kotak pencarian di topbar
+    SURFACE_HOVER = "#F8FAFC"   # Latar hover tombol sekunder/ikon di topbar
+    BORDER = "#E1E8F5"          # Garis batas bawah topbar, kartu, & tabel
     INPUT_BORDER = "#D5DEEE"    # Garis batas khusus field input
+    OVERLAY_BACKDROP = "rgba(10, 26, 68, 0.45)"  # Backdrop drawer mobile
 
     # Focus Ring Token
     FOCUS_RING = "0 0 0 3px rgba(29, 78, 216, 0.15)"
@@ -41,3 +50,4 @@ class Color:
 
     DANGER_FG = "#B91C1C"
     DANGER_BG = "#FEE2E2"
+    NOTIFICATION_DOT = "#DC2626"  # Titik merah notifikasi pada ikon lonceng
