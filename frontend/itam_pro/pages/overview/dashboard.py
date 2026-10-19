@@ -262,7 +262,7 @@ def _assets_by_category_card() -> rx.Component:
         ),
         title="Aset per Kategori",
         action_label="Inventory",
-        on_action_click=DashboardState.show_coming_soon("Halaman Assets Inventory"),
+        on_action_click=rx.redirect("/assets"),
     )
 
 

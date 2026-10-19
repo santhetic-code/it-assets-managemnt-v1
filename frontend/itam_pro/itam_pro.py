@@ -4,7 +4,9 @@ Entry Point & Routing Utama ITAM Pro.
 import reflex as rx
 
 from itam_pro.pages.auth import login_page
+from itam_pro.pages.inventory import assets_inventory_page
 from itam_pro.pages.overview import dashboard_page
+from itam_pro.states.asset_state import AssetState
 from itam_pro.states.auth_state import AuthState
 from itam_pro.states.dashboard_state import DashboardState
 from itam_pro.states.nav_state import NavState
@@ -42,7 +44,7 @@ app.add_page(
     title="Masuk · ITAM Pro",
 )
 
-# Route halaman Dashboard (dilindungi guard AuthState.check_auth + muat data DashboardState)
+# Route halaman Dashboard
 app.add_page(
     dashboard_page,
     route="/dashboard",
@@ -51,5 +53,17 @@ app.add_page(
         AuthState.check_auth,
         NavState.set_page_context("Overview", "Dashboard"),
         DashboardState.load_dashboard,
+    ],
+)
+
+# Route halaman Assets Inventory
+app.add_page(
+    assets_inventory_page,
+    route="/assets",
+    title="Assets Inventory · ITAM Pro",
+    on_load=[
+        AuthState.check_auth,
+        NavState.set_page_context("Inventory", "Assets Inventory"),
+        AssetState.load_assets,
     ],
 )

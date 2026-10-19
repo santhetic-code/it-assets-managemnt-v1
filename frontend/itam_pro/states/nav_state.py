@@ -40,7 +40,7 @@ class NavState(rx.State):
         group: str,
         label: str,
         route: str,
-        is_ready: bool = False,
+        is_ready: bool,
     ) -> Any:
         """
         Handler klik item menu di sidebar.

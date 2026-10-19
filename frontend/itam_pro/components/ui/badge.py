@@ -1,6 +1,6 @@
 """
 Komponen Badge Status Reusable ITAM Pro.
-Mendukung varian: success, warning, danger, info.
+Mendukung varian: success, warning, danger, info, neutral.
 """
 from typing import Any
 
@@ -19,6 +19,7 @@ def status_badge(
         ("success", Color.SUCCESS_FG),
         ("warning", Color.WARNING_FG),
         ("danger", Color.DANGER_FG),
+        ("neutral", Color.NEUTRAL_FG),
         ("info", Color.INFO_FG),
         Color.INFO_FG,
     )
@@ -27,6 +28,7 @@ def status_badge(
         ("success", Color.SUCCESS_BG),
         ("warning", Color.WARNING_BG),
         ("danger", Color.DANGER_BG),
+        ("neutral", Color.NEUTRAL_BG),
         ("info", Color.INFO_BG),
         Color.INFO_BG,
     )

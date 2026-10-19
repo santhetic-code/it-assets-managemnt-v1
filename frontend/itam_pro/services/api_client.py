@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
+from itam_pro.services.mock.asset_mock import query_mock_assets
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
 
@@ -89,6 +90,31 @@ class APIClient:
             method="GET",
             endpoint="/api/v1/dashboard/summary",
             token=token,
+        )
+        return response  # type: ignore[return-value]
+
+    async def get_assets(
+        self,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Ambil daftar aset dengan filter & paginasi ({items, total, page, page_size})."""
+        if USE_MOCK:
+            await asyncio.sleep(0.15)
+            return query_mock_assets(filters=filters, page=page, page_size=page_size)
+
+        params: dict[str, Any] = {
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        response = await self.request(
+            method="GET",
+            endpoint="/api/v1/assets",
+            token=token,
+            params=params,
         )
         return response  # type: ignore[return-value]
 
