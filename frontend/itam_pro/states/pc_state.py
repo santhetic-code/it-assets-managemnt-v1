@@ -358,7 +358,7 @@ class PCState(rx.State):
         self.form_modal_open = True
 
     @rx.event
-    def open_edit_modal(self, row_id: str = "") -> None:
+    def open_edit_modal(self, row_id: str) -> None:
         """Buka modal edit PC."""
         target_id = row_id or self.active_pc_id
         target_item = next((it for it in self.items if it["id"] == target_id), None)
@@ -386,7 +386,7 @@ class PCState(rx.State):
         self.form_modal_open = True
 
     @rx.event
-    def open_duplicate_modal(self, row_id: str = "") -> None:
+    def open_duplicate_modal(self, row_id: str) -> None:
         """Salin spesifikasi PC ke mode Tambah untuk membuat duplikat."""
         self.open_edit_modal(row_id)
         self.form_mode = "add"
@@ -486,7 +486,7 @@ class PCState(rx.State):
         )
 
     @rx.event
-    def confirm_delete_pc(self, row_id: str = "") -> None:
+    def confirm_delete_pc(self, row_id: str) -> None:
         target = row_id or self.active_pc_id
         if target:
             item = next((it for it in self.items if it["id"] == target), self.active_pc)

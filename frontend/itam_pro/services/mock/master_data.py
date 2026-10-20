@@ -49,6 +49,44 @@ MASTER_JENIS_PC: list[str] = [
     "Backup",
 ]
 
+# --- MASTER DATA REKAP MONITOR ---
+MASTER_MERK_MONITOR: list[str] = [
+    "LG",
+    "Dell",
+    "Samsung",
+    "AOC",
+    "HP",
+]
+
+MASTER_UKURAN_MONITOR: list[str] = [
+    '18,5"',
+    '19"',
+    '21,5"',
+    '23,8"',
+    '24"',
+    '27"',
+]
+
+MASTER_RESOLUSI_MONITOR: list[str] = [
+    "1366 × 768",
+    "1600 × 900",
+    "1920 × 1080",
+    "2560 × 1440",
+]
+
+MASTER_KONEKTIVITAS_MONITOR: list[str] = [
+    "HDMI",
+    "VGA",
+    "DisplayPort",
+    "DVI",
+    "USB-C",
+]
+
+MASTER_STATUS_MONITOR: list[str] = [
+    "Digunakan",
+    "Backup",
+]
+
 
 def get_all_master_options() -> dict[str, list[str]]:
     """Kembalikan seluruh daftar opsi master untuk kebutuhan State dan Form."""
@@ -59,6 +97,11 @@ def get_all_master_options() -> dict[str, list[str]]:
         "kondisi": list(MASTER_KONDISI),
         "status": list(MASTER_STATUS),
         "jenis_pc": list(MASTER_JENIS_PC),
+        "merk_monitor": list(MASTER_MERK_MONITOR),
+        "ukuran_monitor": list(MASTER_UKURAN_MONITOR),
+        "resolusi_monitor": list(MASTER_RESOLUSI_MONITOR),
+        "konektivitas_monitor": list(MASTER_KONEKTIVITAS_MONITOR),
+        "status_monitor": list(MASTER_STATUS_MONITOR),
     }
 
 
@@ -67,7 +110,12 @@ __all__ = [
     "MASTER_KATEGORI",
     "MASTER_KEPEMILIKAN",
     "MASTER_KONDISI",
+    "MASTER_KONEKTIVITAS_MONITOR",
     "MASTER_LOKASI",
+    "MASTER_MERK_MONITOR",
+    "MASTER_RESOLUSI_MONITOR",
     "MASTER_STATUS",
+    "MASTER_STATUS_MONITOR",
+    "MASTER_UKURAN_MONITOR",
     "get_all_master_options",
 ]

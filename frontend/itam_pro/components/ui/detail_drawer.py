@@ -1,7 +1,7 @@
 """
 Komponen Detail Drawer Generik ITAM Pro.
-Mendukung 2 atau 3 grup informasi yang dapat dikonfigurasi dari luar,
-tab 'Riwayat & Log', serta aksi Edit, Duplikat, dan Hapus.
+Mendukung grup informasi key-value, seksi chip konektivitas, tab 'Riwayat & Log',
+serta aksi Edit, Duplikat, dan Hapus.
 """
 from typing import Any
 
@@ -9,7 +9,7 @@ import reflex as rx
 
 from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Size
 
-from .badge import app_badge
+from .badge import app_badge, connector_chip
 from .status_badge import asset_condition_badge, asset_status_badge
 
 
@@ -40,7 +40,7 @@ def _kv_row(item: dict[str, Any]) -> rx.Component:
 
 
 def _drawer_section(title: str, items_var: Any) -> rx.Component:
-    """Bagian bergrup di dalam drawer."""
+    """Bagian bergrup key-value di dalam drawer."""
     return rx.vstack(
         rx.text(
             title.upper(),
@@ -59,6 +59,36 @@ def _drawer_section(title: str, items_var: Any) -> rx.Component:
                     "border": f"1px solid {Color.BORDER}",
                     "border_radius": Radius.CONTROL,
                     "padding": "4px 14px",
+                }
+            ),
+        ),
+        spacing="2",
+        align="start",
+        width="100%",
+    )
+
+
+def _drawer_chips_section(title: str, chips_var: Any) -> rx.Component:
+    """Bagian bergrup khusus daftar chip (contoh: Konektivitas Monitor)."""
+    return rx.vstack(
+        rx.text(
+            title.upper(),
+            font_size=FontSize.GROUP_LABEL,
+            font_weight=FontWeight.BOLD,
+            color=Color.MUTED,
+            letter_spacing="0.06em",
+        ),
+        rx.hstack(
+            rx.foreach(chips_var, connector_chip),
+            spacing="2",
+            wrap="wrap",
+            width="100%",
+            style=rx.Style(
+                {
+                    "background_color": Color.TABLE_HEADER_BG,
+                    "border": f"1px solid {Color.BORDER}",
+                    "border_radius": Radius.CONTROL,
+                    "padding": "12px 14px",
                 }
             ),
         ),
@@ -146,7 +176,6 @@ def detail_drawer(
     on_close: Any,
     code_var: Any,
     title_var: Any,
-    category_var: Any,
     active_tab: Any,
     on_tab_change: Any,
     general_items: Any,
@@ -155,13 +184,18 @@ def detail_drawer(
     on_edit: Any,
     on_duplicate: Any,
     on_delete: Any,
+    category_var: Any | None = None,
     condition_var: Any | None = None,
     status_var: Any | None = None,
     section1_title: str = "Informasi umum",
     section2_title: str = "Penggunaan & lokasi",
     section3_title: str | None = None,
     section3_items: Any | None = None,
-    duplicate_label: str = "Duplikat x N",
+    chips_section_title: str | None = None,
+    chips_items: Any | None = None,
+    section4_title: str | None = None,
+    section4_items: Any | None = None,
+    duplicate_label: str = "Duplikat × N",
     on_key_down: Any | None = None,
     tabs: tuple[tuple[str, str], tuple[str, str]] = (
         ("detail", "Rincian Aset"),
@@ -170,7 +204,7 @@ def detail_drawer(
 ) -> rx.Component:
     """
     Komponen Drawer Kanan Generik (440px).
-    Mendukung 2 atau 3 seksi informasi bergrup serta tab Riwayat & Log.
+    Mendukung grup key-value, grup chip konektor, serta tab Riwayat & Log.
     """
     tab1_key, tab1_label = tabs[0]
     tab2_key, tab2_label = tabs[1]
@@ -208,7 +242,7 @@ def detail_drawer(
             ),
             # Panel Drawer Kanan 440px (Layar penuh di <900px)
             rx.box(
-                # 1. Header Drawer + ID Internal Kecil + Tombol Tutup Berlabel
+                # 1. Header Drawer
                 rx.vstack(
                     rx.hstack(
                         rx.hstack(
@@ -216,9 +250,11 @@ def detail_drawer(
                                 code_var,
                                 font_size=FontSize.XS,
                                 font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
+                                color=Color.ACCENT,
                             ),
-                            app_badge(label=category_var, variant="info"),
+                            app_badge(label=category_var, variant="neutral")
+                            if category_var is not None
+                            else rx.fragment(),
                             asset_condition_badge(condition_var)
                             if condition_var is not None
                             else rx.fragment(),
@@ -303,6 +339,12 @@ def detail_drawer(
                             _drawer_section(section2_title, usage_items),
                             _drawer_section(section3_title, section3_items)
                             if section3_title is not None and section3_items is not None
+                            else rx.fragment(),
+                            _drawer_chips_section(chips_section_title, chips_items)
+                            if chips_section_title is not None and chips_items is not None
+                            else rx.fragment(),
+                            _drawer_section(section4_title, section4_items)
+                            if section4_title is not None and section4_items is not None
                             else rx.fragment(),
                             spacing="5",
                             width="100%",

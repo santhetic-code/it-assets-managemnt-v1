@@ -1,4 +1,4 @@
-from .badge import app_badge
+from .badge import app_badge, connector_chip
 from .button import action_primary_button, primary_button, secondary_button
 from .card import app_card
 from .checkbox import app_checkbox
@@ -18,6 +18,7 @@ __all__ = [
     "app_tabs",
     "asset_condition_badge",
     "asset_status_badge",
+    "connector_chip",
     "detail_drawer",
     "form_input_field",
     "metric_progress_bar",

@@ -26,13 +26,13 @@ class Color:
     SURFACE = "#FFFFFF"         # Latar topbar, kartu, tabel, drawer, input
     SEARCH_BG = "#F6F8FC"       # Latar kotak pencarian di topbar
     SURFACE_HOVER = "#F8FAFC"   # Latar hover tombol sekunder/ikon
-    TABLE_HEADER_BG = "#F7F9FD" # Latar header tabel (12px uppercase muted)
+    TABLE_HEADER_BG = "#F7F9FD" # Latar header tabel & chip konektivitas
     ROW_SELECTED = "#EEF3FF"    # Sorotan baris tabel yang terpilih / sedang dibuka
-    ROW_HOVER = "#F8FAFF"       # Sorotan hover baris tabel
+    ROW_HOVER = "#F7F9FD"       # Sorotan hover baris tabel
     SKELETON = "#E8EEF8"        # Warna bar skeleton saat memuat
     BORDER = "#E1E8F5"          # Garis batas bawah topbar, kartu, & tabel
     DIVIDER = "#EEF2F9"         # Garis pemisah tipis antar baris daftar
-    INPUT_BORDER = "#D5DEEE"    # Garis batas khusus field input & dropdown filter
+    INPUT_BORDER = "#D5DEEE"    # Garis batas field input, dropdown, & chip konektivitas
     OVERLAY_BACKDROP = "rgba(10, 26, 68, 0.45)"
     SCRIM = "rgba(10, 26, 68, 0.35)"  # Scrim belakang detail drawer (440px)
 
@@ -48,10 +48,13 @@ class Color:
     WHITE_14 = "rgba(255, 255, 255, 0.14)"
 
     # Status & Chip Semantic Tokens (Foreground & Background)
-    SUCCESS_FG = "#15803D"      # In Use, Lunas
+    SUCCESS_FG = "#15803D"      # Digunakan, In Use, Lunas
     SUCCESS_BG = "#DCFCE7"
 
-    WARNING_FG = "#92400E"      # Maintenance, Garansi hampir habis
+    BACKUP_FG = "#1E40AF"       # Status Backup Monitor (teks biru tua)
+    BACKUP_BG = "#DBEAFE"       # Status Backup Monitor (latar biru muda)
+
+    WARNING_FG = "#92400E"      # Tidak Digunakan, Maintenance, Garansi
     WARNING_BG = "#FEF3C7"
 
     DANGER_FG = "#B91C1C"       # Disposed, Terlambat, Garansi habis

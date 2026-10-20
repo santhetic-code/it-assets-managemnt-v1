@@ -368,7 +368,7 @@ class AssetState(rx.State):
         self.form_modal_open = True
 
     @rx.event
-    def open_edit_modal(self, row_id: str = "") -> None:
+    def open_edit_modal(self, row_id: str) -> None:
         """Buka modal form dalam mode edit aset."""
         target_id = row_id or self.active_asset_id
         target_item = next((it for it in self.items if it["id"] == target_id), None)
@@ -401,7 +401,7 @@ class AssetState(rx.State):
         self.form_modal_open = True
 
     @rx.event
-    def open_duplicate_modal(self, row_id: str = "") -> None:
+    def open_duplicate_modal(self, row_id: str) -> None:
         """Salin data baris terpilih ke mode Tambah dengan default Duplikat × 2."""
         self.open_edit_modal(row_id)
         self.form_mode = "add"
@@ -514,7 +514,7 @@ class AssetState(rx.State):
         )
 
     @rx.event
-    def confirm_delete_asset(self, row_id: str = "") -> None:
+    def confirm_delete_asset(self, row_id: str) -> None:
         target = row_id or self.active_asset_id
         if target:
             item = next((it for it in self.items if it["id"] == target), self.active_asset)

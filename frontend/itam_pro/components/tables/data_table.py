@@ -1,31 +1,42 @@
 """
 Komponen Data Table Generik ITAM Pro.
-Mendukung kolom sticky di kiri, header dinamis, tooltip teks panjang,
+Mendukung kolom sticky di kiri, header sortable (ikon ↕), chip list (konektivitas),
 condition_badge, status_badge, dan empty state kustom.
 """
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, Required, TypedDict
 
 import reflex as rx
 
-from itam_pro.components.ui.badge import app_badge
+from itam_pro.components.ui.badge import app_badge, connector_chip
 from itam_pro.components.ui.status_badge import asset_condition_badge, asset_status_badge
 from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size, Space
 
-RenderType = Literal["text", "bold_blue", "badge", "condition_badge", "status_badge", "date"]
+RenderType = Literal[
+    "text",
+    "bold",
+    "bold_blue",
+    "badge",
+    "condition_badge",
+    "status_badge",
+    "chips",
+    "date",
+]
 
 
 class ColumnDef(TypedDict, total=False):
-    key: str
-    header: Any
+    key: Required[str]
+    header: Required[Any]
     width: str
     render_type: RenderType
     sticky_left: bool
+    sortable: bool
+    sort_key: str
     badge_variant_key: str
     date_tone_key: str
 
 
 def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
-    """Render isi sel berdasarkan render_type dengan dukungan pemotongan 1 baris + tooltip."""
+    """Render isi sel berdasarkan render_type yang didefinisikan pada kolom."""
     key = col["key"]
     rtype = col.get("render_type", "text")
     is_sticky = col.get("sticky_left", False)
@@ -44,6 +55,32 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
                     "text_overflow": "ellipsis",
                 }
             ),
+        )
+
+    if rtype == "bold":
+        return rx.text(
+            row[key],
+            title=row[key],
+            font_size=FontSize.SM,
+            font_weight=FontWeight.BOLD,
+            color=Color.TEXT,
+            style=rx.Style(
+                {
+                    "white_space": "nowrap",
+                    "overflow": "hidden",
+                    "text_overflow": "ellipsis",
+                }
+            ),
+        )
+
+    if rtype == "chips":
+        val = row[key]
+        chips_var = val.to(list[str]) if hasattr(val, "to") else val
+        return rx.hstack(
+            rx.foreach(chips_var, connector_chip),
+            spacing="1",
+            align="center",
+            wrap="wrap",
         )
 
     if rtype == "status_badge":
@@ -82,12 +119,20 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
     )
 
 
-def _header_cell(col: ColumnDef) -> rx.Component:
-    """Sel header tabel: teks 12px uppercase muted, latar #F7F9FD, tidak membungkus teks."""
+def _header_cell(
+    col: ColumnDef,
+    sort_by: Any = "",
+    sort_dir: Any = "asc",
+    on_sort: Any | None = None,
+) -> rx.Component:
+    """Sel header tabel: teks 12px uppercase muted, latar #F7F9FD, dukungan sort ↕."""
     is_sticky = col.get("sticky_left", False)
+    is_sortable = col.get("sortable", False) and (on_sort is not None)
+    s_key = col.get("sort_key", col["key"])
+
     header_style: dict[str, Any] = {
         "width": col.get("width", "auto"),
-        "min_width": col.get("width", "120px"),
+        "min_width": col.get("width", "90px"),
         "height": Size.TABLE_HEADER_H,
         "padding": "0 16px",
         "text_align": "left",
@@ -108,6 +153,50 @@ def _header_cell(col: ColumnDef) -> rx.Component:
                 "z_index": "4",
                 "border_right": f"1px solid {Color.BORDER}",
             }
+        )
+
+    if is_sortable and on_sort is not None:
+        is_active_sort = sort_by == s_key
+        arrow_symbol = rx.cond(
+            is_active_sort,
+            rx.cond(sort_dir == "asc", "↑", "↓"),
+            "↕",
+        )
+        return rx.el.th(
+            rx.el.button(
+                rx.hstack(
+                    rx.text(
+                        col["header"],
+                        font_size=FontSize.XS,
+                        font_weight=FontWeight.BOLD,
+                        color=rx.cond(is_active_sort, Color.ACCENT, Color.MUTED),
+                        letter_spacing="0.05em",
+                        style=rx.Style({"text_transform": "uppercase"}),
+                    ),
+                    rx.text(
+                        arrow_symbol,
+                        font_size=FontSize.XS,
+                        font_weight=FontWeight.BOLD,
+                        color=rx.cond(is_active_sort, Color.ACCENT, Color.MUTED),
+                    ),
+                    spacing="1",
+                    align="center",
+                ),
+                type="button",
+                on_click=on_sort(s_key),
+                style=rx.Style(
+                    {
+                        "background": "transparent",
+                        "border": "none",
+                        "padding": "0",
+                        "font_family": FONT_FAMILY,
+                        "cursor": "pointer",
+                        "display": "inline-flex",
+                        "align_items": "center",
+                    }
+                ),
+            ),
+            style=rx.Style(header_style),
         )
 
     return rx.el.th(
@@ -320,13 +409,17 @@ def reusable_data_table(
     on_reset_filter: Any,
     on_duplicate_row: Any | None = None,
     duplicate_action_label: str = "Duplikat x N",
+    sort_by: Any = "",
+    sort_dir: Any = "asc",
+    on_sort: Any | None = None,
+    show_action_header: bool = True,
     empty_message: Any = "Tidak ada aset yang cocok",
     empty_subtitle: Any = "Coba ubah kata kunci pencarian atau atur ulang kriteria filter Anda.",
     empty_action_label: Any = "Reset filter",
     on_empty_action: Any | None = None,
 ) -> rx.Component:
     """
-    Komponen Tabel Data Generik ITAM Pro dengan dukungan kolom sticky di kiri.
+    Komponen Tabel Data Generik ITAM Pro dengan dukungan kolom sticky, sort ↕, dan chips.
     """
     dup_handler = on_duplicate_row if on_duplicate_row is not None else on_edit_row
     empty_handler = on_empty_action if on_empty_action is not None else on_reset_filter
@@ -339,16 +432,16 @@ def reusable_data_table(
         is_sticky = col.get("sticky_left", False)
         cell_style: dict[str, Any] = {
             "width": col.get("width", "auto"),
-            "min_width": col.get("width", "120px"),
-            "max_width": col.get("width", "240px"),
+            "min_width": col.get("width", "90px"),
+            "max_width": col.get("width", "260px"),
             "height": Size.TABLE_ROW_H,
             "padding": "0 16px",
             "border_bottom": f"1px solid {Color.DIVIDER}",
-            "background_color": row_bg,
         }
         if is_sticky:
             cell_style.update(
                 {
+                    "background_color": row_bg,
                     "position": "sticky",
                     "left": "48px",
                     "z_index": "2",
@@ -411,7 +504,7 @@ def reusable_data_table(
                 on_click=rx.stop_propagation,
                 style=rx.Style(
                     {
-                        "width": "56px",
+                        "width": "52px",
                         "height": Size.TABLE_ROW_H,
                         "padding": "0 12px",
                         "text_align": "right",
@@ -476,12 +569,20 @@ def reusable_data_table(
                             }
                         ),
                     ),
-                    *[_header_cell(col) for col in columns],
+                    *[
+                        _header_cell(
+                            col,
+                            sort_by=sort_by,
+                            sort_dir=sort_dir,
+                            on_sort=on_sort,
+                        )
+                        for col in columns
+                    ],
                     rx.el.th(
-                        "AKSI",
+                        "AKSI" if show_action_header else "",
                         style=rx.Style(
                             {
-                                "width": "64px",
+                                "width": "52px",
                                 "height": Size.TABLE_HEADER_H,
                                 "padding": "0 12px",
                                 "text_align": "right",

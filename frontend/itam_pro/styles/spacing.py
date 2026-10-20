@@ -53,6 +53,7 @@ class Size:
 
 class Radius:
     BADGE_KBD = "6px"
+    CONNECTOR_CHIP = "7px"      # Radius chip kecil per konektor monitor
     CHIP = "10px"
     CONTROL = "10px"
     LOGO_BOX = "12px"

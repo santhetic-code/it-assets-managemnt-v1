@@ -1,6 +1,6 @@
 """
-Komponen Badge Reusable ITAM Pro.
-Mendukung varian: success, warning, danger, info, neutral.
+Komponen Badge & Chip Reusable ITAM Pro.
+Mendukung varian: success, backup, warning, danger, info, neutral, serta connector_chip.
 """
 from typing import Any
 
@@ -17,6 +17,7 @@ def app_badge(
     fg_color = rx.match(
         variant,
         ("success", Color.SUCCESS_FG),
+        ("backup", Color.BACKUP_FG),
         ("warning", Color.WARNING_FG),
         ("danger", Color.DANGER_FG),
         ("neutral", Color.NEUTRAL_FG),
@@ -26,6 +27,7 @@ def app_badge(
     bg_color = rx.match(
         variant,
         ("success", Color.SUCCESS_BG),
+        ("backup", Color.BACKUP_BG),
         ("warning", Color.WARNING_BG),
         ("danger", Color.DANGER_BG),
         ("neutral", Color.NEUTRAL_BG),
@@ -54,3 +56,32 @@ def app_badge(
             }
         ),
     )
+
+
+def connector_chip(label: Any) -> rx.Component:
+    """Chip kecil per konektor (border #D5DEEE, radius 7px, bg #F7F9FD)."""
+    return rx.box(
+        rx.text(
+            label,
+            font_size=FontSize.XS,
+            font_weight=FontWeight.BOLD,
+            color=Color.TEXT,
+            line_height="1.2",
+            white_space="nowrap",
+        ),
+        style=rx.Style(
+            {
+                "padding": "3px 9px",
+                "background_color": Color.TABLE_HEADER_BG,
+                "border": f"1px solid {Color.INPUT_BORDER}",
+                "border_radius": Radius.CONNECTOR_CHIP,
+                "display": "inline-flex",
+                "align_items": "center",
+                "justify_content": "center",
+                "flex_shrink": "0",
+            }
+        ),
+    )
+
+
+__all__ = ["app_badge", "connector_chip"]

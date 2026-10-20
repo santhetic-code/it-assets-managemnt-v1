@@ -17,6 +17,12 @@ from itam_pro.services.mock.asset_mock import (
 )
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
+from itam_pro.services.mock.monitor_mock import (
+    create_mock_monitor,
+    delete_mock_monitor,
+    query_mock_monitors,
+    update_mock_monitor,
+)
 from itam_pro.services.mock.pc_mock import (
     create_mock_pc,
     delete_mock_pc,
@@ -261,6 +267,92 @@ class APIClient:
         await self.request(
             method="DELETE",
             endpoint=f"/api/v1/pcs/{pc_id}",
+            token=token,
+        )
+        return True
+
+    async def get_monitors(
+        self,
+        status: str,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 8,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Ambil daftar Monitor dengan filter, sort, & paginasi ({items, total})."""
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return query_mock_monitors(
+                status=status,
+                filters=filters,
+                page=page,
+                page_size=page_size,
+            )
+
+        params: dict[str, Any] = {
+            "status": status,
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        response = await self.request(
+            method="GET",
+            endpoint="/api/v1/monitors",
+            token=token,
+            params=params,
+        )
+        return response  # type: ignore[return-value]
+
+    async def create_monitor(
+        self,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Tambah satu data unit monitor baru."""
+        if USE_MOCK:
+            await asyncio.sleep(0.12)
+            return create_mock_monitor(payload=payload)
+
+        response = await self.request(
+            method="POST",
+            endpoint="/api/v1/monitors",
+            token=token,
+            json_data=payload,
+        )
+        return response  # type: ignore[return-value]
+
+    async def update_monitor(
+        self,
+        original_id: str,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Perbarui data satu unit monitor."""
+        if USE_MOCK:
+            await asyncio.sleep(0.12)
+            return update_mock_monitor(original_id=original_id, payload=payload)
+
+        response = await self.request(
+            method="PUT",
+            endpoint=f"/api/v1/monitors/{original_id}",
+            token=token,
+            json_data=payload,
+        )
+        return response  # type: ignore[return-value]
+
+    async def delete_monitor(
+        self,
+        id_aset: str,
+        token: str | None = None,
+    ) -> bool:
+        """Hapus satu data unit monitor."""
+        if USE_MOCK:
+            await asyncio.sleep(0.1)
+            return delete_mock_monitor(id_aset=id_aset)
+
+        await self.request(
+            method="DELETE",
+            endpoint=f"/api/v1/monitors/{id_aset}",
             token=token,
         )
         return True

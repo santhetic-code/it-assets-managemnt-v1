@@ -4,11 +4,12 @@ Entry Point & Routing Utama ITAM Pro.
 import reflex as rx
 
 from itam_pro.pages.auth import login_page
-from itam_pro.pages.inventory import assets_inventory_page, pc_list_page
+from itam_pro.pages.inventory import assets_inventory_page, monitor_list_page, pc_list_page
 from itam_pro.pages.overview import dashboard_page
 from itam_pro.states.asset_state import AssetState
 from itam_pro.states.auth_state import AuthState
 from itam_pro.states.dashboard_state import DashboardState
+from itam_pro.states.monitor_state import MonitorState
 from itam_pro.states.nav_state import NavState
 from itam_pro.states.pc_state import PCState
 from itam_pro.styles import BASE_STYLE, GOOGLE_FONTS_URL
@@ -72,5 +73,17 @@ app.add_page(
         AuthState.check_auth,
         NavState.set_page_context("Inventory", "Daftar PC"),
         PCState.load_pcs,
+    ],
+)
+
+# Route halaman Rekap Monitor
+app.add_page(
+    monitor_list_page,
+    route="/monitor",
+    title="Rekap Monitor · ITAM Pro",
+    on_load=[
+        AuthState.check_auth,
+        NavState.set_page_context("Inventory", "Rekap Monitor"),
+        MonitorState.load_monitors,
     ],
 )

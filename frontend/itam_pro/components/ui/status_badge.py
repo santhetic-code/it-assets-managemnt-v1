@@ -1,7 +1,7 @@
 """
 Komponen Badge Kondisi & Status Aset ITAM Pro.
 - Kondisi: Baru (biru/info), Bekas (abu/neutral), Tidak Terpakai / Rusak (merah/danger).
-- Status : Digunakan (hijau/success), Tidak Digunakan (amber/warning).
+- Status : Digunakan (hijau/success), Backup (biru #DBEAFE / #1E40AF), Tidak Digunakan (amber).
 """
 from typing import Any
 
@@ -11,10 +11,11 @@ from .badge import app_badge
 
 
 def asset_status_badge(status: Any) -> rx.Component:
-    """Render badge Status aset (Digunakan = hijau, Tidak Digunakan = amber)."""
+    """Render badge Status aset (Digunakan = hijau, Backup = biru, Tidak Digunakan = amber)."""
     variant = rx.match(
         status,
         ("Digunakan", "success"),
+        ("Backup", "backup"),
         ("Tidak Digunakan", "warning"),
         ("In Use", "success"),
         ("Maintenance", "warning"),
