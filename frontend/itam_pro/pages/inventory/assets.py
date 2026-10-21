@@ -24,11 +24,17 @@ from itam_pro.styles import Color, FontSize, FontWeight, Radius, Space
 # Kepemilikan | Lokasi | Kondisi | Status | Digunakan Oleh | aksi
 ASSET_TABLE_COLUMNS: list[ColumnDef] = [
     {
+        "key": "id_aset",
+        "header": "ID Aset",
+        "width": "125px",
+        "render_type": "bold_blue",
+        "sticky_left": True,
+    },
+    {
         "key": "nama_aset",
         "header": "Nama Aset",
-        "width": "240px",
+        "width": "220px",
         "render_type": "text",
-        "sticky_left": True,
     },
     {
         "key": "kategori",
@@ -188,7 +194,7 @@ def _assets_table_card() -> rx.Component:
         reusable_data_table(
             columns=ASSET_TABLE_COLUMNS,
             rows=AssetState.items,
-            id_key="id",
+            id_key="id_aset",
             selected_ids=AssetState.selected_ids,
             active_row_id=AssetState.active_asset_id,
             all_selected=AssetState.all_current_selected,

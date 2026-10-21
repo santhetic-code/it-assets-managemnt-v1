@@ -11,11 +11,16 @@ import reflex as rx
 
 from itam_pro.services.api_client import api_client
 from itam_pro.services.mock.master_data import (
+    MASTER_JENIS_PC,
     MASTER_KATEGORI,
     MASTER_KEPEMILIKAN,
     MASTER_KONDISI,
+    MASTER_KONEKTIVITAS_MONITOR,
     MASTER_LOKASI,
+    MASTER_MERK_MONITOR,
+    MASTER_RESOLUSI_MONITOR,
     MASTER_STATUS,
+    MASTER_UKURAN_MONITOR,
 )
 
 
@@ -26,6 +31,11 @@ class AssetState(rx.State):
     master_lokasi_options: list[str] = list(MASTER_LOKASI)
     master_kondisi_options: list[str] = list(MASTER_KONDISI)
     master_status_options: list[str] = list(MASTER_STATUS)
+    master_merk_options: list[str] = list(MASTER_MERK_MONITOR)
+    master_ukuran_options: list[str] = list(MASTER_UKURAN_MONITOR)
+    master_resolusi_options: list[str] = list(MASTER_RESOLUSI_MONITOR)
+    master_konektivitas_options: list[str] = list(MASTER_KONEKTIVITAS_MONITOR)
+    master_jenis_pc_options: list[str] = list(MASTER_JENIS_PC)
 
     # Data Tabel & Paginasi
     items: list[dict[str, Any]] = []
@@ -66,6 +76,23 @@ class AssetState(rx.State):
     form_catatan: str = ""
     form_duplicate_count: str = "1"
     form_error: str = ""
+
+    # Field Spesifikasi Dinamis (Monitor & PC/Server)
+    form_merk: str = "LG"
+    form_tipe_model: str = ""
+    form_ukuran_layar: str = "24"
+    form_resolusi_layar: str = "1920 × 1080"
+    form_konektivitas: list[str] = ["HDMI", "VGA"]
+    form_jenis_pc: str = "Operasional"
+    form_os: str = "Windows 11 Pro"
+    form_ram: str = "16 GB DDR4"
+    form_vga: str = "Integrated"
+    form_cpu: str = "Intel Core i5"
+    form_mainboard: str = "Standard MB"
+    form_hdd_ssd: str = "SSD 512GB"
+    form_pc_monitor: str = "—"
+    form_keyboard: str = "—"
+    form_mouse: str = "—"
 
     # State Dialog Konfirmasi Hapus
     delete_dialog_open: bool = False
@@ -344,6 +371,69 @@ class AssetState(rx.State):
     def set_form_duplicate_count(self, value: str) -> None:
         self.form_duplicate_count = value
 
+    @rx.event
+    def set_form_merk(self, value: str) -> None:
+        self.form_merk = value
+
+    @rx.event
+    def set_form_tipe_model(self, value: str) -> None:
+        self.form_tipe_model = value
+
+    @rx.event
+    def set_form_ukuran_layar(self, value: str) -> None:
+        self.form_ukuran_layar = value
+
+    @rx.event
+    def set_form_resolusi_layar(self, value: str) -> None:
+        self.form_resolusi_layar = value
+
+    @rx.event
+    def toggle_form_konektivitas(self, port: str) -> None:
+        if port in self.form_konektivitas:
+            self.form_konektivitas = [p for p in self.form_konektivitas if p != port]
+        else:
+            self.form_konektivitas = [*self.form_konektivitas, port]
+
+    @rx.event
+    def set_form_jenis_pc(self, value: str) -> None:
+        self.form_jenis_pc = value
+
+    @rx.event
+    def set_form_os(self, value: str) -> None:
+        self.form_os = value
+
+    @rx.event
+    def set_form_ram(self, value: str) -> None:
+        self.form_ram = value
+
+    @rx.event
+    def set_form_vga(self, value: str) -> None:
+        self.form_vga = value
+
+    @rx.event
+    def set_form_cpu(self, value: str) -> None:
+        self.form_cpu = value
+
+    @rx.event
+    def set_form_mainboard(self, value: str) -> None:
+        self.form_mainboard = value
+
+    @rx.event
+    def set_form_hdd_ssd(self, value: str) -> None:
+        self.form_hdd_ssd = value
+
+    @rx.event
+    def set_form_pc_monitor(self, value: str) -> None:
+        self.form_pc_monitor = value
+
+    @rx.event
+    def set_form_keyboard(self, value: str) -> None:
+        self.form_keyboard = value
+
+    @rx.event
+    def set_form_mouse(self, value: str) -> None:
+        self.form_mouse = value
+
     def _reset_form_fields(self) -> None:
         self.form_editing_id = ""
         self.form_nama_aset = ""
@@ -460,6 +550,21 @@ class AssetState(rx.State):
                 self.form_digunakan_oleh.strip() if self.form_status == "Digunakan" else ""
             ),
             "catatan": self.form_catatan.strip(),
+            "merk": self.form_merk.strip(),
+            "tipe_model": self.form_tipe_model.strip(),
+            "ukuran_layar": self.form_ukuran_layar.strip(),
+            "resolusi_layar": self.form_resolusi_layar.strip(),
+            "konektivitas": list(self.form_konektivitas),
+            "jenis_pc": self.form_jenis_pc,
+            "os": self.form_os.strip(),
+            "ram": self.form_ram.strip(),
+            "vga": self.form_vga.strip(),
+            "cpu": self.form_cpu.strip(),
+            "mainboard": self.form_mainboard.strip(),
+            "hdd_ssd": self.form_hdd_ssd.strip(),
+            "monitor": self.form_pc_monitor.strip(),
+            "keyboard": self.form_keyboard.strip(),
+            "mouse": self.form_mouse.strip(),
         }
 
     @rx.event

@@ -23,13 +23,32 @@ def _kv_row(item: dict[str, Any]) -> rx.Component:
             color=Color.MUTED,
             style=rx.Style({"width": "42%", "flex_shrink": "0"}),
         ),
-        rx.text(
-            item["value"],
-            font_size=FontSize.SM,
-            font_weight=FontWeight.SEMIBOLD,
-            color=Color.TEXT,
-            text_align="right",
-            style=rx.Style({"width": "58%", "word_break": "break-word"}),
+        rx.cond(
+            item["label"] == "Aksi",
+            rx.el.a(
+                item["value"],
+                href="/assets",
+                style=rx.Style(
+                    {
+                        "font_size": FontSize.SM,
+                        "font_weight": FontWeight.BOLD,
+                        "color": Color.ACCENT,
+                        "text_decoration": "none",
+                        "cursor": "pointer",
+                        "text_align": "right",
+                        "width": "58%",
+                        "_hover": {"text_decoration": "underline"},
+                    }
+                ),
+            ),
+            rx.text(
+                item["value"],
+                font_size=FontSize.SM,
+                font_weight=FontWeight.SEMIBOLD,
+                color=Color.TEXT,
+                text_align="right",
+                style=rx.Style({"width": "58%", "word_break": "break-word"}),
+            ),
         ),
         width="100%",
         justify="between",

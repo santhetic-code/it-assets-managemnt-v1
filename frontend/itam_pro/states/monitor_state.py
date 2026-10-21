@@ -11,13 +11,16 @@ import reflex as rx
 
 from itam_pro.services.api_client import api_client
 from itam_pro.services.mock.master_data import (
+    MASTER_KEPEMILIKAN,
+    MASTER_KONDISI,
     MASTER_KONEKTIVITAS_MONITOR,
+    MASTER_LOKASI,
     MASTER_MERK_MONITOR,
     MASTER_RESOLUSI_MONITOR,
     MASTER_STATUS_MONITOR,
     MASTER_UKURAN_MONITOR,
 )
-from itam_pro.services.mock.monitor_mock import (
+from itam_pro.services.mock.seed import (
     format_inch_label,
     get_next_monitor_id,
     is_monitor_id_taken,
@@ -32,6 +35,9 @@ class MonitorState(rx.State):
     master_resolusi_options: list[str] = list(MASTER_RESOLUSI_MONITOR)
     master_konektivitas_options: list[str] = list(MASTER_KONEKTIVITAS_MONITOR)
     master_status_options: list[str] = list(MASTER_STATUS_MONITOR)
+    master_lokasi_options: list[str] = list(MASTER_LOKASI)
+    master_kepemilikan_options: list[str] = list(MASTER_KEPEMILIKAN)
+    master_kondisi_options: list[str] = list(MASTER_KONDISI)
 
     # Tab Aktif & Jumlah Unit per Tab
     active_status_tab: str = "Semua"
@@ -52,6 +58,8 @@ class MonitorState(rx.State):
     ukuran_filter: str = "Semua"
     resolusi_filter: str = "Semua"
     konektivitas_filter: str = "Semua"
+    lokasi_filter: str = "Semua"
+    kepemilikan_filter: str = "Semua"
     sort_by: str = "id_aset"
     sort_dir: str = "asc"
 
@@ -73,6 +81,9 @@ class MonitorState(rx.State):
     form_resolusi_layar: str = "1920 × 1080"
     form_konektivitas: list[str] = ["HDMI", "VGA"]
     form_status: str = MASTER_STATUS_MONITOR[0]
+    form_kepemilikan: str = "XML"
+    form_lokasi: str = "Kantor Blok 14"
+    form_kondisi: str = "Baru"
     form_catatan: str = ""
     form_error: str = ""
 
@@ -203,6 +214,8 @@ class MonitorState(rx.State):
             "ukuran_layar": self.ukuran_filter,
             "resolusi_layar": self.resolusi_filter,
             "konektivitas": self.konektivitas_filter,
+            "lokasi": self.lokasi_filter,
+            "kepemilikan": self.kepemilikan_filter,
             "sort_by": self.sort_by,
             "sort_dir": self.sort_dir,
         }
@@ -215,9 +228,9 @@ class MonitorState(rx.State):
         self.items = response.get("items", [])
         self.total = int(response.get("total", 0))
         counts = response.get("counts_by_status", {})
-        self.count_semua = int(counts.get("Semua", 0))
-        self.count_digunakan = int(counts.get("Digunakan", 0))
-        self.count_backup = int(counts.get("Backup", 0))
+        self.count_semua = int(counts.get("semua", counts.get("Semua", 0)))
+        self.count_digunakan = int(counts.get("digunakan", counts.get("Digunakan", 0)))
+        self.count_backup = int(counts.get("backup", counts.get("Backup", 0)))
         self.is_loading = False
 
     # Tab, Filter & Sort Handlers
@@ -259,6 +272,18 @@ class MonitorState(rx.State):
         await self.load_monitors()
 
     @rx.event
+    async def set_lokasi_filter(self, value: str) -> None:
+        self.lokasi_filter = value
+        self.page = 1
+        await self.load_monitors()
+
+    @rx.event
+    async def set_kepemilikan_filter(self, value: str) -> None:
+        self.kepemilikan_filter = value
+        self.page = 1
+        await self.load_monitors()
+
+    @rx.event
     async def toggle_sort(self, col_key: str) -> None:
         """Urutkan kolom ID Aset, Merk, atau Ukuran Layar (asc <-> desc)."""
         if self.sort_by == col_key:
@@ -276,6 +301,8 @@ class MonitorState(rx.State):
         self.ukuran_filter = "Semua"
         self.resolusi_filter = "Semua"
         self.konektivitas_filter = "Semua"
+        self.lokasi_filter = "Semua"
+        self.kepemilikan_filter = "Semua"
         self.sort_by = "id_aset"
         self.sort_dir = "asc"
         self.page = 1
@@ -391,6 +418,21 @@ class MonitorState(rx.State):
         self.form_status = value
 
     @rx.event
+    def set_form_kepemilikan(self, value: str) -> None:
+        self.form_kepemilikan = value
+        self.form_error = ""
+
+    @rx.event
+    def set_form_lokasi(self, value: str) -> None:
+        self.form_lokasi = value
+        self.form_error = ""
+
+    @rx.event
+    def set_form_kondisi(self, value: str) -> None:
+        self.form_kondisi = value
+        self.form_error = ""
+
+    @rx.event
     def set_form_catatan(self, value: str) -> None:
         self.form_catatan = value
 
@@ -407,6 +449,9 @@ class MonitorState(rx.State):
             if self.active_status_tab in self.master_status_options
             else self.master_status_options[0]
         )
+        self.form_kepemilikan = "XML"
+        self.form_lokasi = "Kantor Blok 14"
+        self.form_kondisi = "Baru"
         self.form_catatan = ""
         self.form_error = ""
 
@@ -434,6 +479,9 @@ class MonitorState(rx.State):
         self.form_resolusi_layar = str(target_item.get("resolusi_layar", "1920 × 1080"))
         self.form_konektivitas = list(target_item.get("konektivitas", ["HDMI"]))
         self.form_status = str(target_item.get("status", "Digunakan"))
+        self.form_kepemilikan = str(target_item.get("kepemilikan", "XML"))
+        self.form_lokasi = str(target_item.get("lokasi", "Kantor Blok 14"))
+        self.form_kondisi = str(target_item.get("kondisi", "Baru"))
         self.form_catatan = str(target_item.get("catatan_raw", ""))
         self.form_error = ""
         self.form_modal_open = True
@@ -521,6 +569,9 @@ class MonitorState(rx.State):
             "resolusi_layar": resolusi_clean,
             "konektivitas": list(self.form_konektivitas),
             "status": self.form_status,
+            "kepemilikan": self.form_kepemilikan,
+            "lokasi": self.form_lokasi,
+            "kondisi": self.form_kondisi,
             "catatan": self.form_catatan.strip(),
         }
 

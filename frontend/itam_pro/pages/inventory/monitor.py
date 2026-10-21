@@ -147,6 +147,7 @@ def _monitor_table_card() -> rx.Component:
     ]
 
     dropdown_configs: list[FilterDropdownConfig] = [
+        # Filter Spesifikasi
         {
             "label": "Semua merk",
             "value": MonitorState.merk_filter,
@@ -170,6 +171,19 @@ def _monitor_table_card() -> rx.Component:
             "value": MonitorState.konektivitas_filter,
             "options": MonitorState.master_konektivitas_options,
             "on_change": MonitorState.set_konektivitas_filter,
+        },
+        # Tambahan Filter dari Master Assets
+        {
+            "label": "Semua lokasi",
+            "value": MonitorState.lokasi_filter,
+            "options": MonitorState.master_lokasi_options,
+            "on_change": MonitorState.set_lokasi_filter,
+        },
+        {
+            "label": "Semua pemilik",
+            "value": MonitorState.kepemilikan_filter,
+            "options": MonitorState.master_kepemilikan_options,
+            "on_change": MonitorState.set_kepemilikan_filter,
         },
     ]
 
@@ -253,7 +267,7 @@ def monitor_list_page() -> rx.Component:
             usage_items=MonitorState.active_screen_info,
             chips_section_title="Konektivitas",
             chips_items=MonitorState.active_konektivitas_chips,
-            section4_title="Status",
+            section4_title="Data Aset",
             section4_items=MonitorState.active_status_info,
             history_items=MonitorState.active_history_info,
             duplicate_label="Duplikat",

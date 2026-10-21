@@ -178,6 +178,72 @@ def _connector_checkbox_chip(port: Any) -> rx.Component:
     )
 
 
+def _section_title(title: str) -> rx.Component:
+    """Pemisah visual bagian form."""
+    return rx.box(
+        rx.text(
+            title.upper(),
+            font_size=FontSize.GROUP_LABEL,
+            font_weight=FontWeight.BOLD,
+            color=Color.MUTED,
+            letter_spacing="0.06em",
+        ),
+        rx.divider(border_color=Color.BORDER),
+        width="100%",
+        margin_y=Space.S2,
+    )
+
+
+def _select_input(
+    options_var: Any,
+    value: Any,
+    on_change: Any,
+) -> rx.Component:
+    return rx.box(
+        rx.el.select(
+            rx.foreach(
+                options_var,
+                lambda opt: rx.el.option(opt, value=opt),
+            ),
+            value=value,
+            on_change=on_change,
+            style=rx.Style(
+                {
+                    "width": "100%",
+                    "height": Size.FILTER_CONTROL_H,
+                    "padding": "0 32px 0 12px",
+                    "background_color": Color.SURFACE,
+                    "color": Color.TEXT,
+                    "border": f"1px solid {Color.INPUT_BORDER}",
+                    "border_radius": Radius.CONTROL,
+                    "font_family": FONT_FAMILY,
+                    "font_size": FontSize.SM,
+                    "font_weight": FontWeight.MEDIUM,
+                    "outline": "none",
+                    "cursor": "pointer",
+                    "appearance": "none",
+                    "-webkit-appearance": "none",
+                }
+            ),
+        ),
+        rx.icon(
+            tag="chevron-down",
+            size=15,
+            color=Color.MUTED,
+            style=rx.Style(
+                {
+                    "position": "absolute",
+                    "right": "10px",
+                    "top": "50%",
+                    "transform": "translateY(-50%)",
+                    "pointer_events": "none",
+                }
+            ),
+        ),
+        style=rx.Style({"position": "relative", "width": "100%"}),
+    )
+
+
 def _status_select() -> rx.Component:
     return rx.box(
         rx.el.select(
@@ -331,49 +397,15 @@ def monitor_form_modal() -> rx.Component:
                                 border_radius=Radius.CONTROL,
                             ),
                         ),
-                        # Baris 1: ID Aset (Unik) & Merk (Combobox)
+                        # --- BAGIAN 1: DATA FISIK ASET ---
+                        _section_title("1. Data Fisik Aset"),
                         rx.box(
                             rx.vstack(
                                 _field_label("ID Aset (Wajib & Unik)", required=True),
                                 _text_input(
                                     value=MonitorState.form_id_aset,
                                     on_change=MonitorState.set_form_id_aset,
-                                    placeholder="Contoh: MON-0025",
-                                ),
-                                spacing="1",
-                                align="start",
-                                width="100%",
-                            ),
-                            rx.vstack(
-                                _field_label("Merk (Pilih / Ketik Baru)", required=True),
-                                _text_input(
-                                    value=MonitorState.form_merk,
-                                    on_change=MonitorState.set_form_merk,
-                                    placeholder="LG, Dell, Samsung, AOC, HP...",
-                                    list_id="monitor-merk-datalist",
-                                ),
-                                spacing="1",
-                                align="start",
-                                width="100%",
-                            ),
-                            style=rx.Style(
-                                {
-                                    "width": "100%",
-                                    "display": "grid",
-                                    "grid_template_columns": "1fr 1fr",
-                                    "gap": Space.S4,
-                                    "@media (max-width: 639px)": {"grid_template_columns": "1fr"},
-                                }
-                            ),
-                        ),
-                        # Baris 2: Tipe / Model & Status
-                        rx.box(
-                            rx.vstack(
-                                _field_label("Tipe / Model", required=True),
-                                _text_input(
-                                    value=MonitorState.form_tipe_model,
-                                    on_change=MonitorState.set_form_tipe_model,
-                                    placeholder="Contoh: 24MK600M / UltraSharp U2422H",
+                                    placeholder="MON-0025",
                                 ),
                                 spacing="1",
                                 align="start",
@@ -390,13 +422,93 @@ def monitor_form_modal() -> rx.Component:
                                 {
                                     "width": "100%",
                                     "display": "grid",
-                                    "grid_template_columns": "1.4fr 1fr",
+                                    "grid_template_columns": "1fr 1fr",
                                     "gap": Space.S4,
                                     "@media (max-width: 639px)": {"grid_template_columns": "1fr"},
                                 }
                             ),
                         ),
-                        # Baris 3: Ukuran Layar (Angka + Inci) & Resolusi Layar (Combobox)
+                        rx.box(
+                            rx.vstack(
+                                _field_label("Kepemilikan"),
+                                _select_input(
+                                    options_var=MonitorState.master_kepemilikan_options,
+                                    value=MonitorState.form_kepemilikan,
+                                    on_change=MonitorState.set_form_kepemilikan,
+                                ),
+                                spacing="1",
+                                align="start",
+                                width="100%",
+                            ),
+                            rx.vstack(
+                                _field_label("Lokasi"),
+                                _select_input(
+                                    options_var=MonitorState.master_lokasi_options,
+                                    value=MonitorState.form_lokasi,
+                                    on_change=MonitorState.set_form_lokasi,
+                                ),
+                                spacing="1",
+                                align="start",
+                                width="100%",
+                            ),
+                            rx.vstack(
+                                _field_label("Kondisi"),
+                                _select_input(
+                                    options_var=MonitorState.master_kondisi_options,
+                                    value=MonitorState.form_kondisi,
+                                    on_change=MonitorState.set_form_kondisi,
+                                ),
+                                spacing="1",
+                                align="start",
+                                width="100%",
+                            ),
+                            style=rx.Style(
+                                {
+                                    "width": "100%",
+                                    "display": "grid",
+                                    "grid_template_columns": "1fr 1fr 1fr",
+                                    "gap": Space.S4,
+                                    "@media (max-width: 639px)": {"grid_template_columns": "1fr"},
+                                }
+                            ),
+                        ),
+
+                        # --- BAGIAN 2: SPESIFIKASI MONITOR ---
+                        _section_title("2. Spesifikasi Layar"),
+                        rx.box(
+                            rx.vstack(
+                                _field_label("Merk", required=True),
+                                _text_input(
+                                    value=MonitorState.form_merk,
+                                    on_change=MonitorState.set_form_merk,
+                                    placeholder="LG, Dell, Samsung, AOC, HP...",
+                                    list_id="monitor-merk-datalist",
+                                ),
+                                spacing="1",
+                                align="start",
+                                width="100%",
+                            ),
+                            rx.vstack(
+                                _field_label("Tipe / Model", required=True),
+                                _text_input(
+                                    value=MonitorState.form_tipe_model,
+                                    on_change=MonitorState.set_form_tipe_model,
+                                    placeholder="Contoh: 24MK600M / UltraSharp U2422H",
+                                ),
+                                spacing="1",
+                                align="start",
+                                width="100%",
+                            ),
+                            style=rx.Style(
+                                {
+                                    "width": "100%",
+                                    "display": "grid",
+                                    "grid_template_columns": "1fr 1fr",
+                                    "gap": Space.S4,
+                                    "@media (max-width: 639px)": {"grid_template_columns": "1fr"},
+                                }
+                            ),
+                        ),
                         rx.box(
                             rx.vstack(
                                 _field_label("Ukuran Layar", required=True),
@@ -406,11 +518,11 @@ def monitor_form_modal() -> rx.Component:
                                 width="100%",
                             ),
                             rx.vstack(
-                                _field_label("Resolusi Layar (Pilih / Ketik Baru)", required=True),
+                                _field_label("Resolusi Layar", required=True),
                                 _text_input(
                                     value=MonitorState.form_resolusi_layar,
                                     on_change=MonitorState.set_form_resolusi_layar,
-                                    placeholder="Contoh: 1920 × 1080",
+                                    placeholder="Contoh: 1920 x 1080",
                                     list_id="monitor-resolusi-datalist",
                                 ),
                                 spacing="1",
@@ -421,13 +533,12 @@ def monitor_form_modal() -> rx.Component:
                                 {
                                     "width": "100%",
                                     "display": "grid",
-                                    "grid_template_columns": "1fr 1.2fr",
+                                    "grid_template_columns": "1fr 1fr",
                                     "gap": Space.S4,
                                     "@media (max-width: 639px)": {"grid_template_columns": "1fr"},
                                 }
                             ),
                         ),
-                        # Baris 4: Konektivitas (Checkbox Group, minimal 1)
                         rx.vstack(
                             _field_label("Konektivitas (Pilih minimal 1)", required=True),
                             rx.hstack(
@@ -443,13 +554,12 @@ def monitor_form_modal() -> rx.Component:
                             align="start",
                             width="100%",
                         ),
-                        # Baris 5: Catatan (Opsional)
                         rx.vstack(
                             _field_label("Catatan (Opsional)"),
                             rx.el.textarea(
                                 value=MonitorState.form_catatan,
                                 on_change=MonitorState.set_form_catatan,
-                                placeholder="Catatan meja/lokasi penempatan atau kondisi layar...",
+                                placeholder="Catatan tambahan kondisi layar atau histori unit...",
                                 rows=2,
                                 style=rx.Style(
                                     {

@@ -9,25 +9,21 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
-from itam_pro.services.mock.asset_mock import (
-    create_mock_assets,
-    delete_mock_asset,
-    query_mock_assets,
-    update_mock_asset,
-)
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
-from itam_pro.services.mock.monitor_mock import (
-    create_mock_monitor,
-    delete_mock_monitor,
-    query_mock_monitors,
-    update_mock_monitor,
-)
-from itam_pro.services.mock.pc_mock import (
-    create_mock_pc,
-    delete_mock_pc,
-    query_mock_pcs,
-    update_mock_pc,
+from itam_pro.services.mock.seed import (
+    create_joined_monitor,
+    create_joined_pc,
+    create_mock_assets,
+    delete_joined_monitor,
+    delete_joined_pc,
+    delete_mock_asset,
+    query_joined_monitors,
+    query_joined_pcs,
+    query_mock_assets,
+    update_joined_monitor,
+    update_joined_pc,
+    update_mock_asset,
 )
 
 load_dotenv()
@@ -201,7 +197,7 @@ class APIClient:
         """Ambil daftar PC per jenis dengan filter & paginasi ({items, total, page, page_size})."""
         if USE_MOCK:
             await asyncio.sleep(0.1)
-            return query_mock_pcs(jenis=jenis, filters=filters, page=page, page_size=page_size)
+            return query_joined_pcs(jenis=jenis, filters=filters, page=page, page_size=page_size)
 
         params: dict[str, Any] = {
             "jenis": jenis,
@@ -225,7 +221,7 @@ class APIClient:
         """Tambah satu data spesifikasi PC baru."""
         if USE_MOCK:
             await asyncio.sleep(0.12)
-            return create_mock_pc(payload=payload)
+            return create_joined_pc(payload=payload)
 
         response = await self.request(
             method="POST",
@@ -244,7 +240,7 @@ class APIClient:
         """Perbarui data spesifikasi satu PC."""
         if USE_MOCK:
             await asyncio.sleep(0.12)
-            return update_mock_pc(pc_id=pc_id, payload=payload)
+            return update_joined_pc(pc_id=pc_id, payload=payload)
 
         response = await self.request(
             method="PUT",
@@ -262,7 +258,7 @@ class APIClient:
         """Hapus satu data PC."""
         if USE_MOCK:
             await asyncio.sleep(0.1)
-            return delete_mock_pc(pc_id=pc_id)
+            return delete_joined_pc(pc_id=pc_id)
 
         await self.request(
             method="DELETE",
@@ -282,7 +278,7 @@ class APIClient:
         """Ambil daftar Monitor dengan filter, sort, & paginasi ({items, total})."""
         if USE_MOCK:
             await asyncio.sleep(0.08)
-            return query_mock_monitors(
+            return query_joined_monitors(
                 status=status,
                 filters=filters,
                 page=page,
@@ -311,7 +307,7 @@ class APIClient:
         """Tambah satu data unit monitor baru."""
         if USE_MOCK:
             await asyncio.sleep(0.12)
-            return create_mock_monitor(payload=payload)
+            return create_joined_monitor(payload=payload)
 
         response = await self.request(
             method="POST",
@@ -330,7 +326,7 @@ class APIClient:
         """Perbarui data satu unit monitor."""
         if USE_MOCK:
             await asyncio.sleep(0.12)
-            return update_mock_monitor(original_id=original_id, payload=payload)
+            return update_joined_monitor(original_id=original_id, payload=payload)
 
         response = await self.request(
             method="PUT",
@@ -348,7 +344,7 @@ class APIClient:
         """Hapus satu data unit monitor."""
         if USE_MOCK:
             await asyncio.sleep(0.1)
-            return delete_mock_monitor(id_aset=id_aset)
+            return delete_joined_monitor(id_aset=id_aset)
 
         await self.request(
             method="DELETE",

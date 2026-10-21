@@ -38,8 +38,10 @@ MASTER_KONDISI: list[str] = [
     "Tidak Terpakai / Rusak",
 ]
 
+# STATUS UTAMA ASET (Kini mencakup Backup)
 MASTER_STATUS: list[str] = [
     "Digunakan",
+    "Backup",
     "Tidak Digunakan",
 ]
 

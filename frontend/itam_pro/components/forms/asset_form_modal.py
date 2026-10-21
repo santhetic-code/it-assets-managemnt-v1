@@ -122,6 +122,22 @@ def _master_select(
     )
 
 
+def _section_title(title: str) -> rx.Component:
+    """Pemisah visual bagian form."""
+    return rx.box(
+        rx.text(
+            title.upper(),
+            font_size=FontSize.GROUP_LABEL,
+            font_weight=FontWeight.BOLD,
+            color=Color.MUTED,
+            letter_spacing="0.06em",
+        ),
+        rx.divider(border_color=Color.BORDER),
+        width="100%",
+        margin_y=Space.S2,
+    )
+
+
 def asset_form_modal() -> rx.Component:
     """Modal Form Tambah / Edit / Duplikat Aset."""
     return rx.cond(
@@ -436,6 +452,213 @@ def asset_form_modal() -> rx.Component:
                             spacing="1",
                             align="start",
                             width="100%",
+                        ),
+                        # Spesifikasi Dinamis: Kategori Monitor
+                        rx.cond(
+                            AssetState.form_kategori == "Monitor",
+                            rx.vstack(
+                                _section_title("Spesifikasi Monitor"),
+                                rx.box(
+                                    rx.vstack(
+                                        _field_label("Merk", required=True),
+                                        _text_input(
+                                            value=AssetState.form_merk,
+                                            on_change=AssetState.set_form_merk,
+                                            placeholder="LG, Dell, Samsung, AOC, HP...",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    rx.vstack(
+                                        _field_label("Tipe / Model", required=True),
+                                        _text_input(
+                                            value=AssetState.form_tipe_model,
+                                            on_change=AssetState.set_form_tipe_model,
+                                            placeholder="Contoh: 24MK600M",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    style=rx.Style(
+                                        {
+                                            "width": "100%",
+                                            "display": "grid",
+                                            "grid_template_columns": "1fr 1fr",
+                                            "gap": Space.S4,
+                                            "@media (max-width: 639px)": {
+                                                "grid_template_columns": "1fr"
+                                            },
+                                        }
+                                    ),
+                                ),
+                                rx.box(
+                                    rx.vstack(
+                                        _field_label("Ukuran Layar (inci)", required=True),
+                                        _text_input(
+                                            value=AssetState.form_ukuran_layar,
+                                            on_change=AssetState.set_form_ukuran_layar,
+                                            placeholder="24 / 21,5 / 27",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    rx.vstack(
+                                        _field_label("Resolusi Layar", required=True),
+                                        _text_input(
+                                            value=AssetState.form_resolusi_layar,
+                                            on_change=AssetState.set_form_resolusi_layar,
+                                            placeholder="Contoh: 1920 x 1080",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    style=rx.Style(
+                                        {
+                                            "width": "100%",
+                                            "display": "grid",
+                                            "grid_template_columns": "1fr 1fr",
+                                            "gap": Space.S4,
+                                            "@media (max-width: 639px)": {
+                                                "grid_template_columns": "1fr"
+                                            },
+                                        }
+                                    ),
+                                ),
+                                spacing="3",
+                                width="100%",
+                            ),
+                            rx.fragment(),
+                        ),
+                        # Spesifikasi Dinamis: Kategori PC atau Server
+                        rx.cond(
+                            (AssetState.form_kategori == "PC")
+                            | (AssetState.form_kategori == "Server"),
+                            rx.vstack(
+                                _section_title("Spesifikasi PC / Server"),
+                                rx.box(
+                                    rx.vstack(
+                                        _field_label("Jenis"),
+                                        _master_select(
+                                            options_var=AssetState.master_jenis_pc_options,
+                                            value=AssetState.form_jenis_pc,
+                                            on_change=AssetState.set_form_jenis_pc,
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    rx.vstack(
+                                        _field_label("Operasi System"),
+                                        _text_input(
+                                            value=AssetState.form_os,
+                                            on_change=AssetState.set_form_os,
+                                            placeholder="Windows 11 Pro / Ubuntu 22.04",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    style=rx.Style(
+                                        {
+                                            "width": "100%",
+                                            "display": "grid",
+                                            "grid_template_columns": "1fr 1fr",
+                                            "gap": Space.S4,
+                                            "@media (max-width: 639px)": {
+                                                "grid_template_columns": "1fr"
+                                            },
+                                        }
+                                    ),
+                                ),
+                                rx.box(
+                                    rx.vstack(
+                                        _field_label("CPU / Prosesor"),
+                                        _text_input(
+                                            value=AssetState.form_cpu,
+                                            on_change=AssetState.set_form_cpu,
+                                            placeholder="Intel i5-12400 / AMD Ryzen 5",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    rx.vstack(
+                                        _field_label("RAM"),
+                                        _text_input(
+                                            value=AssetState.form_ram,
+                                            on_change=AssetState.set_form_ram,
+                                            placeholder="16 GB DDR4",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    style=rx.Style(
+                                        {
+                                            "width": "100%",
+                                            "display": "grid",
+                                            "grid_template_columns": "1fr 1fr",
+                                            "gap": Space.S4,
+                                            "@media (max-width: 639px)": {
+                                                "grid_template_columns": "1fr"
+                                            },
+                                        }
+                                    ),
+                                ),
+                                rx.box(
+                                    rx.vstack(
+                                        _field_label("VGA / Grafis"),
+                                        _text_input(
+                                            value=AssetState.form_vga,
+                                            on_change=AssetState.set_form_vga,
+                                            placeholder="NVIDIA GTX 1650 / Integrated",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    rx.vstack(
+                                        _field_label("Mainboard"),
+                                        _text_input(
+                                            value=AssetState.form_mainboard,
+                                            on_change=AssetState.set_form_mainboard,
+                                            placeholder="ASUS PRIME B660M",
+                                        ),
+                                        spacing="1",
+                                        align="start",
+                                        width="100%",
+                                    ),
+                                    style=rx.Style(
+                                        {
+                                            "width": "100%",
+                                            "display": "grid",
+                                            "grid_template_columns": "1fr 1fr",
+                                            "gap": Space.S4,
+                                            "@media (max-width: 639px)": {
+                                                "grid_template_columns": "1fr"
+                                            },
+                                        }
+                                    ),
+                                ),
+                                rx.vstack(
+                                    _field_label("HDD / SSD"),
+                                    _text_input(
+                                        value=AssetState.form_hdd_ssd,
+                                        on_change=AssetState.set_form_hdd_ssd,
+                                        placeholder="SSD NVMe 512GB + HDD 1TB",
+                                    ),
+                                    spacing="1",
+                                    align="start",
+                                    width="100%",
+                                ),
+                                spacing="3",
+                                width="100%",
+                            ),
+                            rx.fragment(),
                         ),
                         # Baris 7: Duplikat x N (khusus mode tambah)
                         rx.cond(
