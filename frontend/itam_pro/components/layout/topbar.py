@@ -36,7 +36,7 @@ def _mobile_menu_trigger() -> rx.Component:
     )
 
 
-def _breadcrumb(group: str, page: str) -> rx.Component:
+def _breadcrumb(group: str | rx.Var[str], page: str | rx.Var[str]) -> rx.Component:
     """Breadcrumb kiri: 'Grup / Halaman'."""
     return rx.hstack(
         _mobile_menu_trigger(),
@@ -287,7 +287,9 @@ def _profile_menu() -> rx.Component:
     )
 
 
-def topbar(breadcrumb: tuple[str, str] = ("Overview", "Dashboard")) -> rx.Component:
+def topbar(
+    breadcrumb: tuple[str | rx.Var[str], str | rx.Var[str]] = ("Overview", "Dashboard"),
+) -> rx.Component:
     """Bar navigasi atas setinggi 68px."""
     group, page = breadcrumb
     return rx.box(

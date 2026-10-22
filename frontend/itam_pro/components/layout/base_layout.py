@@ -50,7 +50,7 @@ def _mobile_sidebar_drawer() -> rx.Component:
 
 def base_layout(
     content: rx.Component,
-    breadcrumb: tuple[str, str] = ("Overview", "Dashboard"),
+    breadcrumb: tuple[str | rx.Var[str], str | rx.Var[str]] = ("Overview", "Dashboard"),
 ) -> rx.Component:
     """
     Pembungkus utama seluruh halaman terproteksi ITAM Pro.

@@ -9,7 +9,7 @@ from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Si
 
 
 def primary_button(
-    label: str,
+    label: str | rx.Var[str],
     on_click: Any | None = None,
     is_loading: Any = False,
     button_type: Literal["button", "reset", "submit"] = "button",
@@ -68,7 +68,7 @@ def primary_button(
 
 
 def secondary_button(
-    label: str,
+    label: str | rx.Var[str],
     on_click: Any | None = None,
     icon_tag: str | None = None,
 ) -> rx.Component:
@@ -116,7 +116,7 @@ def secondary_button(
 
 
 def action_primary_button(
-    label: str,
+    label: str | rx.Var[str],
     on_click: Any | None = None,
 ) -> rx.Component:
     """Tombol utama di header halaman (tinggi 42px, warna #1D4ED8, contoh: '+ Tambah Aset')."""

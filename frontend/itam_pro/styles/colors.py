@@ -14,6 +14,7 @@ class Color:
     SIDEBAR_TEXT = "#C7D4F5"    # Teks & ikon item menu nonaktif di sidebar
     SIDEBAR_MUTED = "#8EA3D6"   # Subjudul brand & label grup uppercase di sidebar
     SIDEBAR_HOVER_BG = "rgba(255, 255, 255, 0.08)"
+    SIDEBAR_HOVER = "rgba(255, 255, 255, 0.08)"
     SIDEBAR_DIVIDER = "rgba(255, 255, 255, 0.08)"
 
     # Login Page & Ornaments Tokens

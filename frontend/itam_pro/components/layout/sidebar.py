@@ -1,27 +1,22 @@
 """
 Komponen Sidebar Navigasi ITAM Pro.
-Lebar 248px, latar #0A1A44, padding 20px 14px, 7 grup menu sesuai spesifikasi.
+Lebar 248px, latar #0A1A44, padding 20px 14px, grup menu dinamis sesuai spesifikasi Tahap 6c-1.
 """
+from typing import Any
+
 import reflex as rx
 
+from itam_pro.services.category_config import get_pinned_categories
+from itam_pro.states.asset_state import AssetState
 from itam_pro.states.nav_state import NavState
 from itam_pro.styles import Color, FontSize, FontWeight, Radius, Size
 
-# Definisi struktur grup & item menu: (label, icon_tag, route, is_ready)
+# Definisi struktur grup menu di luar Inventory: (label, icon_tag, route, is_ready)
 SIDEBAR_GROUPS: list[tuple[str, list[tuple[str, str, str, bool]]]] = [
     (
         "Overview",
         [
             ("Dashboard", "layout-grid", "/dashboard", True),
-        ],
-    ),
-    (
-        "Inventory",
-        [
-            ("Assets Inventory", "box", "/assets", True),
-            ("Daftar PC", "hard-drive", "/pc", True),
-            ("Rekap Monitor", "monitor", "/monitor", True),
-            ("Rekap UPS", "battery", "/inventory/ups", False),
         ],
     ),
     (
@@ -111,11 +106,7 @@ def _sidebar_item(
     route: str,
     is_ready: bool,
 ) -> rx.Component:
-    """
-    Item navigasi sidebar:
-    Tinggi 40px, radius 10px, ikon 18px + teks 14px, warna nonaktif #C7D4F5,
-    hover bg putih 8%, aktif bg #2563EB + teks putih weight 700.
-    """
+    """Item navigasi non-inventory dengan handler NavState."""
     is_active = NavState.active_menu == label
 
     return rx.el.button(
@@ -161,7 +152,7 @@ def _sidebar_item(
                 "background_color": rx.cond(
                     is_active,
                     Color.ACCENT_BRIGHT,
-                    Color.SIDEBAR_HOVER_BG,
+                    Color.SIDEBAR_HOVER,
                 ),
             }
         ),
@@ -172,7 +163,7 @@ def _sidebar_group(
     group_name: str,
     items: list[tuple[str, str, str, bool]],
 ) -> rx.Component:
-    """Grup menu dengan label uppercase 11px #8EA3D6."""
+    """Grup menu umum dengan label uppercase."""
     return rx.vstack(
         rx.text(
             group_name.upper(),
@@ -198,12 +189,128 @@ def _sidebar_group(
     )
 
 
+def _inventory_nav_item(
+    label: str,
+    href: str,
+    icon_tag: str,
+    count_var: Any,
+    is_active: Any,
+) -> rx.Component:
+    """Item menu grup Inventory dengan badge jumlah unit di kanan."""
+    return rx.el.a(
+        rx.hstack(
+            rx.hstack(
+                rx.icon(
+                    tag=icon_tag,
+                    size=Size.ICON_MD,
+                    color=rx.cond(is_active, Color.WHITE, Color.SIDEBAR_TEXT),
+                ),
+                rx.text(
+                    label,
+                    font_size=FontSize.BASE,
+                    font_weight=rx.cond(is_active, FontWeight.BOLD, FontWeight.MEDIUM),
+                    color=rx.cond(is_active, Color.WHITE, Color.SIDEBAR_TEXT),
+                ),
+                spacing="3",
+                align="center",
+            ),
+            rx.text(
+                count_var,
+                font_size=FontSize.GROUP_LABEL,
+                font_weight=FontWeight.BOLD,
+                color=rx.cond(is_active, Color.WHITE, Color.SIDEBAR_MUTED),
+                style=rx.Style(
+                    {
+                        "padding": "2px 8px",
+                        "border_radius": Radius.FULL,
+                        "background_color": rx.cond(
+                            is_active,
+                            "rgba(255, 255, 255, 0.22)",
+                            "rgba(255, 255, 255, 0.08)",
+                        ),
+                    }
+                ),
+            ),
+            width="100%",
+            justify="between",
+            align="center",
+        ),
+        href=href,
+        style=rx.Style(
+            {
+                "width": "100%",
+                "padding": "10px 12px",
+                "border_radius": Radius.CONTROL,
+                "text_decoration": "none",
+                "background_color": rx.cond(
+                    is_active, Color.ACCENT_BRIGHT, "transparent"
+                ),
+                "display": "block",
+            }
+        ),
+        _hover=rx.Style(
+            {
+                "background_color": rx.cond(
+                    is_active, Color.ACCENT_BRIGHT, Color.SIDEBAR_HOVER
+                )
+            }
+        ),
+    )
+
+
+def render_inventory_sidebar_group(current_path: Any) -> rx.Component:
+    """Render grup menu INVENTORY secara dinamis dari category_config (pinned=True)."""
+    icon_map = {
+        "pc": "monitor-speaker",
+        "monitor": "monitor",
+        "ups": "battery-charging",
+    }
+    pinned_items = get_pinned_categories()
+
+    return rx.vstack(
+        rx.text(
+            "INVENTORY",
+            font_size=FontSize.GROUP_LABEL,
+            font_weight=FontWeight.BOLD,
+            color=Color.SIDEBAR_MUTED,
+            letter_spacing="0.08em",
+            padding_x="12px",
+        ),
+        _inventory_nav_item(
+            label="Semua Aset",
+            href="/assets",
+            icon_tag="boxes",
+            count_var=AssetState.sidebar_counts["all"],
+            is_active=current_path == "/assets",
+        ),
+        *[
+            _inventory_nav_item(
+                label=cfg["name"],
+                href=f"/assets/c/{cfg['slug']}",
+                icon_tag=icon_map.get(cfg["slug"], "box"),
+                count_var=AssetState.sidebar_counts[cfg["slug"]],
+                is_active=current_path == f"/assets/c/{cfg['slug']}",
+            )
+            for cfg in pinned_items
+        ],
+        spacing="1",
+        align="start",
+        width="100%",
+    )
+
+
 def sidebar() -> rx.Component:
     """Komponen utama Sidebar berukuran 248px."""
+    current_path = rx.State.router.page.path
+    overview_items = next(items for name, items in SIDEBAR_GROUPS if name == "Overview")
+    other_groups = [(name, items) for name, items in SIDEBAR_GROUPS if name != "Overview"]
+
     return rx.box(
         _sidebar_brand(),
         rx.vstack(
-            *[_sidebar_group(group_name, items) for group_name, items in SIDEBAR_GROUPS],
+            _sidebar_group("Overview", overview_items),
+            render_inventory_sidebar_group(current_path),
+            *[_sidebar_group(name, items) for name, items in other_groups],
             spacing="0",
             style=rx.Style({"gap": "18px"}),
             width="100%",
@@ -225,3 +332,6 @@ def sidebar() -> rx.Component:
             }
         ),
     )
+
+
+__all__ = ["render_inventory_sidebar_group", "sidebar"]

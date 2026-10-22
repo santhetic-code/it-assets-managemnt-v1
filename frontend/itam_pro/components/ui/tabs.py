@@ -16,7 +16,7 @@ class TabItemConfig(TypedDict):
 
 
 def _tab_button(
-    item: TabItemConfig,
+    item: TabItemConfig | Any,
     active_tab: Any,
     on_change: Any,
 ) -> rx.Component:
@@ -88,14 +88,25 @@ def _tab_button(
 
 
 def app_tabs(
-    tabs: list[TabItemConfig],
+    tabs: (
+        list[TabItemConfig]
+        | rx.Var[list[dict[str, Any]]]
+        | rx.Var[list[TabItemConfig]]
+        | Any
+    ),
     active_tab: Any,
     on_change: Any,
 ) -> rx.Component:
     """Baris navigasi tab di bagian atas kartu tabel."""
+    tab_children = (
+        rx.foreach(tabs, lambda tab: _tab_button(tab, active_tab, on_change))
+        if isinstance(tabs, rx.Var)
+        else [_tab_button(tab, active_tab, on_change) for tab in tabs]
+    )
+    children = [tab_children] if isinstance(tab_children, rx.Component) else tab_children
     return rx.box(
         rx.hstack(
-            *[_tab_button(tab, active_tab, on_change) for tab in tabs],
+            *children,
             spacing="1",
             align="center",
             style=rx.Style({"overflow_x": "auto"}),

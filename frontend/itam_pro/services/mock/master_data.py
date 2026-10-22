@@ -4,7 +4,10 @@ Nantinya disinkronkan dengan tabel master di Backend PostgreSQL.
 """
 
 MASTER_KATEGORI: list[str] = [
+    "PC",
+    "Server",
     "Monitor",
+    "UPS",
     "Keyboard",
     "Mouse",
     "SSD",
@@ -12,8 +15,6 @@ MASTER_KATEGORI: list[str] = [
     "Laptop",
     "Router",
     "HDD",
-    "PC",
-    "Server",
     "Komponen PC",
     "Lainnya",
 ]
@@ -38,7 +39,6 @@ MASTER_KONDISI: list[str] = [
     "Tidak Terpakai / Rusak",
 ]
 
-# STATUS UTAMA ASET (Kini mencakup Backup)
 MASTER_STATUS: list[str] = [
     "Digunakan",
     "Backup",
@@ -51,7 +51,6 @@ MASTER_JENIS_PC: list[str] = [
     "Backup",
 ]
 
-# --- MASTER DATA REKAP MONITOR ---
 MASTER_MERK_MONITOR: list[str] = [
     "LG",
     "Dell",

@@ -12,17 +12,12 @@ from dotenv import load_dotenv
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
 from itam_pro.services.mock.seed import (
-    create_joined_monitor,
-    create_joined_pc,
     create_mock_assets,
-    delete_joined_monitor,
-    delete_joined_pc,
     delete_mock_asset,
-    query_joined_monitors,
-    query_joined_pcs,
+    find_sn_duplicate,
+    get_mock_category_counts,
+    peek_next_asset_id,
     query_mock_assets,
-    update_joined_monitor,
-    update_joined_pc,
     update_mock_asset,
 )
 
@@ -113,9 +108,9 @@ class APIClient:
         page_size: int = 10,
         token: str | None = None,
     ) -> dict[str, Any]:
-        """Ambil daftar aset dengan filter & paginasi ({items, total, page, page_size})."""
+        """Ambil daftar aset dengan filter & paginasi untuk Semua Aset atau /assets/c/[slug]."""
         if USE_MOCK:
-            await asyncio.sleep(0.12)
+            await asyncio.sleep(0.08)
             return query_mock_assets(filters=filters, page=page, page_size=page_size)
 
         params: dict[str, Any] = {
@@ -137,9 +132,9 @@ class APIClient:
         duplicate_count: int = 1,
         token: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Tambah 1 atau N unit aset fisik baru."""
+        """Tambah 1 atau N unit aset fisik baru beserta attributes-nya."""
         if USE_MOCK:
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(0.12)
             return create_mock_assets(payload=payload, count=duplicate_count)
 
         response = await self.request(
@@ -156,9 +151,9 @@ class APIClient:
         payload: dict[str, Any],
         token: str | None = None,
     ) -> dict[str, Any] | None:
-        """Perbarui satu aset."""
+        """Perbarui satu aset beserta attributes-nya."""
         if USE_MOCK:
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(0.12)
             return update_mock_asset(asset_id=asset_id, payload=payload)
 
         response = await self.request(
@@ -186,172 +181,17 @@ class APIClient:
         )
         return True
 
-    async def get_pcs(
-        self,
-        jenis: str,
-        filters: dict[str, Any],
-        page: int = 1,
-        page_size: int = 10,
-        token: str | None = None,
-    ) -> dict[str, Any]:
-        """Ambil daftar PC per jenis dengan filter & paginasi ({items, total, page, page_size})."""
-        if USE_MOCK:
-            await asyncio.sleep(0.1)
-            return query_joined_pcs(jenis=jenis, filters=filters, page=page, page_size=page_size)
+    def check_sn_duplicate_sync(self, sn_pid: str, exclude_id: str = "") -> str | None:
+        """Periksa apakah SN/PID sudah digunakan oleh aset lain (non-blocking warning)."""
+        return find_sn_duplicate(sn_pid=sn_pid, exclude_id=exclude_id)
 
-        params: dict[str, Any] = {
-            "jenis": jenis,
-            "page": page,
-            "page_size": page_size,
-            **filters,
-        }
-        response = await self.request(
-            method="GET",
-            endpoint="/api/v1/pcs",
-            token=token,
-            params=params,
-        )
-        return response  # type: ignore[return-value]
+    def peek_next_id_sync(self, kategori: str) -> str:
+        """Ambil preview ID Aset otomatis berikutnya berdasarkan kategori."""
+        return peek_next_asset_id(kategori=kategori)
 
-    async def create_pc(
-        self,
-        payload: dict[str, Any],
-        token: str | None = None,
-    ) -> dict[str, Any]:
-        """Tambah satu data spesifikasi PC baru."""
-        if USE_MOCK:
-            await asyncio.sleep(0.12)
-            return create_joined_pc(payload=payload)
-
-        response = await self.request(
-            method="POST",
-            endpoint="/api/v1/pcs",
-            token=token,
-            json_data=payload,
-        )
-        return response  # type: ignore[return-value]
-
-    async def update_pc(
-        self,
-        pc_id: str,
-        payload: dict[str, Any],
-        token: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Perbarui data spesifikasi satu PC."""
-        if USE_MOCK:
-            await asyncio.sleep(0.12)
-            return update_joined_pc(pc_id=pc_id, payload=payload)
-
-        response = await self.request(
-            method="PUT",
-            endpoint=f"/api/v1/pcs/{pc_id}",
-            token=token,
-            json_data=payload,
-        )
-        return response  # type: ignore[return-value]
-
-    async def delete_pc(
-        self,
-        pc_id: str,
-        token: str | None = None,
-    ) -> bool:
-        """Hapus satu data PC."""
-        if USE_MOCK:
-            await asyncio.sleep(0.1)
-            return delete_joined_pc(pc_id=pc_id)
-
-        await self.request(
-            method="DELETE",
-            endpoint=f"/api/v1/pcs/{pc_id}",
-            token=token,
-        )
-        return True
-
-    async def get_monitors(
-        self,
-        status: str,
-        filters: dict[str, Any],
-        page: int = 1,
-        page_size: int = 8,
-        token: str | None = None,
-    ) -> dict[str, Any]:
-        """Ambil daftar Monitor dengan filter, sort, & paginasi ({items, total})."""
-        if USE_MOCK:
-            await asyncio.sleep(0.08)
-            return query_joined_monitors(
-                status=status,
-                filters=filters,
-                page=page,
-                page_size=page_size,
-            )
-
-        params: dict[str, Any] = {
-            "status": status,
-            "page": page,
-            "page_size": page_size,
-            **filters,
-        }
-        response = await self.request(
-            method="GET",
-            endpoint="/api/v1/monitors",
-            token=token,
-            params=params,
-        )
-        return response  # type: ignore[return-value]
-
-    async def create_monitor(
-        self,
-        payload: dict[str, Any],
-        token: str | None = None,
-    ) -> dict[str, Any]:
-        """Tambah satu data unit monitor baru."""
-        if USE_MOCK:
-            await asyncio.sleep(0.12)
-            return create_joined_monitor(payload=payload)
-
-        response = await self.request(
-            method="POST",
-            endpoint="/api/v1/monitors",
-            token=token,
-            json_data=payload,
-        )
-        return response  # type: ignore[return-value]
-
-    async def update_monitor(
-        self,
-        original_id: str,
-        payload: dict[str, Any],
-        token: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Perbarui data satu unit monitor."""
-        if USE_MOCK:
-            await asyncio.sleep(0.12)
-            return update_joined_monitor(original_id=original_id, payload=payload)
-
-        response = await self.request(
-            method="PUT",
-            endpoint=f"/api/v1/monitors/{original_id}",
-            token=token,
-            json_data=payload,
-        )
-        return response  # type: ignore[return-value]
-
-    async def delete_monitor(
-        self,
-        id_aset: str,
-        token: str | None = None,
-    ) -> bool:
-        """Hapus satu data unit monitor."""
-        if USE_MOCK:
-            await asyncio.sleep(0.1)
-            return delete_joined_monitor(id_aset=id_aset)
-
-        await self.request(
-            method="DELETE",
-            endpoint=f"/api/v1/monitors/{id_aset}",
-            token=token,
-        )
-        return True
+    def get_category_counts_sync(self) -> dict[str, int]:
+        """Ambil jumlah unit per kategori untuk badge Sidebar."""
+        return get_mock_category_counts()
 
 
 api_client = APIClient()

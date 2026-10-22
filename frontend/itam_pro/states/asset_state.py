@@ -1,15 +1,20 @@
 """
-State Assets Inventory ITAM Pro.
-Mengelola daftar master, filter 5 dropdown, paginasi, detail drawer 2 grup,
-dan form modal tambah/edit/duplikat × N dengan validasi aturan bisnis.
+State Generik Inventaris Aset ITAM Pro (Tahap 6c-1).
+Menangani halaman `/assets` (Semua Aset) dan `/assets/c/[slug]` (View Kategori)
+berdasarkan konfigurasi di `services/category_config.py`.
 """
-from collections.abc import AsyncGenerator
 import math
 from typing import Any
 
 import reflex as rx
 
 from itam_pro.services.api_client import api_client
+from itam_pro.services.category_config import (
+    CATEGORY_CONFIGS,
+    CategoryFieldDef,
+    get_config_by_slug,
+    get_config_for_category_name,
+)
 from itam_pro.services.mock.master_data import (
     MASTER_JENIS_PC,
     MASTER_KATEGORI,
@@ -22,92 +27,227 @@ from itam_pro.services.mock.master_data import (
     MASTER_STATUS,
     MASTER_UKURAN_MONITOR,
 )
+from itam_pro.services.mock.seed import format_ukuran_layar
 
 
 class AssetState(rx.State):
-    # Daftar Master dari services/mock/master_data.py
-    master_kategori_options: list[str] = list(MASTER_KATEGORI)
-    master_kepemilikan_options: list[str] = list(MASTER_KEPEMILIKAN)
-    master_lokasi_options: list[str] = list(MASTER_LOKASI)
-    master_kondisi_options: list[str] = list(MASTER_KONDISI)
-    master_status_options: list[str] = list(MASTER_STATUS)
-    master_merk_options: list[str] = list(MASTER_MERK_MONITOR)
-    master_ukuran_options: list[str] = list(MASTER_UKURAN_MONITOR)
-    master_resolusi_options: list[str] = list(MASTER_RESOLUSI_MONITOR)
-    master_konektivitas_options: list[str] = list(MASTER_KONEKTIVITAS_MONITOR)
-    master_jenis_pc_options: list[str] = list(MASTER_JENIS_PC)
+    """State tunggal untuk seluruh tampilan inventaris aset dan DynamicForm."""
 
-    # Data Tabel & Paginasi
+    # Konteks route saat ini ("" untuk Semua Aset, atau "pc" / "monitor" / "ups" / dst.)
+    current_slug: str = ""
+    is_loading: bool = False
+
+    # Data tabel & paginasi
     items: list[dict[str, Any]] = []
     total: int = 0
     page: int = 1
     page_size: int = 10
-    is_loading: bool = False
 
-    # State Filter Bar (Pencarian + 5 Dropdown Master)
+    # Tab & Sort
+    active_tab: str = ""
+    tab_counts: dict[str, int] = {}
+    sort_by: str = ""
+    sort_dir: str = "asc"
+
+    # Counts untuk badge Sidebar Inventory
+    sidebar_counts: dict[str, int] = {"all": 15, "pc": 6, "monitor": 5, "ups": 2}
+
+    # Filter Inti
     search_query: str = ""
-    kategori_filter: str = "Semua"
-    kepemilikan_filter: str = "Semua"
-    lokasi_filter: str = "Semua"
-    kondisi_filter: str = "Semua"
-    status_filter: str = "Semua"
+    kategori_filter: str = ""
+    kepemilikan_filter: str = ""
+    lokasi_filter: str = ""
+    kondisi_filter: str = ""
+    status_filter: str = ""
 
-    # Seleksi Baris & Detail Drawer State
+    # Filter Atribut Kategori
+    attr_filters: dict[str, str] = {}
+
+    # Pilihan baris & Detail Drawer
     selected_ids: list[str] = []
     active_asset_id: str = ""
-    active_asset: dict[str, Any] = {}
     drawer_open: bool = False
     drawer_tab: str = "detail"
 
-    # State Modal Form Tambah / Edit / Duplikat × N
+    # Modal DynamicForm (Tambah / Edit / Duplikat)
     form_modal_open: bool = False
-    form_mode: str = "add"
-    form_editing_id: str = ""
+    form_mode: str = "add"  # "add" | "edit"
+    form_category_locked: bool = False
+    form_error: str = ""
+    form_sn_warning: str = ""
+
+    # Field Inti pada Form
+    form_id_aset: str = ""
     form_nama_aset: str = ""
-    form_kategori: str = MASTER_KATEGORI[0]
+    form_kategori: str = "PC"
     form_sn_pid: str = ""
-    form_tgl_masuk: str = ""
-    form_tgl_keluar: str = ""
-    form_kepemilikan: str = MASTER_KEPEMILIKAN[0]
-    form_lokasi: str = MASTER_LOKASI[0]
-    form_kondisi: str = MASTER_KONDISI[0]
-    form_status: str = MASTER_STATUS[0]
+    form_tanggal_masuk: str = "2026-10-22"
+    form_tanggal_keluar: str = ""
+    form_kepemilikan: str = "XML"
+    form_lokasi: str = "Kantor Blok 14"
+    form_kondisi: str = "Baru"
+    form_status: str = "Digunakan"
     form_digunakan_oleh: str = ""
     form_catatan: str = ""
     form_duplicate_count: str = "1"
-    form_error: str = ""
 
-    # Field Spesifikasi Dinamis (Monitor & PC/Server)
-    form_merk: str = "LG"
-    form_tipe_model: str = ""
-    form_ukuran_layar: str = "24"
-    form_resolusi_layar: str = "1920 × 1080"
-    form_konektivitas: list[str] = ["HDMI", "VGA"]
-    form_jenis_pc: str = "Operasional"
-    form_os: str = "Windows 11 Pro"
-    form_ram: str = "16 GB DDR4"
-    form_vga: str = "Integrated"
-    form_cpu: str = "Intel Core i5"
-    form_mainboard: str = "Standard MB"
-    form_hdd_ssd: str = "SSD 512GB"
-    form_pc_monitor: str = "—"
-    form_keyboard: str = "—"
-    form_mouse: str = "—"
+    # Field Spesifikasi Kategori pada Form (disimpan ke asset.attributes)
+    form_attributes: dict[str, str] = {}
+    form_konektivitas: list[str] = ["HDMI"]
 
-    # State Dialog Konfirmasi Hapus
+    # Master options dinamis (mendukung combobox tambah Merk/Resolusi baru)
+    custom_merk_options: list[str] = list(MASTER_MERK_MONITOR)
+    custom_resolusi_options: list[str] = list(MASTER_RESOLUSI_MONITOR)
+
+    # Dialog Konfirmasi Hapus
     delete_dialog_open: bool = False
     asset_to_delete: str = ""
-    asset_to_delete_name: str = ""
+    asset_to_delete_label: str = ""
+
+    # --- COMPUTED VARS: KONTEKS HALAMAN & HEADER ---
 
     @rx.var
-    def is_digunakan_oleh_required(self) -> bool:
-        """Bernilai True jika Status == 'Digunakan'."""
-        return self.form_status == "Digunakan"
+    def page_title(self) -> str:
+        cfg = get_config_by_slug(self.current_slug)
+        if cfg:
+            return cfg["name"]
+        return "Semua Aset"
+
+    @rx.var
+    def page_subtitle(self) -> str:
+        cfg = get_config_by_slug(self.current_slug)
+        if cfg:
+            return cfg["subtitle"]
+        return "Kelola seluruh unit fisik perangkat keras IT dalam satu basis data terpadu."
+
+    @rx.var
+    def add_button_label(self) -> str:
+        cfg = get_config_by_slug(self.current_slug)
+        if cfg:
+            return cfg["add_button_label"]
+        return "+ Tambah Aset"
+
+    @rx.var
+    def breadcrumb_title(self) -> str:
+        cfg = get_config_by_slug(self.current_slug)
+        return cfg["name"] if cfg else "Semua Aset"
+
+    @rx.var
+    def has_tabs(self) -> bool:
+        cfg = get_config_by_slug(self.current_slug)
+        return bool(cfg and cfg.get("tab_field"))
+
+    @rx.var
+    def current_tabs(self) -> list[dict[str, Any]]:
+        cfg = get_config_by_slug(self.current_slug)
+        if not cfg or not cfg.get("tab_field"):
+            return []
+        result: list[dict[str, Any]] = []
+        for opt in cfg.get("tab_options", []):
+            result.append(
+                {
+                    "key": opt,
+                    "label": opt,
+                    "count": self.tab_counts.get(opt, 0),
+                }
+            )
+        return result
+
+    # --- COMPUTED VARS: MASTER OPTIONS ---
+
+    @rx.var
+    def master_kategori_options(self) -> list[str]:
+        if self.form_category_locked and self.current_slug == "pc":
+            return ["PC", "Server"]
+        return list(MASTER_KATEGORI)
+
+    @rx.var
+    def master_kepemilikan_options(self) -> list[str]:
+        return list(MASTER_KEPEMILIKAN)
+
+    @rx.var
+    def master_lokasi_options(self) -> list[str]:
+        return list(MASTER_LOKASI)
+
+    @rx.var
+    def master_kondisi_options(self) -> list[str]:
+        return list(MASTER_KONDISI)
+
+    @rx.var
+    def master_status_options(self) -> list[str]:
+        return list(MASTER_STATUS)
+
+    @rx.var
+    def master_jenis_pc_options(self) -> list[str]:
+        return list(MASTER_JENIS_PC)
+
+    @rx.var
+    def master_merk_options(self) -> list[str]:
+        return self.custom_merk_options
+
+    @rx.var
+    def master_ukuran_options(self) -> list[str]:
+        return list(MASTER_UKURAN_MONITOR)
+
+    @rx.var
+    def master_resolusi_options(self) -> list[str]:
+        return self.custom_resolusi_options
+
+    @rx.var
+    def master_konektivitas_options(self) -> list[str]:
+        return list(MASTER_KONEKTIVITAS_MONITOR)
+
+    @rx.var
+    def os_filter_options(self) -> list[str]:
+        return [
+            "Windows 11 Pro",
+            "Windows 10 Pro",
+            "Proxmox VE 8.2",
+            "Ubuntu Server 24.04 LTS",
+        ]
+
+    @rx.var
+    def ram_filter_options(self) -> list[str]:
+        return ["8 GB DDR4", "16 GB DDR4", "32 GB DDR4", "64 GB ECC DDR4"]
+
+    # --- COMPUTED VARS: FILTER ATTRIBUT & TABEL ---
+
+    @rx.var
+    def filter_os_value(self) -> str:
+        return self.attr_filters.get("os", "")
+
+    @rx.var
+    def filter_ram_value(self) -> str:
+        return self.attr_filters.get("ram", "")
+
+    @rx.var
+    def filter_merk_value(self) -> str:
+        return self.attr_filters.get("merk", "")
+
+    @rx.var
+    def filter_ukuran_value(self) -> str:
+        return self.attr_filters.get("ukuran_layar", "")
+
+    @rx.var
+    def filter_resolusi_value(self) -> str:
+        return self.attr_filters.get("resolusi_layar", "")
+
+    @rx.var
+    def filter_konektivitas_value(self) -> str:
+        return self.attr_filters.get("konektivitas", "")
+
+    @rx.var
+    def result_count_label(self) -> str:
+        return f"{self.total} unit"
+
+    @rx.var
+    def all_current_selected(self) -> bool:
+        if not self.items:
+            return False
+        return all(item.get("id_aset") in self.selected_ids for item in self.items)
 
     @rx.var
     def total_pages(self) -> int:
-        if self.total <= 0:
-            return 1
         return max(1, math.ceil(self.total / self.page_size))
 
     @rx.var
@@ -115,548 +255,706 @@ class AssetState(rx.State):
         return str(self.page)
 
     @rx.var
-    def result_count_label(self) -> str:
-        return f"{self.total} unit ditemukan"
+    def page_tokens(self) -> list[str]:
+        tp = self.total_pages
+        cp = self.page
+        if tp <= 7:
+            return [str(i) for i in range(1, tp + 1)]
+        tokens: list[str] = ["1"]
+        if cp > 3:
+            tokens.append("...")
+        for p in range(max(2, cp - 1), min(tp, cp + 2)):
+            tokens.append(str(p))
+        if cp < tp - 2:
+            tokens.append("...")
+        tokens.append(str(tp))
+        return tokens
 
     @rx.var
     def pagination_summary(self) -> str:
         if self.total == 0:
             return "Menampilkan 0 dari 0"
         start = (self.page - 1) * self.page_size + 1
-        end = min(self.page * self.page_size, self.total)
+        end = min(self.total, self.page * self.page_size)
         return f"Menampilkan {start}–{end} dari {self.total}"
 
     @rx.var
-    def page_tokens(self) -> list[str]:
-        total_p = self.total_pages
-        cur = self.page
-        if total_p <= 7:
-            return [str(i) for i in range(1, total_p + 1)]
-        if cur <= 4:
-            return ["1", "2", "3", "4", "5", "...", str(total_p)]
-        if cur >= total_p - 3:
-            return [
-                "1",
-                "...",
-                str(total_p - 4),
-                str(total_p - 3),
-                str(total_p - 2),
-                str(total_p - 1),
-                str(total_p),
-            ]
-        return ["1", "...", str(cur - 1), str(cur), str(cur + 1), "...", str(total_p)]
+    def empty_state_title(self) -> str:
+        return f"Tidak ada data pada {self.page_title}"
 
     @rx.var
-    def all_current_selected(self) -> bool:
-        if not self.items:
-            return False
-        current_ids = [str(row["id"]) for row in self.items]
-        return all(rid in self.selected_ids for rid in current_ids)
+    def empty_state_subtitle(self) -> str:
+        return "Coba ubah kata kunci pencarian atau atur ulang kriteria filter Anda."
+
+    @rx.var
+    def empty_state_action_label(self) -> str:
+        return "Reset filter"
+
+    # --- COMPUTED VARS: DETAIL DRAWER ---
+
+    def _get_active_item(self) -> dict[str, Any]:
+        for item in self.items:
+            if item.get("id_aset") == self.active_asset_id:
+                return item
+        return {}
 
     @rx.var
     def active_code(self) -> str:
-        return str(self.active_asset.get("id", ""))
+        return str(self._get_active_item().get("id_aset", ""))
 
     @rx.var
-    def active_name(self) -> str:
-        return str(self.active_asset.get("nama_aset", ""))
+    def active_title(self) -> str:
+        return str(self._get_active_item().get("nama_aset", ""))
 
     @rx.var
     def active_category(self) -> str:
-        return str(self.active_asset.get("kategori", ""))
+        return str(self._get_active_item().get("kategori", ""))
 
     @rx.var
     def active_condition(self) -> str:
-        return str(self.active_asset.get("kondisi", "Baru"))
+        return str(self._get_active_item().get("kondisi", "Baru"))
 
     @rx.var
     def active_status(self) -> str:
-        return str(self.active_asset.get("status", "Digunakan"))
+        return str(self._get_active_item().get("status", "Digunakan"))
 
     @rx.var
-    def active_general_info(self) -> list[dict[str, str]]:
-        return self.active_asset.get("general_info", [])
+    def active_asset_data_items(self) -> list[dict[str, str]]:
+        """Grup 1 pada Drawer: Data aset (inti)."""
+        item = self._get_active_item()
+        if not item:
+            return []
+        return [
+            {"label": "ID Aset", "value": str(item.get("id_aset", "—"))},
+            {"label": "Nama Aset", "value": str(item.get("nama_aset", "—"))},
+            {"label": "Kategori", "value": str(item.get("kategori", "—"))},
+            {"label": "SN / PID", "value": str(item.get("sn_pid", "—"))},
+            {"label": "Kepemilikan", "value": str(item.get("kepemilikan", "—"))},
+            {"label": "Lokasi", "value": str(item.get("lokasi", "—"))},
+            {"label": "Kondisi", "value": str(item.get("kondisi", "—"))},
+            {"label": "Status", "value": str(item.get("status", "—"))},
+            {"label": "Digunakan Oleh", "value": str(item.get("digunakan_oleh", "—"))},
+            {"label": "Tgl Masuk Gudang", "value": str(item.get("tanggal_masuk_display", "—"))},
+            {"label": "Tgl Keluar Gudang", "value": str(item.get("tanggal_keluar_display", "—"))},
+            {"label": "Catatan", "value": str(item.get("catatan", "—"))},
+        ]
 
     @rx.var
-    def active_usage_info(self) -> list[dict[str, str]]:
-        return self.active_asset.get("usage_info", [])
+    def active_spec_items(self) -> list[dict[str, str]]:
+        """Grup 2 pada Drawer: Spesifikasi (dibangun dinamis dari category_config)."""
+        item = self._get_active_item()
+        if not item:
+            return []
+        kategori = str(item.get("kategori", ""))
+        cfg = get_config_for_category_name(kategori)
+        if not cfg or not cfg["fields"]:
+            return [{"label": "Spesifikasi Khusus", "value": "Tidak ada atribut khusus"}]
+
+        attrs: dict[str, Any] = item.get("attributes") or {}
+        rows: list[dict[str, str]] = []
+        for f_def in cfg["fields"]:
+            if f_def["type"] == "multiselect":
+                continue
+            key = f_def["key"]
+            raw_val = attrs.get(key, "")
+            if key == "ukuran_layar":
+                val_str = format_ukuran_layar(raw_val)
+            else:
+                val_str = str(raw_val).strip() if raw_val else "—"
+            rows.append({"label": f_def["label"], "value": val_str})
+        return rows
+
+    @rx.var
+    def active_chips_items(self) -> list[str]:
+        """Daftar chip untuk field multiselect (mis. Konektivitas Monitor)."""
+        item = self._get_active_item()
+        attrs: dict[str, Any] = item.get("attributes") or {}
+        kon = attrs.get("konektivitas")
+        if isinstance(kon, list):
+            return [str(x) for x in kon]
+        return []
+
+    @rx.var
+    def active_has_chips(self) -> bool:
+        return len(self.active_chips_items) > 0
 
     @rx.var
     def active_history_info(self) -> list[dict[str, str]]:
-        return self.active_asset.get("history_info", [])
+        item = self._get_active_item()
+        if not item:
+            return []
+        code = str(item.get("id_aset", ""))
+        tgl = str(item.get("tanggal_masuk_display", "10 Jan 2025"))
+        return [
+            {
+                "event": f"Aset {code} terdaftar di sistem",
+                "date": tgl if tgl != "—" else "10 Jan 2025",
+                "note": (
+                    f"Lokasi: {item.get('lokasi', '—')} · "
+                    f"Pemilik: {item.get('kepemilikan', '—')}"
+                ),
+            }
+        ]
+
+    # --- COMPUTED VARS: DYNAMIC FORM ---
+
+    @rx.var
+    def form_active_category_slug(self) -> str:
+        cfg = get_config_for_category_name(self.form_kategori)
+        return cfg["slug"] if cfg else ""
+
+    @rx.var
+    def form_has_spec_section(self) -> bool:
+        cfg = get_config_for_category_name(self.form_kategori)
+        return bool(cfg and len(cfg["fields"]) > 0)
+
+    @rx.var
+    def form_spec_fields(self) -> list[CategoryFieldDef]:
+        cfg = get_config_for_category_name(self.form_kategori)
+        return cfg["fields"] if cfg else []
+
+    @rx.var
+    def form_is_digunakan(self) -> bool:
+        return self.form_status == "Digunakan"
+
+    # --- EVENT HANDLERS: LOAD & NAVIGASI ---
+
+    def _resolve_slug_from_router(self) -> str:
+        params = self.router.page.params or {}
+        slug = str(params.get("slug", "")).strip().lower()
+        path = str(self.router.page.path or "")
+        if not slug and "/assets/c/" in path:
+            slug = path.split("/assets/c/", 1)[1].strip("/").lower()
+        return slug if slug in CATEGORY_CONFIGS else ""
 
     @rx.event
-    async def load_assets(self) -> None:
-        """Muat daftar aset berdasarkan pencarian, 5 filter master, dan halaman aktif."""
+    async def load_view_data(self) -> None:
+        """Dipanggil saat halaman `/assets` atau `/assets/c/[slug]` dimuat."""
+        new_slug = self._resolve_slug_from_router()
+        if new_slug != self.current_slug:
+            self.current_slug = new_slug
+            self.page = 1
+            self.search_query = ""
+            self.kategori_filter = ""
+            self.kepemilikan_filter = ""
+            self.lokasi_filter = ""
+            self.kondisi_filter = ""
+            self.status_filter = ""
+            self.attr_filters = {}
+            self.selected_ids = []
+            self.drawer_open = False
+
+            cfg = get_config_by_slug(new_slug)
+            tab_opts = cfg.get("tab_options") if cfg else None
+            if tab_opts:
+                self.active_tab = tab_opts[0]
+            else:
+                self.active_tab = ""
+
+        await self.fetch_assets()
+
+    @rx.event
+    async def fetch_assets(self) -> None:
+        """Ambil daftar aset dari `api_client.get_assets` sesuai view aktif."""
         self.is_loading = True
-        filters = {
+        filters: dict[str, Any] = {
+            "slug": self.current_slug,
+            "tab": self.active_tab,
             "search": self.search_query,
             "kategori": self.kategori_filter,
             "kepemilikan": self.kepemilikan_filter,
             "lokasi": self.lokasi_filter,
             "kondisi": self.kondisi_filter,
             "status": self.status_filter,
+            "attr_filters": self.attr_filters,
+            "sort_by": self.sort_by,
+            "sort_dir": self.sort_dir,
         }
-        response = await api_client.get_assets(
+        res = await api_client.get_assets(
             filters=filters,
             page=self.page,
             page_size=self.page_size,
         )
-        self.items = response.get("items", [])
-        self.total = int(response.get("total", 0))
+        self.items = res.get("items", [])
+        self.total = int(res.get("total", 0))
+        self.tab_counts = res.get("tab_counts", {})
+        if "category_counts" in res:
+            self.sidebar_counts = res["category_counts"]
         self.is_loading = False
 
-    @rx.event
-    async def set_search_query(self, value: str) -> None:
-        self.search_query = value
-        self.page = 1
-        await self.load_assets()
+    # --- EVENT HANDLERS: TAB, FILTER, SORT, PAGINASI ---
 
     @rx.event
-    async def set_kategori_filter(self, value: str) -> None:
-        self.kategori_filter = value
+    async def set_tab(self, tab_key: str) -> None:
+        self.active_tab = tab_key
         self.page = 1
-        await self.load_assets()
+        self.selected_ids = []
+        await self.fetch_assets()
 
     @rx.event
-    async def set_kepemilikan_filter(self, value: str) -> None:
-        self.kepemilikan_filter = value
+    async def set_search_query(self, val: str) -> None:
+        self.search_query = val
         self.page = 1
-        await self.load_assets()
+        await self.fetch_assets()
 
     @rx.event
-    async def set_lokasi_filter(self, value: str) -> None:
-        self.lokasi_filter = value
+    async def set_kategori_filter(self, val: str) -> None:
+        self.kategori_filter = val
         self.page = 1
-        await self.load_assets()
+        await self.fetch_assets()
 
     @rx.event
-    async def set_kondisi_filter(self, value: str) -> None:
-        self.kondisi_filter = value
+    async def set_kepemilikan_filter(self, val: str) -> None:
+        self.kepemilikan_filter = val
         self.page = 1
-        await self.load_assets()
+        await self.fetch_assets()
 
     @rx.event
-    async def set_status_filter(self, value: str) -> None:
-        self.status_filter = value
+    async def set_lokasi_filter(self, val: str) -> None:
+        self.lokasi_filter = val
         self.page = 1
-        await self.load_assets()
+        await self.fetch_assets()
+
+    @rx.event
+    async def set_kondisi_filter(self, val: str) -> None:
+        self.kondisi_filter = val
+        self.page = 1
+        await self.fetch_assets()
+
+    @rx.event
+    async def set_status_filter(self, val: str) -> None:
+        self.status_filter = val
+        self.page = 1
+        await self.fetch_assets()
+
+    @rx.event
+    async def set_attr_filter(self, key: str, val: str) -> None:
+        updated = dict(self.attr_filters)
+        updated[key] = val
+        self.attr_filters = updated
+        self.page = 1
+        await self.fetch_assets()
 
     @rx.event
     async def reset_filters(self) -> None:
         self.search_query = ""
-        self.kategori_filter = "Semua"
-        self.kepemilikan_filter = "Semua"
-        self.lokasi_filter = "Semua"
-        self.kondisi_filter = "Semua"
-        self.status_filter = "Semua"
+        self.kategori_filter = ""
+        self.kepemilikan_filter = ""
+        self.lokasi_filter = ""
+        self.kondisi_filter = ""
+        self.status_filter = ""
+        self.attr_filters = {}
         self.page = 1
-        await self.load_assets()
+        await self.fetch_assets()
+
+    @rx.event
+    async def toggle_sort(self, col_key: str) -> None:
+        if self.sort_by == col_key:
+            self.sort_dir = "desc" if self.sort_dir == "asc" else "asc"
+        else:
+            self.sort_by = col_key
+            self.sort_dir = "asc"
+        await self.fetch_assets()
 
     @rx.event
     async def prev_page(self) -> None:
         if self.page > 1:
             self.page -= 1
-            await self.load_assets()
+            await self.fetch_assets()
 
     @rx.event
     async def next_page(self) -> None:
         if self.page < self.total_pages:
             self.page += 1
-            await self.load_assets()
+            await self.fetch_assets()
 
     @rx.event
     async def select_page(self, token: str) -> None:
         if token.isdigit():
             target = int(token)
-            if 1 <= target <= self.total_pages and target != self.page:
+            if 1 <= target <= self.total_pages:
                 self.page = target
-                await self.load_assets()
+                await self.fetch_assets()
+
+    # --- EVENT HANDLERS: PILIHAN BARIS & DRAWER ---
 
     @rx.event
-    def toggle_select_all(self, checked: bool) -> None:
-        current_ids = [str(row["id"]) for row in self.items]
-        if checked:
-            self.selected_ids = list(set(self.selected_ids + current_ids))
-        else:
-            self.selected_ids = [rid for rid in self.selected_ids if rid not in current_ids]
-
-    @rx.event
-    def toggle_row_selection(self, row_id: str) -> None:
+    def toggle_row_selection(self, row_id: str, _checked: Any = None) -> None:
         if row_id in self.selected_ids:
-            self.selected_ids = [rid for rid in self.selected_ids if rid != row_id]
+            self.selected_ids = [x for x in self.selected_ids if x != row_id]
         else:
             self.selected_ids = [*self.selected_ids, row_id]
 
     @rx.event
-    def open_drawer(self, row_id: str) -> Any:
-        for item in self.items:
-            if item["id"] == row_id:
-                self.active_asset = item
-                self.active_asset_id = row_id
-                self.drawer_tab = "detail"
-                self.drawer_open = True
-                return rx.set_focus("global-detail-drawer")
+    def toggle_select_all(self, _checked: Any = None) -> None:
+        current_ids = [str(item["id_aset"]) for item in self.items]
+        if self.all_current_selected:
+            self.selected_ids = [x for x in self.selected_ids if x not in current_ids]
+        else:
+            merged = list(self.selected_ids)
+            for cid in current_ids:
+                if cid not in merged:
+                    merged.append(cid)
+            self.selected_ids = merged
 
     @rx.event
-    def close_drawer(self) -> Any:
-        last_id = self.active_asset_id
+    def open_drawer(self, row_id: str) -> None:
+        self.active_asset_id = row_id
+        self.drawer_tab = "detail"
+        self.drawer_open = True
+
+    @rx.event
+    def close_drawer(self) -> None:
         self.drawer_open = False
-        self.active_asset_id = ""
-        if last_id:
-            return rx.set_focus(f"table-row-{last_id}")
-
-    @rx.event
-    def handle_drawer_key_down(self, key: str) -> Any:
-        if key == "Escape":
-            return self.close_drawer()
 
     @rx.event
     def set_drawer_tab(self, tab_key: str) -> None:
         self.drawer_tab = tab_key
 
-    @rx.event
-    def set_form_nama_aset(self, value: str) -> None:
-        self.form_nama_aset = value
-        self.form_error = ""
+    # --- EVENT HANDLERS: DYNAMIC FORM MODAL ---
 
-    @rx.event
-    def set_form_kategori(self, value: str) -> None:
-        self.form_kategori = value
-
-    @rx.event
-    def set_form_sn_pid(self, value: str) -> None:
-        self.form_sn_pid = value
-
-    @rx.event
-    def set_form_tgl_masuk(self, value: str) -> None:
-        self.form_tgl_masuk = value
-        self.form_error = ""
-
-    @rx.event
-    def set_form_tgl_keluar(self, value: str) -> None:
-        self.form_tgl_keluar = value
-        self.form_error = ""
-
-    @rx.event
-    def set_form_kepemilikan(self, value: str) -> None:
-        self.form_kepemilikan = value
-
-    @rx.event
-    def set_form_lokasi(self, value: str) -> None:
-        self.form_lokasi = value
-
-    @rx.event
-    def set_form_kondisi(self, value: str) -> None:
-        self.form_kondisi = value
-
-    @rx.event
-    def set_form_status(self, value: str) -> None:
-        """Jika Status diubah ke 'Tidak Digunakan', kosongkan field 'Digunakan Oleh'."""
-        self.form_status = value
-        if value == "Tidak Digunakan":
-            self.form_digunakan_oleh = ""
-        self.form_error = ""
-
-    @rx.event
-    def set_form_digunakan_oleh(self, value: str) -> None:
-        self.form_digunakan_oleh = value
-        self.form_error = ""
-
-    @rx.event
-    def set_form_catatan(self, value: str) -> None:
-        self.form_catatan = value
-
-    @rx.event
-    def set_form_duplicate_count(self, value: str) -> None:
-        self.form_duplicate_count = value
-
-    @rx.event
-    def set_form_merk(self, value: str) -> None:
-        self.form_merk = value
-
-    @rx.event
-    def set_form_tipe_model(self, value: str) -> None:
-        self.form_tipe_model = value
-
-    @rx.event
-    def set_form_ukuran_layar(self, value: str) -> None:
-        self.form_ukuran_layar = value
-
-    @rx.event
-    def set_form_resolusi_layar(self, value: str) -> None:
-        self.form_resolusi_layar = value
-
-    @rx.event
-    def toggle_form_konektivitas(self, port: str) -> None:
-        if port in self.form_konektivitas:
-            self.form_konektivitas = [p for p in self.form_konektivitas if p != port]
+    def _init_default_attributes(self, kategori: str) -> None:
+        if kategori in ("PC", "Server"):
+            jenis_default = "Server" if kategori == "Server" else (
+                self.active_tab if self.active_tab in MASTER_JENIS_PC else "Operasional"
+            )
+            self.form_attributes = {
+                "jenis": jenis_default,
+                "os": "Windows 11 Pro" if kategori == "PC" else "Ubuntu Server 24.04 LTS",
+                "ram": "16 GB DDR4",
+                "vga": "",
+                "cpu": "",
+                "mainboard": "",
+                "hdd_ssd": "",
+                "monitor": "",
+                "keyboard": "",
+                "mouse": "",
+            }
+        elif kategori == "Monitor":
+            self.form_attributes = {
+                "merk": "LG",
+                "tipe_model": "",
+                "ukuran_layar": "24",
+                "resolusi_layar": "1920 × 1080",
+            }
+            self.form_konektivitas = ["HDMI"]
         else:
-            self.form_konektivitas = [*self.form_konektivitas, port]
-
-    @rx.event
-    def set_form_jenis_pc(self, value: str) -> None:
-        self.form_jenis_pc = value
-
-    @rx.event
-    def set_form_os(self, value: str) -> None:
-        self.form_os = value
-
-    @rx.event
-    def set_form_ram(self, value: str) -> None:
-        self.form_ram = value
-
-    @rx.event
-    def set_form_vga(self, value: str) -> None:
-        self.form_vga = value
-
-    @rx.event
-    def set_form_cpu(self, value: str) -> None:
-        self.form_cpu = value
-
-    @rx.event
-    def set_form_mainboard(self, value: str) -> None:
-        self.form_mainboard = value
-
-    @rx.event
-    def set_form_hdd_ssd(self, value: str) -> None:
-        self.form_hdd_ssd = value
-
-    @rx.event
-    def set_form_pc_monitor(self, value: str) -> None:
-        self.form_pc_monitor = value
-
-    @rx.event
-    def set_form_keyboard(self, value: str) -> None:
-        self.form_keyboard = value
-
-    @rx.event
-    def set_form_mouse(self, value: str) -> None:
-        self.form_mouse = value
-
-    def _reset_form_fields(self) -> None:
-        self.form_editing_id = ""
-        self.form_nama_aset = ""
-        self.form_kategori = self.master_kategori_options[0]
-        self.form_sn_pid = ""
-        self.form_tgl_masuk = ""
-        self.form_tgl_keluar = ""
-        self.form_kepemilikan = self.master_kepemilikan_options[0]
-        self.form_lokasi = self.master_lokasi_options[0]
-        self.form_kondisi = self.master_kondisi_options[0]
-        self.form_status = self.master_status_options[0]
-        self.form_digunakan_oleh = ""
-        self.form_catatan = ""
-        self.form_duplicate_count = "1"
-        self.form_error = ""
+            self.form_attributes = {}
+            self.form_konektivitas = []
 
     @rx.event
     def open_add_modal(self) -> None:
-        """Buka modal form dalam mode tambah aset baru."""
-        self._reset_form_fields()
         self.form_mode = "add"
+        self.form_error = ""
+        self.form_sn_warning = ""
+        self.form_duplicate_count = "1"
+
+        cfg = get_config_by_slug(self.current_slug)
+        if cfg:
+            self.form_category_locked = True
+            default_cat = "Server" if (
+                self.current_slug == "pc" and self.active_tab == "Server"
+            ) else cfg["included_categories"][0]
+            self.form_kategori = default_cat
+        else:
+            self.form_category_locked = False
+            self.form_kategori = "PC"
+
+        self.form_id_aset = api_client.peek_next_id_sync(self.form_kategori)
+        self.form_nama_aset = ""
+        self.form_sn_pid = ""
+        self.form_tanggal_masuk = "2026-10-22"
+        self.form_tanggal_keluar = ""
+        self.form_kepemilikan = "XML"
+        self.form_lokasi = "Kantor Blok 14"
+        self.form_kondisi = "Baru"
+        self.form_status = (
+            "Backup" if self.active_tab == "Backup" else "Digunakan"
+        )
+        self.form_digunakan_oleh = ""
+        self.form_catatan = ""
+        self._init_default_attributes(self.form_kategori)
+        self.form_modal_open = True
+
+    def _populate_form_from_item(self, item: dict[str, Any], mode: str) -> None:
+        self.form_mode = mode
+        self.form_error = ""
+        self.form_duplicate_count = "1"
+        kategori = str(item.get("kategori", "PC"))
+        self.form_kategori = kategori
+        self.form_category_locked = bool(self.current_slug != "")
+
+        if mode == "edit":
+            self.form_id_aset = str(item.get("id_aset", ""))
+            self.form_nama_aset = str(item.get("nama_aset", ""))
+        else:
+            self.form_id_aset = api_client.peek_next_id_sync(kategori)
+            self.form_nama_aset = str(item.get("nama_aset", ""))
+
+        sn_val = str(item.get("sn_pid", ""))
+        self.form_sn_pid = "" if sn_val == "—" else sn_val
+        self.form_tanggal_masuk = str(item.get("tanggal_masuk_gudang", ""))
+        self.form_tanggal_keluar = str(item.get("tanggal_keluar_gudang", ""))
+        self.form_kepemilikan = str(item.get("kepemilikan", "XML"))
+        self.form_lokasi = str(item.get("lokasi", "Kantor Blok 14"))
+        self.form_kondisi = str(item.get("kondisi", "Baru"))
+        self.form_status = str(item.get("status", "Digunakan"))
+        user_val = str(item.get("digunakan_oleh", ""))
+        self.form_digunakan_oleh = "" if user_val == "—" else user_val
+        cat_val = str(item.get("catatan", ""))
+        self.form_catatan = "" if cat_val == "—" else cat_val
+
+        attrs: dict[str, Any] = item.get("attributes") or {}
+        str_attrs: dict[str, str] = {}
+        for k, v in attrs.items():
+            if k == "konektivitas" and isinstance(v, list):
+                self.form_konektivitas = [str(x) for x in v]
+            else:
+                str_attrs[k] = "" if str(v) == "—" else str(v)
+        self.form_attributes = str_attrs
+        self._check_sn_warning()
         self.form_modal_open = True
 
     @rx.event
     def open_edit_modal(self, row_id: str) -> None:
-        """Buka modal form dalam mode edit aset."""
         target_id = row_id or self.active_asset_id
-        target_item = next((it for it in self.items if it["id"] == target_id), None)
-        if not target_item and self.active_asset.get("id") == target_id:
-            target_item = self.active_asset
-        if not target_item:
-            return
-
-        self.form_mode = "edit"
-        self.form_editing_id = target_id
-        self.form_nama_aset = str(target_item.get("nama_aset", ""))
-        self.form_kategori = str(target_item.get("kategori", self.master_kategori_options[0]))
-        self.form_sn_pid = str(target_item.get("sn_pid_raw", ""))
-        self.form_tgl_masuk = str(target_item.get("tanggal_masuk_iso", ""))
-        self.form_tgl_keluar = str(target_item.get("tanggal_keluar_iso", ""))
-        self.form_kepemilikan = str(
-            target_item.get("kepemilikan", self.master_kepemilikan_options[0])
-        )
-        self.form_lokasi = str(target_item.get("lokasi", self.master_lokasi_options[0]))
-        self.form_kondisi = str(target_item.get("kondisi", self.master_kondisi_options[0]))
-        self.form_status = str(target_item.get("status", self.master_status_options[0]))
-        self.form_digunakan_oleh = (
-            str(target_item.get("digunakan_oleh_raw", ""))
-            if self.form_status == "Digunakan"
-            else ""
-        )
-        self.form_catatan = str(target_item.get("catatan_raw", ""))
-        self.form_duplicate_count = "1"
-        self.form_error = ""
-        self.form_modal_open = True
+        for item in self.items:
+            if item.get("id_aset") == target_id:
+                self._populate_form_from_item(item, mode="edit")
+                return
 
     @rx.event
     def open_duplicate_modal(self, row_id: str) -> None:
-        """Salin data baris terpilih ke mode Tambah dengan default Duplikat × 2."""
-        self.open_edit_modal(row_id)
-        self.form_mode = "add"
-        self.form_editing_id = ""
-        self.form_duplicate_count = "2"
-        self.form_modal_open = True
+        target_id = row_id or self.active_asset_id
+        for item in self.items:
+            if item.get("id_aset") == target_id:
+                self._populate_form_from_item(item, mode="add")
+                return
+
+    @rx.event
+    def edit_active_asset(self) -> None:
+        """Buka modal edit untuk aset aktif di detail drawer."""
+        self.open_edit_modal(self.active_asset_id)
+
+    @rx.event
+    def duplicate_active_asset(self) -> None:
+        """Buka modal duplikat untuk aset aktif di detail drawer."""
+        self.open_duplicate_modal(self.active_asset_id)
 
     @rx.event
     def close_form_modal(self) -> None:
         self.form_modal_open = False
         self.form_error = ""
+        self.form_sn_warning = ""
 
-    def _validate_form(self) -> bool:
-        """Validasi aturan bisnis form aset."""
-        if not self.form_nama_aset.strip():
-            self.form_error = "Nama Aset wajib diisi."
-            return False
-
-        if self.form_status == "Digunakan" and not self.form_digunakan_oleh.strip():
-            self.form_error = "Field 'Digunakan Oleh' wajib diisi ketika Status adalah Digunakan."
-            return False
-
-        masuk = self.form_tgl_masuk.strip()
-        keluar = self.form_tgl_keluar.strip()
-        if masuk and keluar and keluar < masuk:
-            self.form_error = (
-                "Tanggal Keluar Gudang tidak boleh sebelum Tanggal Masuk Gudang."
-            )
-            return False
-
+    @rx.event
+    def set_form_kategori(self, val: str) -> None:
+        self.form_kategori = val
         if self.form_mode == "add":
-            try:
-                qty = int(self.form_duplicate_count)
-                if qty < 1 or qty > 50:
-                    self.form_error = "Jumlah Duplikat × N harus antara 1 sampai 50 unit."
-                    return False
-            except ValueError:
-                self.form_error = "Jumlah Duplikat × N harus berupa angka bulat."
-                return False
+            self.form_id_aset = api_client.peek_next_id_sync(val)
+        self._init_default_attributes(val)
 
+    @rx.event
+    def set_form_nama_aset(self, val: str) -> None:
+        self.form_nama_aset = val
+
+    def _check_sn_warning(self) -> None:
+        exclude = self.form_id_aset if self.form_mode == "edit" else ""
+        dup_id = api_client.check_sn_duplicate_sync(self.form_sn_pid, exclude_id=exclude)
+        if dup_id:
+            self.form_sn_warning = f"SN/PID ini sudah dipakai oleh {dup_id}"
+        else:
+            self.form_sn_warning = ""
+
+    @rx.event
+    def set_form_sn_pid(self, val: str) -> None:
+        self.form_sn_pid = val
+        self._check_sn_warning()
+
+    @rx.event
+    def set_form_tanggal_masuk(self, val: str) -> None:
+        self.form_tanggal_masuk = val
+
+    @rx.event
+    def set_form_tanggal_keluar(self, val: str) -> None:
+        self.form_tanggal_keluar = val
+
+    @rx.event
+    def set_form_kepemilikan(self, val: str) -> None:
+        self.form_kepemilikan = val
+
+    @rx.event
+    def set_form_lokasi(self, val: str) -> None:
+        self.form_lokasi = val
+
+    @rx.event
+    def set_form_kondisi(self, val: str) -> None:
+        self.form_kondisi = val
+
+    @rx.event
+    def set_form_status(self, val: str) -> None:
+        self.form_status = val
+        if val == "Tidak Digunakan":
+            self.form_digunakan_oleh = ""
+
+    @rx.event
+    def set_form_digunakan_oleh(self, val: str) -> None:
+        self.form_digunakan_oleh = val
+
+    @rx.event
+    def set_form_catatan(self, val: str) -> None:
+        self.form_catatan = val
+
+    @rx.event
+    def set_form_duplicate_count(self, val: str) -> None:
+        self.form_duplicate_count = val
+
+    @rx.event
+    def set_form_attr(self, key: str, val: str) -> None:
+        updated = dict(self.form_attributes)
+        updated[key] = val
+        self.form_attributes = updated
+
+    @rx.event
+    def toggle_form_konektivitas(self, port: str, _checked: Any = None) -> None:
+        if port in self.form_konektivitas:
+            self.form_konektivitas = [p for p in self.form_konektivitas if p != port]
+        else:
+            self.form_konektivitas = [*self.form_konektivitas, port]
+
+    def _validate_and_build_payload(self) -> dict[str, Any] | None:
+        """Validasi field inti + field dinamis kategori sesuai aturan bisnis."""
         self.form_error = ""
-        return True
+        kat = self.form_kategori
 
-    def _build_payload(self) -> dict[str, Any]:
+        if kat != "Monitor" and not self.form_nama_aset.strip():
+            self.form_error = "Nama Aset / Hostname wajib diisi."
+            return None
+
+        if self.form_status == "Digunakan" and kat != "Monitor":
+            if not self.form_digunakan_oleh.strip():
+                self.form_error = "Field 'Digunakan Oleh' wajib diisi bila status Digunakan."
+                return None
+
+        if self.form_tanggal_masuk and self.form_tanggal_keluar:
+            if self.form_tanggal_keluar < self.form_tanggal_masuk:
+                self.form_error = (
+                    "Tanggal Keluar Gudang tidak boleh sebelum Tanggal Masuk Gudang."
+                )
+                return None
+
+        cfg = get_config_for_category_name(kat)
+        attrs: dict[str, Any] = dict(self.form_attributes)
+        if cfg:
+            for f_def in cfg["fields"]:
+                k = f_def["key"]
+                if f_def["type"] == "multiselect":
+                    if f_def["required"] and not self.form_konektivitas:
+                        self.form_error = f"Pilih minimal satu {f_def['label']}."
+                        return None
+                    attrs[k] = list(self.form_konektivitas)
+                elif f_def["required"] and not str(attrs.get(k, "")).strip():
+                    self.form_error = f"Field '{f_def['label']}' wajib diisi."
+                    return None
+
+        if kat == "Monitor":
+            merk = str(attrs.get("merk", "")).strip()
+            res = str(attrs.get("resolusi_layar", "")).strip()
+            if merk and merk not in self.custom_merk_options:
+                self.custom_merk_options = [*self.custom_merk_options, merk]
+            if res and res not in self.custom_resolusi_options:
+                self.custom_resolusi_options = [*self.custom_resolusi_options, res]
+
+        nama_final = self.form_nama_aset.strip()
+        if kat == "Monitor" and not nama_final:
+            merk = str(attrs.get("merk", "")).strip()
+            tipe = str(attrs.get("tipe_model", "")).strip()
+            ukuran = format_ukuran_layar(attrs.get("ukuran_layar", ""))
+            nama_final = f"{merk} {tipe} {ukuran}".strip()
+
         return {
-            "nama_aset": self.form_nama_aset.strip(),
-            "kategori": self.form_kategori,
+            "nama_aset": nama_final,
+            "kategori": kat,
             "sn_pid": self.form_sn_pid.strip(),
-            "tanggal_masuk_gudang": self.form_tgl_masuk.strip(),
-            "tanggal_keluar_gudang": self.form_tgl_keluar.strip(),
+            "tanggal_masuk_gudang": self.form_tanggal_masuk.strip(),
+            "tanggal_keluar_gudang": self.form_tanggal_keluar.strip(),
             "kepemilikan": self.form_kepemilikan,
             "lokasi": self.form_lokasi,
             "kondisi": self.form_kondisi,
             "status": self.form_status,
             "digunakan_oleh": (
-                self.form_digunakan_oleh.strip() if self.form_status == "Digunakan" else ""
+                "" if self.form_status == "Tidak Digunakan" else self.form_digunakan_oleh.strip()
             ),
             "catatan": self.form_catatan.strip(),
-            "merk": self.form_merk.strip(),
-            "tipe_model": self.form_tipe_model.strip(),
-            "ukuran_layar": self.form_ukuran_layar.strip(),
-            "resolusi_layar": self.form_resolusi_layar.strip(),
-            "konektivitas": list(self.form_konektivitas),
-            "jenis_pc": self.form_jenis_pc,
-            "os": self.form_os.strip(),
-            "ram": self.form_ram.strip(),
-            "vga": self.form_vga.strip(),
-            "cpu": self.form_cpu.strip(),
-            "mainboard": self.form_mainboard.strip(),
-            "hdd_ssd": self.form_hdd_ssd.strip(),
-            "monitor": self.form_pc_monitor.strip(),
-            "keyboard": self.form_keyboard.strip(),
-            "mouse": self.form_mouse.strip(),
+            "attributes": attrs,
         }
 
     @rx.event
-    async def save_asset_form(self) -> AsyncGenerator[Any, None]:
-        """Simpan aset (Tambah / Duplikat × N / Edit) lalu tutup modal."""
-        if not self._validate_form():
+    async def save_asset_form(self) -> None:
+        payload = self._validate_and_build_payload()
+        if payload is None:
             return
 
-        payload = self._build_payload()
-        if self.form_mode == "edit" and self.form_editing_id:
-            updated = await api_client.update_asset(self.form_editing_id, payload)
-            self.form_modal_open = False
-            await self.load_assets()
-            if updated and self.active_asset_id == self.form_editing_id:
-                self.active_asset = updated
-            yield rx.toast.success(
-                f"Perubahan pada {self.form_editing_id} berhasil disimpan.",
-                position="top-right",
+        if self.form_mode == "edit":
+            await api_client.update_asset(asset_id=self.form_id_aset, payload=payload)
+        else:
+            dup_count = (
+                int(self.form_duplicate_count)
+                if self.form_duplicate_count.strip().isdigit()
+                else 1
             )
-            return
+            await api_client.create_assets(payload=payload, duplicate_count=max(1, dup_count))
 
-        qty = int(self.form_duplicate_count)
-        created = await api_client.create_assets(payload, duplicate_count=qty)
         self.form_modal_open = False
-        self.page = 1
-        await self.load_assets()
-        yield rx.toast.success(
-            f"{len(created)} unit '{payload['nama_aset']}' berhasil ditambahkan.",
-            position="top-right",
-        )
+        await self.fetch_assets()
 
     @rx.event
-    async def save_and_add_another(self) -> AsyncGenerator[Any, None]:
-        """Simpan aset baru lalu bersihkan Nama Aset & SN/PID untuk input unit berikutnya."""
-        if not self._validate_form():
+    async def save_and_add_another(self) -> None:
+        payload = self._validate_and_build_payload()
+        if payload is None:
             return
-
-        payload = self._build_payload()
-        qty = int(self.form_duplicate_count)
-        created = await api_client.create_assets(payload, duplicate_count=qty)
-        self.page = 1
-        await self.load_assets()
-
-        self.form_nama_aset = ""
-        self.form_sn_pid = ""
-        self.form_catatan = ""
-        self.form_duplicate_count = "1"
-        self.form_error = ""
-        yield rx.toast.success(
-            f"{len(created)} unit disimpan. Silakan input unit berikutnya.",
-            position="top-right",
+        dup_count = (
+            int(self.form_duplicate_count)
+            if self.form_duplicate_count.strip().isdigit()
+            else 1
         )
+        await api_client.create_assets(payload=payload, duplicate_count=max(1, dup_count))
+        await self.fetch_assets()
+        self.open_add_modal()
+
+    # --- EVENT HANDLERS: HAPUS ASET ---
 
     @rx.event
     def confirm_delete_asset(self, row_id: str) -> None:
-        target = row_id or self.active_asset_id
-        if target:
-            item = next((it for it in self.items if it["id"] == target), self.active_asset)
-            self.asset_to_delete = target
-            self.asset_to_delete_name = str(item.get("nama_aset", target))
-            self.delete_dialog_open = True
+        target_id = row_id or self.active_asset_id
+        for item in self.items:
+            if item.get("id_aset") == target_id:
+                self.asset_to_delete = target_id
+                self.asset_to_delete_label = str(item.get("nama_aset", target_id))
+                self.delete_dialog_open = True
+                return
+
+    @rx.event
+    def delete_active_asset(self) -> None:
+        """Buka dialog konfirmasi hapus untuk aset aktif di detail drawer."""
+        self.confirm_delete_asset(self.active_asset_id)
 
     @rx.event
     def cancel_delete(self) -> None:
         self.delete_dialog_open = False
         self.asset_to_delete = ""
-        self.asset_to_delete_name = ""
+        self.asset_to_delete_label = ""
 
     @rx.event
-    async def execute_delete_asset(self) -> AsyncGenerator[Any, None]:
-        target = self.asset_to_delete
-        target_name = self.asset_to_delete_name
-        self.delete_dialog_open = False
-        self.asset_to_delete = ""
-        self.asset_to_delete_name = ""
-        if target:
-            await api_client.delete_asset(target)
-            if self.active_asset_id == target:
+    async def execute_delete_asset(self) -> None:
+        if self.asset_to_delete:
+            await api_client.delete_asset(asset_id=self.asset_to_delete)
+            if self.active_asset_id == self.asset_to_delete:
                 self.drawer_open = False
                 self.active_asset_id = ""
-            await self.load_assets()
-            yield rx.toast.success(
-                f"Unit '{target_name}' ({target}) telah dihapus.",
-                position="top-right",
-            )
-
-    @rx.event
-    def trigger_coming_soon(self, action_name: str) -> Any:
-        return rx.toast.info(
-            f"{action_name} — Segera hadir.",
-            position="top-right",
-        )
+            self.selected_ids = [x for x in self.selected_ids if x != self.asset_to_delete]
+        self.cancel_delete()
+        await self.fetch_assets()
 
 
 __all__ = ["AssetState"]

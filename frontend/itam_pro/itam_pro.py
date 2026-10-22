@@ -4,19 +4,20 @@ Entry Point & Routing Utama ITAM Pro.
 import reflex as rx
 
 from itam_pro.pages.auth import login_page
-from itam_pro.pages.inventory import assets_inventory_page, monitor_list_page, pc_list_page
+from itam_pro.pages.inventory import assets_view_page
 from itam_pro.pages.overview import dashboard_page
 from itam_pro.states.asset_state import AssetState
 from itam_pro.states.auth_state import AuthState
 from itam_pro.states.dashboard_state import DashboardState
-from itam_pro.states.monitor_state import MonitorState
-from itam_pro.states.nav_state import NavState
-from itam_pro.states.pc_state import PCState
 from itam_pro.styles import BASE_STYLE, GOOGLE_FONTS_URL
 
 
 def root_redirect_page() -> rx.Component:
     """Komponen perantara untuk route '/' sebelum diarahkan oleh AuthState."""
+    return rx.box()
+
+
+def _redirect_page(target: str) -> rx.Component:
     return rx.box()
 
 
@@ -33,57 +34,41 @@ app.add_page(
     on_load=AuthState.redirect_from_root,
 )
 
-# Route halaman login
 app.add_page(
     login_page,
     route="/login",
     title="Masuk · ITAM Pro",
 )
 
-# Route halaman Dashboard
 app.add_page(
     dashboard_page,
     route="/dashboard",
     title="Dashboard · ITAM Pro",
-    on_load=[
-        AuthState.check_auth,
-        NavState.set_page_context("Overview", "Dashboard"),
-        DashboardState.load_dashboard,
-    ],
+    on_load=[AuthState.check_auth, DashboardState.load_dashboard],
 )
 
-# Route halaman Assets Inventory
+# Route Tunggal Generik Inventaris: Semua Aset & Kategori Dinamis
 app.add_page(
-    assets_inventory_page,
+    assets_view_page,
     route="/assets",
-    title="Assets Inventory · ITAM Pro",
-    on_load=[
-        AuthState.check_auth,
-        NavState.set_page_context("Inventory", "Assets Inventory"),
-        AssetState.load_assets,
-    ],
+    title="Semua Aset · ITAM Pro",
+    on_load=[AuthState.check_auth, AssetState.load_view_data],
+)
+app.add_page(
+    assets_view_page,
+    route="/assets/c/[slug]",
+    title="Inventaris Kategori · ITAM Pro",
+    on_load=[AuthState.check_auth, AssetState.load_view_data],
 )
 
-# Route halaman Daftar PC
+# Redirect kompatibilitas untuk route lama
 app.add_page(
-    pc_list_page,
+    lambda: _redirect_page("/assets/c/pc"),
     route="/pc",
-    title="Daftar PC · ITAM Pro",
-    on_load=[
-        AuthState.check_auth,
-        NavState.set_page_context("Inventory", "Daftar PC"),
-        PCState.load_pcs,
-    ],
+    on_load=rx.redirect("/assets/c/pc"),
 )
-
-# Route halaman Rekap Monitor
 app.add_page(
-    monitor_list_page,
+    lambda: _redirect_page("/assets/c/monitor"),
     route="/monitor",
-    title="Rekap Monitor · ITAM Pro",
-    on_load=[
-        AuthState.check_auth,
-        NavState.set_page_context("Inventory", "Rekap Monitor"),
-        MonitorState.load_monitors,
-    ],
+    on_load=rx.redirect("/assets/c/monitor"),
 )
