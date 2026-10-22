@@ -392,7 +392,9 @@ def pc_form_modal() -> rx.Component:
                             rx.el.textarea(
                                 value=PCState.form_catatan,
                                 on_change=PCState.set_form_catatan,
-                                placeholder="Catatan tambahan lokasi meja, KVM switch, jadwal sync, dll.",
+                                placeholder=(
+                                    "Catatan tambahan lokasi meja, KVM switch, jadwal sync, dll."
+                                ),
                                 rows=2,
                                 style=rx.Style(
                                     {

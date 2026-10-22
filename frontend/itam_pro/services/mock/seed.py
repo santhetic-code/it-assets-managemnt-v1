@@ -1493,7 +1493,10 @@ def _format_monitor_record(asset: dict[str, Any], spec: dict[str, Any]) -> dict[
                 {
                     "event": "Registrasi Unit Monitor",
                     "date": "14 Okt 2026",
-                    "note": f"Monitor {merk} {tipe_model} ({ukuran_display}) tercatat dengan status {status}.",
+                    "note": (
+                        f"Monitor {merk} {tipe_model} ({ukuran_display}) "
+                        f"tercatat dengan status {status}."
+                    ),
                 }
             ],
         ),
@@ -1639,7 +1642,10 @@ def _format_asset_record(raw: dict[str, Any]) -> dict[str, Any]:
                 {
                     "event": "Pencatatan Inventaris",
                     "date": masuk_display if masuk_display != "—" else "10 Jan 2026",
-                    "note": f"Unit {raw['nama_aset']} ({raw['kepemilikan']}) tercatat di {raw['lokasi']}.",
+                    "note": (
+                        f"Unit {raw['nama_aset']} ({raw['kepemilikan']}) "
+                        f"tercatat di {raw['lokasi']}."
+                    ),
                 }
             ],
         ),
@@ -1675,7 +1681,10 @@ def query_joined_monitors(
     count_backup = 0
 
     for spec in mock_monitor_specs_db:
-        asset = next((a for a in mock_assets_db if a.get("id_aset") == spec.get("asset_id")), None)
+        asset = next(
+            (a for a in mock_assets_db if a.get("id_aset") == spec.get("asset_id")),
+            None,
+        )
         if not asset:
             continue
 
@@ -1710,8 +1719,9 @@ def query_joined_monitors(
         if search:
             haystack = (
                 f"{asset.get('id_aset', '')} {spec.get('merk', '')} {spec.get('tipe_model', '')} "
-                f"{spec.get('ukuran_layar', '')} {spec.get('resolusi_layar', '')} {asset.get('lokasi', '')} "
-                f"{asset.get('kepemilikan', '')} {asset.get('digunakan_oleh', '')}"
+                f"{spec.get('ukuran_layar', '')} {spec.get('resolusi_layar', '')} "
+                f"{asset.get('lokasi', '')} {asset.get('kepemilikan', '')} "
+                f"{asset.get('digunakan_oleh', '')}"
             ).lower()
             if search not in haystack:
                 continue
@@ -1752,12 +1762,20 @@ def query_joined_monitors(
 def create_joined_monitor(payload: dict[str, Any]) -> dict[str, Any]:
     """Simpan data menjadi 1 record assets dan 1 record monitor_specs."""
     id_aset = payload.get("id_aset") or get_next_monitor_id()
-    ukuran_clean = str(payload.get("ukuran_layar", "24")).replace('"', "").replace("inci", "").strip()
+    ukuran_clean = (
+        str(payload.get("ukuran_layar", "24"))
+        .replace('"', "")
+        .replace("inci", "")
+        .strip()
+    )
 
     asset_data = {
         "id_aset": id_aset,
         "id": id_aset,
-        "nama_aset": f"{payload.get('merk', 'Monitor')} {payload.get('tipe_model', '')} {ukuran_clean} inci",
+        "nama_aset": (
+            f"{payload.get('merk', 'Monitor')} {payload.get('tipe_model', '')} "
+            f"{ukuran_clean} inci"
+        ),
         "kategori": "Monitor",
         "sn_pid": payload.get("sn_pid", "-"),
         "tanggal_masuk_gudang": payload.get("tanggal_masuk_gudang", ""),
@@ -1787,17 +1805,32 @@ def create_joined_monitor(payload: dict[str, Any]) -> dict[str, Any]:
 def update_joined_monitor(original_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     """Perbarui 1 record assets dan 1 record monitor_specs."""
     norm_orig = original_id.strip().upper()
-    asset = next((a for a in mock_assets_db if a.get("id_aset", "").upper() == norm_orig), None)
-    spec = next((s for s in mock_monitor_specs_db if s.get("asset_id", "").upper() == norm_orig), None)
+    asset = next(
+        (a for a in mock_assets_db if a.get("id_aset", "").upper() == norm_orig),
+        None,
+    )
+    spec = next(
+        (s for s in mock_monitor_specs_db if s.get("asset_id", "").upper() == norm_orig),
+        None,
+    )
     if not asset or not spec:
         return None
 
     new_id = payload.get("id_aset", original_id).strip().upper()
-    ukuran_clean = str(payload.get("ukuran_layar", spec.get("ukuran_layar", "24"))).replace('"', "").replace("inci", "").strip()
+    ukuran_clean = (
+        str(payload.get("ukuran_layar", spec.get("ukuran_layar", "24")))
+        .replace('"', "")
+        .replace("inci", "")
+        .strip()
+    )
 
     asset["id_aset"] = new_id
     asset["id"] = new_id
-    asset["nama_aset"] = f"{payload.get('merk', spec.get('merk'))} {payload.get('tipe_model', spec.get('tipe_model'))} {ukuran_clean} inci"
+    asset["nama_aset"] = (
+        f"{payload.get('merk', spec.get('merk'))} "
+        f"{payload.get('tipe_model', spec.get('tipe_model'))} "
+        f"{ukuran_clean} inci"
+    )
     asset["sn_pid"] = payload.get("sn_pid", asset.get("sn_pid", "-"))
     asset["kepemilikan"] = payload.get("kepemilikan", asset.get("kepemilikan", "XML"))
     asset["lokasi"] = payload.get("lokasi", asset.get("lokasi", "Kantor Blok 14"))
@@ -1822,7 +1855,9 @@ def delete_joined_monitor(id_aset: str) -> bool:
     norm_id = id_aset.strip().upper()
     before = len(mock_assets_db)
     mock_assets_db = [a for a in mock_assets_db if a.get("id_aset", "").upper() != norm_id]
-    mock_monitor_specs_db = [s for s in mock_monitor_specs_db if s.get("asset_id", "").upper() != norm_id]
+    mock_monitor_specs_db = [
+        s for s in mock_monitor_specs_db if s.get("asset_id", "").upper() != norm_id
+    ]
     return len(mock_assets_db) < before
 
 
@@ -1845,7 +1880,10 @@ def query_joined_pcs(
     results: list[dict[str, Any]] = []
 
     for spec in mock_pc_specs_db:
-        asset = next((a for a in mock_assets_db if a.get("id_aset") == spec.get("asset_id")), None)
+        asset = next(
+            (a for a in mock_assets_db if a.get("id_aset") == spec.get("asset_id")),
+            None,
+        )
         if not asset:
             continue
 
@@ -1862,8 +1900,9 @@ def query_joined_pcs(
 
         if search:
             haystack = (
-                f"{asset.get('nama_aset', '')} {asset.get('id_aset', '')} {asset.get('digunakan_oleh', '')} "
-                f"{spec.get('cpu', '')} {spec.get('mainboard', '')} {spec.get('os', '')}"
+                f"{asset.get('nama_aset', '')} {asset.get('id_aset', '')} "
+                f"{asset.get('digunakan_oleh', '')} {spec.get('cpu', '')} "
+                f"{spec.get('mainboard', '')} {spec.get('os', '')}"
             ).lower()
             if search not in haystack:
                 continue
@@ -1996,8 +2035,9 @@ def query_mock_assets(
             continue
         if search:
             haystack = (
-                f"{item.get('id_aset', '')} {item.get('nama_aset', '')} {item.get('sn_pid', '')} "
-                f"{item.get('digunakan_oleh', '')} {item.get('lokasi', '')} {item.get('kategori', '')}"
+                f"{item.get('id_aset', '')} {item.get('nama_aset', '')} "
+                f"{item.get('sn_pid', '')} {item.get('digunakan_oleh', '')} "
+                f"{item.get('lokasi', '')} {item.get('kategori', '')}"
             ).lower()
             if search not in haystack:
                 continue
@@ -2060,7 +2100,9 @@ def create_mock_assets(payload: dict[str, Any], count: int = 1) -> list[dict[str
         elif kategori in ("PC", "Server"):
             spec_data = {
                 "asset_id": new_id,
-                "jenis": payload.get("jenis_pc", "Server" if kategori == "Server" else "Operasional"),
+                "jenis": payload.get(
+                    "jenis_pc", "Server" if kategori == "Server" else "Operasional"
+                ),
                 "os": payload.get("os", payload.get("operasi_system", "Windows 11 Pro")),
                 "ram": payload.get("ram", "16 GB DDR4"),
                 "vga": payload.get("vga", "Integrated"),
@@ -2086,13 +2128,19 @@ def update_mock_asset(asset_id: str, payload: dict[str, Any]) -> dict[str, Any] 
             existing["nama_aset"] = str(payload.get("nama_aset", existing["nama_aset"])).strip()
             existing["kategori"] = str(payload.get("kategori", existing["kategori"]))
             existing["sn_pid"] = str(payload.get("sn_pid", existing.get("sn_pid", "-"))).strip()
-            existing["tanggal_masuk_gudang"] = str(payload.get("tanggal_masuk_gudang", existing.get("tanggal_masuk_gudang", ""))).strip()
-            existing["tanggal_keluar_gudang"] = str(payload.get("tanggal_keluar_gudang", existing.get("tanggal_keluar_gudang", ""))).strip()
+            existing["tanggal_masuk_gudang"] = str(
+                payload.get("tanggal_masuk_gudang", existing.get("tanggal_masuk_gudang", ""))
+            ).strip()
+            existing["tanggal_keluar_gudang"] = str(
+                payload.get("tanggal_keluar_gudang", existing.get("tanggal_keluar_gudang", ""))
+            ).strip()
             existing["kepemilikan"] = str(payload.get("kepemilikan", existing["kepemilikan"]))
             existing["lokasi"] = str(payload.get("lokasi", existing["lokasi"]))
             existing["kondisi"] = str(payload.get("kondisi", existing["kondisi"]))
             existing["status"] = str(payload.get("status", existing["status"]))
-            existing["digunakan_oleh"] = str(payload.get("digunakan_oleh", existing.get("digunakan_oleh", ""))).strip()
+            existing["digunakan_oleh"] = str(
+                payload.get("digunakan_oleh", existing.get("digunakan_oleh", ""))
+            ).strip()
             existing["catatan"] = str(payload.get("catatan", existing.get("catatan", ""))).strip()
 
             # Perbarui spec monitor jika ada
@@ -2132,7 +2180,9 @@ def delete_mock_asset(asset_id: str) -> bool:
     norm_id = asset_id.strip().upper()
     before = len(mock_assets_db)
     mock_assets_db = [item for item in mock_assets_db if item.get("id_aset", "").upper() != norm_id]
-    mock_monitor_specs_db = [s for s in mock_monitor_specs_db if s.get("asset_id", "").upper() != norm_id]
+    mock_monitor_specs_db = [
+        s for s in mock_monitor_specs_db if s.get("asset_id", "").upper() != norm_id
+    ]
     mock_pc_specs_db = [p for p in mock_pc_specs_db if p.get("asset_id", "").upper() != norm_id]
     return len(mock_assets_db) < before
 
