@@ -15,6 +15,9 @@ RenderType = Literal[
     "text",
     "bold",
     "bold_blue",
+    "ip_address",
+    "name_with_sub",
+    "chip",
     "badge",
     "condition_badge",
     "status_badge",
@@ -28,6 +31,7 @@ class ColumnDef(TypedDict, total=False):
     header: Required[Any]
     width: str
     render_type: RenderType
+    sub_key: str
     sticky_left: bool
     sortable: bool
     sort_key: str
@@ -40,6 +44,68 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
     key = col["key"]
     rtype = col.get("render_type", "text")
     is_sticky = col.get("sticky_left", False)
+
+    if rtype == "ip_address":
+        return rx.hstack(
+            rx.text(
+                row[key],
+                font_size=FontSize.SM,
+                font_weight=FontWeight.BOLD,
+                color=rx.cond(row["is_conflict"], Color.DANGER_FG, Color.ACCENT),
+                style=rx.Style(
+                    {
+                        "font_family": (
+                            "ui-monospace, SFMono-Regular, Menlo, "
+                            "Monaco, Consolas, monospace"
+                        ),
+                        "white_space": "nowrap",
+                    }
+                ),
+            ),
+            rx.cond(
+                row["is_conflict"],
+                asset_status_badge("Bentrok"),
+                rx.fragment(),
+            ),
+            spacing="2",
+            align="center",
+        )
+
+    if rtype == "name_with_sub":
+        sub_k = col.get("sub_key", "sub_label")
+        return rx.vstack(
+            rx.text(
+                row[key],
+                title=row[key],
+                font_size=FontSize.SM,
+                font_weight=FontWeight.BOLD,
+                color=Color.TEXT,
+                style=rx.Style(
+                    {
+                        "white_space": "nowrap",
+                        "overflow": "hidden",
+                        "text_overflow": "ellipsis",
+                        "line_height": "1.2",
+                    }
+                ),
+            ),
+            rx.text(
+                row[sub_k],
+                font_size=FontSize.XS,
+                font_weight=FontWeight.MEDIUM,
+                color=rx.cond(
+                    row[sub_k] == "Tanpa host",
+                    Color.WARNING_FG,
+                    Color.MUTED,
+                ),
+                style=rx.Style({"line_height": "1.15", "white_space": "nowrap"}),
+            ),
+            spacing="1",
+            align="start",
+        )
+
+    if rtype == "chip":
+        return connector_chip(row[key])
 
     if rtype == "bold_blue":
         return rx.text(
@@ -456,7 +522,12 @@ def reusable_data_table(
     def _render_row(row: dict[str, Any]) -> rx.Component:
         row_id = row[id_key]
         is_highlighted = selected_ids.contains(row_id) | (active_row_id == row_id)
-        row_bg = rx.cond(is_highlighted, Color.ROW_SELECTED, Color.SURFACE)
+        is_conflict = row["is_conflict"] == True  # noqa: E712
+        row_bg = rx.cond(
+            is_highlighted,
+            Color.ROW_SELECTED,
+            rx.cond(is_conflict, "#FEF2F2", Color.SURFACE),
+        )
 
         return rx.el.tr(
             rx.el.td(

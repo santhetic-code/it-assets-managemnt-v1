@@ -17,6 +17,7 @@ class Space:
 class Size:
     # Layout Dimensions
     SIDEBAR_WIDTH = "248px"
+    SIDEBAR_W = "248px"
     TOPBAR_HEIGHT = "68px"
     SEARCH_WIDTH = "340px"
     FILTER_SEARCH_W = "320px"   # Lebar kotak pencarian pada filter bar

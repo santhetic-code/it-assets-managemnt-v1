@@ -127,6 +127,7 @@ class AuthState(rx.State):
             position="top-right",
         )
 
+    @rx.event
     async def submit_login(self, form_data: dict[str, Any]):
         """Handler saat tombol Masuk pada form ditekan."""
         username_val = form_data.get("username") or self.username

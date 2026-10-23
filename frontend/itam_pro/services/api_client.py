@@ -11,6 +11,15 @@ from dotenv import load_dotenv
 
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
+from itam_pro.services.mock.ip_mock import (
+    create_mock_ip_entry,
+    delete_mock_ip_entry,
+    find_ip_duplicate_owner,
+    get_vms_on_host,
+    is_valid_ipv4,
+    query_mock_ip_entries,
+    update_mock_ip_entry,
+)
 from itam_pro.services.mock.seed import (
     create_mock_assets,
     delete_mock_asset,
@@ -192,6 +201,101 @@ class APIClient:
     def get_category_counts_sync(self) -> dict[str, int]:
         """Ambil jumlah unit per kategori untuk badge Sidebar."""
         return get_mock_category_counts()
+
+    async def get_ip_entries(
+        self,
+        grup: str,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Ambil daftar entri IP & Server (VM) dengan filter, sort numerik, & KPI."""
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return query_mock_ip_entries(
+                grup=grup,
+                filters=filters,
+                page=page,
+                page_size=page_size,
+            )
+
+        params: dict[str, Any] = {
+            "grup": grup,
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        response = await self.request(
+            method="GET",
+            endpoint="/api/v1/ip-entries",
+            token=token,
+            params=params,
+        )
+        return response  # type: ignore[return-value]
+
+    async def create_ip_entry(
+        self,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Tambah satu entri IP baru."""
+        if USE_MOCK:
+            await asyncio.sleep(0.1)
+            return create_mock_ip_entry(payload=payload)
+
+        response = await self.request(
+            method="POST",
+            endpoint="/api/v1/ip-entries",
+            token=token,
+            json_data=payload,
+        )
+        return response  # type: ignore[return-value]
+
+    async def update_ip_entry(
+        self,
+        entry_id: str,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Perbarui satu entri IP."""
+        if USE_MOCK:
+            await asyncio.sleep(0.1)
+            return update_mock_ip_entry(entry_id=entry_id, payload=payload)
+
+        response = await self.request(
+            method="PUT",
+            endpoint=f"/api/v1/ip-entries/{entry_id}",
+            token=token,
+            json_data=payload,
+        )
+        return response  # type: ignore[return-value]
+
+    async def delete_ip_entry(
+        self,
+        entry_id: str,
+        token: str | None = None,
+    ) -> bool:
+        """Hapus satu entri IP."""
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return delete_mock_ip_entry(entry_id=entry_id)
+
+        await self.request(
+            method="DELETE",
+            endpoint=f"/api/v1/ip-entries/{entry_id}",
+            token=token,
+        )
+        return True
+
+    def check_ip_duplicate_sync(self, ip_address: str, exclude_id: str = "") -> str | None:
+        return find_ip_duplicate_owner(ip_address=ip_address, exclude_id=exclude_id)
+
+    def validate_ipv4_sync(self, ip_address: str) -> bool:
+        return is_valid_ipv4(ip_str=ip_address)
+
+    def get_vms_on_host_sync(self, host_asset_id: str) -> list[dict[str, str]]:
+        return get_vms_on_host(host_asset_id=host_asset_id)
 
 
 api_client = APIClient()

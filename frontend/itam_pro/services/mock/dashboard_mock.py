@@ -3,9 +3,60 @@ Data Mock Ringkasan Dashboard ITAM Pro (USE_MOCK=true).
 """
 from typing import Any
 
+from itam_pro.services.mock.ip_mock import get_ip_conflict_summary
+
+
+def build_ip_conflict_alert() -> dict[str, str] | None:
+    """Bangun item peringatan Konflik IP secara dinamis dari tabel ip_entries."""
+    summary = get_ip_conflict_summary()
+    if summary["conflict_entry_count"] == 0:
+        return None
+    first_detail = (
+        summary["conflict_details"][0]
+        if summary["conflict_details"]
+        else f"{summary['conflict_entry_count']} entri bentrok"
+    )
+    return {
+        "title": f"Konflik IP {first_detail}",
+        "subtitle": f"{summary['conflict_entry_count']} entri menggunakan alamat IPv4 yang sama",
+        "description": f"{summary['conflict_entry_count']} entri menggunakan alamat IPv4 yang sama",
+        "badge": "Konflik IP",
+        "badge_label": "Konflik IP",
+        "tone": "danger",
+        "badge_variant": "danger",
+    }
+
 
 def get_mock_dashboard_summary() -> dict[str, Any]:
     """Kembalikan data mentah ringkasan dashboard."""
+    attention_items: list[dict[str, str]] = [
+        {
+            "title": "UPS Jaringan",
+            "description": "Maintenance lewat 5 hari",
+            "badge_label": "Terlambat",
+            "badge_variant": "danger",
+        },
+    ]
+    conflict_alert = build_ip_conflict_alert()
+    if conflict_alert is not None:
+        attention_items.append(conflict_alert)
+    attention_items.extend(
+        [
+            {
+                "title": "Server Rack-02",
+                "description": "Garansi habis 12 hari lagi",
+                "badge_label": "Garansi",
+                "badge_variant": "warning",
+            },
+            {
+                "title": "UPS Server 1",
+                "description": "Baterai berumur > 3 tahun",
+                "badge_label": "Baterai",
+                "badge_variant": "warning",
+            },
+        ]
+    )
+
     return {
         "kpis": {
             "total_assets": 482,
@@ -39,32 +90,7 @@ def get_mock_dashboard_summary() -> dict[str, Any]:
             {"name": "UPS Jaringan", "capacity_kva": 2.0, "load_percent": 91},
             {"name": "UPS Office", "capacity_kva": 1.5, "load_percent": 43},
         ],
-        "attention_items": [
-            {
-                "title": "UPS Jaringan",
-                "description": "Maintenance lewat 5 hari",
-                "badge_label": "Terlambat",
-                "badge_variant": "danger",
-            },
-            {
-                "title": "VM-App-03",
-                "description": "IP 10.10.1.24 bentrok",
-                "badge_label": "Konflik IP",
-                "badge_variant": "danger",
-            },
-            {
-                "title": "Server Rack-02",
-                "description": "Garansi habis 12 hari lagi",
-                "badge_label": "Garansi",
-                "badge_variant": "warning",
-            },
-            {
-                "title": "UPS Server 1",
-                "description": "Baterai berumur > 3 tahun",
-                "badge_label": "Baterai",
-                "badge_variant": "warning",
-            },
-        ],
+        "attention_items": attention_items,
         "recent_activities": [
             {
                 "actor_and_action": "Admin IT menambah aset ",

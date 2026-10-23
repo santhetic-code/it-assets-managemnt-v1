@@ -504,7 +504,7 @@ def _right_form_panel() -> rx.Component:
                     style=rx.Style({"gap": "20px"}),
                     width="100%",
                 ),
-                on_submit=AuthState.submit_login,  # type: ignore[arg-type]
+                on_submit=AuthState.submit_login,
                 reset_on_submit=False,
             ),
             width="100%",
