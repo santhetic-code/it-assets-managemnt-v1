@@ -48,6 +48,23 @@ def format_ukuran_layar(val: Any) -> str:
     if not s or s == "—":
         return "—"
     return f'{s}"'
+SEED_IDS: dict[str, str] = {
+    "PC_IT_TIO": "PC-0001",
+    "PC_FIN_01": "PC-0002",
+    "PC_CS_TRX": "PC-0003",
+    "PC_BACKUP_01": "PC-0004",
+    "SRV_PROXMOX_01": "SRV-0001",
+    "SRV_ZABBIX_02": "SRV-0002",
+    "MON_LG_01": "MON-0001",
+    "MON_DELL_02": "MON-0002",
+    "MON_SAM_03": "MON-0003",
+    "MON_AOC_04": "MON-0004",
+    "MON_HP_05": "MON-0005",
+    "UPS_APC_01": "UPS-0001",
+    "UPS_ICA_02": "UPS-0002",
+    "RTR_CORE_01": "RTR-0001",
+    "SSD_SAM_01": "SSD-0001",
+}
 
 
 MOCK_ASSETS: list[dict[str, Any]] = [
@@ -695,6 +712,7 @@ def delete_mock_asset(asset_id: str) -> bool:
 
 __all__ = [
     "MOCK_ASSETS",
+    "SEED_IDS",
     "allocate_next_asset_id",
     "create_mock_assets",
     "delete_mock_asset",

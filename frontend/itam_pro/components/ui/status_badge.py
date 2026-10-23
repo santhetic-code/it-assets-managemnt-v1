@@ -1,6 +1,7 @@
 """
 Komponen Status Badge & Condition Badge Semantik ITAM Pro.
-Mendukung status Aset (Digunakan, Backup, Tidak Digunakan) serta status IP (Aktif, Nonaktif, Bentrok).
+Mendukung status Aset (Digunakan, Backup, Tidak Digunakan)
+serta status IP (Aktif, Nonaktif, Bentrok).
 """
 from typing import Any
 

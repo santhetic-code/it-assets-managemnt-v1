@@ -6,7 +6,7 @@ dan 2 VM tanpa host, serta kalkulasi dinamis untuk peringatan Dashboard.
 from copy import deepcopy
 from typing import Any
 
-from itam_pro.services.mock.seed import MOCK_ASSETS
+from itam_pro.services.mock.seed import MOCK_ASSETS, SEED_IDS
 
 
 def is_valid_ipv4(ip_str: str) -> bool:
@@ -50,7 +50,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "ip_address": "192.168.10.1",
         "nama": "GW-CORE-BLOK14",
         "jenis": "Fisik",
-        "asset_id": "SRV-0001",
+        "asset_id": SEED_IDS["RTR_CORE_01"],  # RTR-0001 (Kategori Router, bukan Server)
         "host_asset_id": "",
         "grup": "Operasional",
         "fungsi": "Gateway & Firewall Utama",
@@ -63,7 +63,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "ip_address": "192.168.10.2",
         "nama": "SRV-PROXMOX-01",
         "jenis": "Fisik",
-        "asset_id": "SRV-0001",
+        "asset_id": SEED_IDS["SRV_PROXMOX_01"],  # SRV-0001
         "host_asset_id": "",
         "grup": "Operasional",
         "fungsi": "Hypervisor Cluster Node 1",
@@ -76,7 +76,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "ip_address": "192.168.10.3",
         "nama": "SRV-ZABBIX-MON",
         "jenis": "Fisik",
-        "asset_id": "SRV-0002",
+        "asset_id": SEED_IDS["SRV_ZABBIX_02"],  # SRV-0002
         "host_asset_id": "",
         "grup": "Operasional",
         "fungsi": "Monitoring Infrastruktur & SMART Disk",

@@ -1,6 +1,6 @@
 """
-Komponen Badge & Chip Reusable ITAM Pro.
-Mendukung varian: success, backup, warning, danger, info, neutral, serta connector_chip.
+Komponen Badge & Chip Konektor ITAM Pro.
+Seluruh warna menggunakan token dari styles/colors.py.
 """
 from typing import Any
 
@@ -9,76 +9,107 @@ import reflex as rx
 from itam_pro.styles import Color, FontSize, FontWeight, Radius
 
 
-def app_badge(
-    label: Any,
-    variant: Any = "info",
-) -> rx.Component:
-    """Badge pil semantik untuk status, peringatan, dan kategori."""
-    fg_color = rx.match(
-        variant,
-        ("success", Color.SUCCESS_FG),
-        ("backup", Color.BACKUP_FG),
-        ("warning", Color.WARNING_FG),
-        ("danger", Color.DANGER_FG),
-        ("neutral", Color.NEUTRAL_FG),
-        ("info", Color.INFO_FG),
-        Color.INFO_FG,
-    )
-    bg_color = rx.match(
-        variant,
-        ("success", Color.SUCCESS_BG),
-        ("backup", Color.BACKUP_BG),
-        ("warning", Color.WARNING_BG),
-        ("danger", Color.DANGER_BG),
-        ("neutral", Color.NEUTRAL_BG),
-        ("info", Color.INFO_BG),
-        Color.INFO_BG,
-    )
+def app_badge(label: Any, variant: Any = "neutral") -> rx.Component:
+    """Badge semantik dengan varian warna dari token Color."""
+    bg_map = {
+        "success": Color.SUCCESS_BG,
+        "warning": Color.WARNING_BG,
+        "danger": Color.DANGER_BG,
+        "info": Color.BACKUP_BG,
+        "backup": Color.BACKUP_BG,
+        "neutral": Color.NEUTRAL_BG,
+    }
+    fg_map = {
+        "success": Color.SUCCESS_FG,
+        "warning": Color.WARNING_FG,
+        "danger": Color.DANGER_FG,
+        "info": Color.BACKUP_FG,
+        "backup": Color.BACKUP_FG,
+        "neutral": Color.NEUTRAL_FG,
+    }
+
+    if isinstance(variant, rx.Var):
+        bg_color = rx.match(
+            variant,
+            ("success", Color.SUCCESS_BG),
+            ("warning", Color.WARNING_BG),
+            ("danger", Color.DANGER_BG),
+            ("info", Color.BACKUP_BG),
+            ("backup", Color.BACKUP_BG),
+            ("neutral", Color.NEUTRAL_BG),
+            Color.NEUTRAL_BG,
+        )
+        fg_color = rx.match(
+            variant,
+            ("success", Color.SUCCESS_FG),
+            ("warning", Color.WARNING_FG),
+            ("danger", Color.DANGER_FG),
+            ("info", Color.BACKUP_FG),
+            ("backup", Color.BACKUP_FG),
+            ("neutral", Color.NEUTRAL_FG),
+            Color.NEUTRAL_FG,
+        )
+    else:
+        bg_color = bg_map.get(str(variant), Color.NEUTRAL_BG)
+        fg_color = fg_map.get(str(variant), Color.NEUTRAL_FG)
 
     return rx.box(
         rx.text(
             label,
+            title=label,
             font_size=FontSize.XS,
             font_weight=FontWeight.BOLD,
             color=fg_color,
-            line_height="1.2",
-            white_space="nowrap",
+            style=rx.Style(
+                {
+                    "white_space": "nowrap",
+                    "overflow": "hidden",
+                    "text_overflow": "ellipsis",
+                }
+            ),
         ),
         style=rx.Style(
             {
-                "padding": "4px 12px",
-                "background_color": bg_color,
-                "border_radius": Radius.FULL,
                 "display": "inline-flex",
                 "align_items": "center",
-                "justify_content": "center",
-                "flex_shrink": "0",
+                "max_width": "100%",
+                "padding": "3px 10px",
+                "border_radius": Radius.FULL,
+                "background_color": bg_color,
             }
         ),
     )
 
 
 def connector_chip(label: Any) -> rx.Component:
-    """Chip kecil per konektor (border #D5DEEE, radius 7px, bg #F7F9FD)."""
+    """Chip kecil (Konektivitas, Jenis, Host) dengan pemotongan elipsis + tooltip."""
     return rx.box(
         rx.text(
             label,
+            title=label,
             font_size=FontSize.XS,
-            font_weight=FontWeight.BOLD,
+            font_weight=FontWeight.SEMIBOLD,
             color=Color.TEXT,
-            line_height="1.2",
-            white_space="nowrap",
+            style=rx.Style(
+                {
+                    "white_space": "nowrap",
+                    "overflow": "hidden",
+                    "text_overflow": "ellipsis",
+                    "max_width": "185px",
+                }
+            ),
         ),
+        title=label,
         style=rx.Style(
             {
-                "padding": "3px 9px",
-                "background_color": Color.TABLE_HEADER_BG,
-                "border": f"1px solid {Color.INPUT_BORDER}",
-                "border_radius": Radius.CONNECTOR_CHIP,
                 "display": "inline-flex",
                 "align_items": "center",
-                "justify_content": "center",
-                "flex_shrink": "0",
+                "max_width": "100%",
+                "padding": "2px 8px",
+                "background_color": Color.TABLE_HEADER_BG,
+                "border": f"1px solid {Color.INPUT_BORDER}",
+                "border_radius": Radius.CHIP,
+                "overflow": "hidden",
             }
         ),
     )

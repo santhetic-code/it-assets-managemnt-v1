@@ -574,7 +574,9 @@ class IPState(rx.State):
         for item in self.items:
             if item.get("id") == target:
                 self.entry_to_delete = target
-                self.entry_to_delete_label = f"{item.get('ip_address', '')} · {item.get('nama', '')}"
+                ip_val = item.get("ip_address", "")
+                nama_val = item.get("nama", "")
+                self.entry_to_delete_label = f"{ip_val} · {nama_val}"
                 self.delete_dialog_open = True
                 return
 

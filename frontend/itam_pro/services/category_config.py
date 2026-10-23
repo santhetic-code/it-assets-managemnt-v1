@@ -5,6 +5,7 @@ Mengatur slug, prefix ID, field atribut khusus, kolom tabel, tab, dan menu sideb
 from typing import Literal, NotRequired, Required, TypedDict
 
 from itam_pro.components.tables.data_table import ColumnDef
+from itam_pro.components.tables.filter_bar import ColumnToggleOption
 from itam_pro.services.mock.master_data import (
     MASTER_JENIS_PC,
     MASTER_KONEKTIVITAS_MONITOR,
@@ -62,13 +63,23 @@ DEFAULT_VIEW_COLUMNS: list[str] = [
     "id_aset",
     "nama_aset",
     "kategori",
+    "sn_pid",
     "kepemilikan",
     "lokasi",
     "kondisi",
     "status",
     "digunakan_oleh",
     "tanggal_masuk_gudang",
+    "tanggal_keluar_gudang",
 ]
+
+# Default kolom tersembunyi per view (PC menyembunyikan Mainboard, Keyboard, Mouse)
+DEFAULT_HIDDEN_COLUMNS_BY_SLUG: dict[str, list[str]] = {
+    "": [],
+    "pc": ["mainboard", "keyboard", "mouse"],
+    "monitor": [],
+    "ups": [],
+}
 
 PC_FIELDS: list[CategoryFieldDef] = [
     {
@@ -404,7 +415,8 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
             {
                 "key": "nama_aset",
                 "header": "Nama PC",
-                "width": "150px",
+                "width": "155px",
+                "min_width": "145px",
                 "render_type": "bold_blue",
                 "sticky_left": True,
                 "sortable": True,
@@ -413,18 +425,73 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
             {
                 "key": "digunakan_oleh",
                 "header": "User / Fungsi",
-                "width": "150px",
+                "width": "160px",
+                "min_width": "145px",
                 "render_type": "bold",
             },
-            {"key": "os", "header": "Operasi System", "width": "145px", "render_type": "text"},
-            {"key": "ram", "header": "RAM", "width": "120px", "render_type": "text"},
-            {"key": "vga", "header": "VGA", "width": "140px", "render_type": "text"},
-            {"key": "cpu", "header": "CPU", "width": "160px", "render_type": "text"},
-            {"key": "mainboard", "header": "Mainboard", "width": "150px", "render_type": "text"},
-            {"key": "hdd_ssd", "header": "HDD / SSD", "width": "140px", "render_type": "text"},
-            {"key": "monitor", "header": "Monitor", "width": "135px", "render_type": "text"},
-            {"key": "keyboard", "header": "Keyboard", "width": "125px", "render_type": "text"},
-            {"key": "mouse", "header": "Mouse", "width": "120px", "render_type": "text"},
+            {
+                "key": "os",
+                "header": "Operasi System",
+                "width": "155px",
+                "min_width": "140px",
+                "render_type": "text",
+            },
+            {
+                "key": "ram",
+                "header": "RAM",
+                "width": "125px",
+                "min_width": "110px",
+                "render_type": "text",
+            },
+            {
+                "key": "vga",
+                "header": "VGA",
+                "width": "145px",
+                "min_width": "125px",
+                "render_type": "text",
+            },
+            {
+                "key": "cpu",
+                "header": "CPU",
+                "width": "165px",
+                "min_width": "145px",
+                "render_type": "text",
+            },
+            {
+                "key": "mainboard",
+                "header": "Mainboard",
+                "width": "155px",
+                "min_width": "135px",
+                "render_type": "text",
+            },
+            {
+                "key": "hdd_ssd",
+                "header": "HDD / SSD",
+                "width": "145px",
+                "min_width": "130px",
+                "render_type": "text",
+            },
+            {
+                "key": "monitor",
+                "header": "Monitor",
+                "width": "145px",
+                "min_width": "130px",
+                "render_type": "text",
+            },
+            {
+                "key": "keyboard",
+                "header": "Keyboard",
+                "width": "130px",
+                "min_width": "115px",
+                "render_type": "text",
+            },
+            {
+                "key": "mouse",
+                "header": "Mouse",
+                "width": "125px",
+                "min_width": "110px",
+                "render_type": "text",
+            },
         ]
 
     if slug == "monitor":
@@ -433,6 +500,7 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
                 "key": "id_aset",
                 "header": "ID Aset",
                 "width": "12%",
+                "min_width": "115px",
                 "render_type": "bold_blue",
                 "sticky_left": True,
                 "sortable": True,
@@ -442,15 +510,23 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
                 "key": "merk",
                 "header": "Merk",
                 "width": "11%",
+                "min_width": "100px",
                 "render_type": "bold",
                 "sortable": True,
                 "sort_key": "merk",
             },
-            {"key": "tipe_model", "header": "Tipe / Model", "width": "18%", "render_type": "text"},
+            {
+                "key": "tipe_model",
+                "header": "Tipe / Model",
+                "width": "18%",
+                "min_width": "150px",
+                "render_type": "text",
+            },
             {
                 "key": "ukuran_layar_display",
                 "header": "Ukuran Layar",
                 "width": "13%",
+                "min_width": "120px",
                 "render_type": "text",
                 "sortable": True,
                 "sort_key": "ukuran_layar",
@@ -459,28 +535,32 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
                 "key": "resolusi_layar",
                 "header": "Resolusi Layar",
                 "width": "14%",
+                "min_width": "130px",
                 "render_type": "text",
             },
             {
                 "key": "konektivitas",
                 "header": "Konektivitas",
                 "width": "20%",
+                "min_width": "170px",
                 "render_type": "chips",
             },
             {
                 "key": "status",
                 "header": "Status",
                 "width": "12%",
+                "min_width": "115px",
                 "render_type": "status_badge",
             },
         ]
 
-    # Default (Semua Aset / Kategori tanpa field khusus seperti UPS)
+    # Semua Aset / Kategori Umum (Termasuk Tgl Keluar Gudang)
     return [
         {
             "key": "id_aset",
             "header": "ID Aset",
             "width": "120px",
+            "min_width": "115px",
             "render_type": "bold_blue",
             "sticky_left": True,
             "sortable": True,
@@ -490,45 +570,98 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
             "key": "nama_aset",
             "header": "Nama Aset",
             "width": "210px",
+            "min_width": "180px",
             "render_type": "bold",
             "sortable": True,
             "sort_key": "nama_aset",
         },
-        {"key": "kategori", "header": "Kategori", "width": "125px", "render_type": "badge"},
-        {"key": "sn_pid", "header": "SN / PID", "width": "140px", "render_type": "text"},
-        {"key": "kepemilikan", "header": "Pemilik", "width": "95px", "render_type": "badge"},
-        {"key": "lokasi", "header": "Lokasi", "width": "155px", "render_type": "text"},
+        {
+            "key": "kategori",
+            "header": "Kategori",
+            "width": "125px",
+            "min_width": "115px",
+            "render_type": "badge",
+        },
+        {
+            "key": "sn_pid",
+            "header": "SN / PID",
+            "width": "145px",
+            "min_width": "130px",
+            "render_type": "text",
+        },
+        {
+            "key": "kepemilikan",
+            "header": "Pemilik",
+            "width": "95px",
+            "min_width": "90px",
+            "render_type": "badge",
+        },
+        {
+            "key": "lokasi",
+            "header": "Lokasi",
+            "width": "155px",
+            "min_width": "140px",
+            "render_type": "text",
+        },
         {
             "key": "kondisi",
             "header": "Kondisi",
             "width": "155px",
+            "min_width": "140px",
             "render_type": "condition_badge",
         },
-        {"key": "status", "header": "Status", "width": "140px", "render_type": "status_badge"},
+        {
+            "key": "status",
+            "header": "Status",
+            "width": "140px",
+            "min_width": "125px",
+            "render_type": "status_badge",
+        },
         {
             "key": "digunakan_oleh",
             "header": "Digunakan Oleh",
-            "width": "155px",
+            "width": "160px",
+            "min_width": "145px",
             "render_type": "text",
         },
         {
             "key": "tanggal_masuk_display",
-            "header": "Tgl Masuk",
-            "width": "125px",
+            "header": "Tgl Masuk Gudang",
+            "width": "145px",
+            "min_width": "135px",
             "render_type": "date",
         },
+        {
+            "key": "tanggal_keluar_display",
+            "header": "Tgl Keluar Gudang",
+            "width": "145px",
+            "min_width": "135px",
+            "render_type": "date",
+        },
+    ]
+
+
+def build_column_toggle_options(slug: str) -> list[ColumnToggleOption]:
+    """Kembalikan daftar kolom yang dapat disembunyikan/ditampilkan via 'Atur kolom'."""
+    cols = build_table_columns_for_slug(slug)
+    return [
+        {"key": c["key"], "label": str(c["header"])}
+        for c in cols
+        if not c.get("sticky_left", False)
     ]
 
 
 __all__ = [
     "CATEGORY_CONFIGS",
     "CATEGORY_PREFIX_MAP",
+    "DEFAULT_HIDDEN_COLUMNS_BY_SLUG",
     "DEFAULT_VIEW_COLUMNS",
     "MONITOR_FIELDS",
     "PC_FIELDS",
     "CategoryConfig",
     "CategoryFieldDef",
     "FieldType",
+    "build_column_toggle_options",
     "build_table_columns_for_slug",
     "get_config_by_slug",
     "get_config_for_category_name",

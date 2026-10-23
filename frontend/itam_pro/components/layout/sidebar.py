@@ -1,6 +1,6 @@
 """
 Komponen Sidebar Navigasi Utama ITAM Pro (248px).
-Hanya menyorot satu menu yang cocok secara eksak dengan NavState.active_path.
+Menggunakan ikon cube ('box') dan subjudul 'IT Assets Management' selaras halaman Login.
 """
 from typing import Any
 
@@ -49,8 +49,8 @@ def _nav_link_item(
                         "border_radius": Radius.FULL,
                         "background_color": rx.cond(
                             is_active,
-                            "rgba(255, 255, 255, 0.22)",
-                            "rgba(255, 255, 255, 0.08)",
+                            Color.SIDEBAR_BADGE_ACTIVE_BG,
+                            Color.SIDEBAR_BADGE_BG,
                         ),
                     }
                 ),
@@ -78,7 +78,7 @@ def _nav_link_item(
         _hover=rx.Style(
             {
                 "background_color": rx.cond(
-                    is_active, Color.ACCENT_BRIGHT, "rgba(255, 255, 255, 0.06)"
+                    is_active, Color.ACCENT_BRIGHT, Color.SIDEBAR_HOVER
                 ),
             }
         ),
@@ -112,10 +112,10 @@ def sidebar_content() -> rx.Component:
     pinned_categories = get_pinned_categories()
 
     return rx.vstack(
-        # Header Brand Logo
+        # Header Brand Logo (Ikon cube 'box' + subjudul 'IT Assets Management')
         rx.hstack(
             rx.center(
-                rx.icon(tag="shield-check", size=20, color=Color.WHITE),
+                rx.icon(tag="box", size=20, color=Color.WHITE),
                 width="36px",
                 height="36px",
                 background_color=Color.ACCENT_BRIGHT,
@@ -131,7 +131,7 @@ def sidebar_content() -> rx.Component:
                     line_height="1.1",
                 ),
                 rx.text(
-                    "Asset Management",
+                    "IT Assets Management",
                     font_size=FontSize.XS,
                     font_weight=FontWeight.MEDIUM,
                     color=Color.SIDEBAR_MUTED,
@@ -145,7 +145,7 @@ def sidebar_content() -> rx.Component:
             width="100%",
             padding="20px 16px 12px 16px",
         ),
-        # Daftar Grup Menu
+        # Daftar 7 Grup Menu
         rx.vstack(
             _sidebar_group(
                 "Overview",
@@ -198,7 +198,7 @@ def sidebar_content() -> rx.Component:
             style=rx.Style({"overflow_y": "auto", "flex": "1"}),
         ),
         spacing="0",
-        width=Size.SIDEBAR_WIDTH,
+        width=Size.SIDEBAR_W,
         height="100vh",
         style=rx.Style(
             {
@@ -216,8 +216,4 @@ def app_sidebar() -> rx.Component:
     return sidebar_content()
 
 
-def sidebar() -> rx.Component:
-    return sidebar_content()
-
-
-__all__ = ["app_sidebar", "sidebar", "sidebar_content"]
+__all__ = ["app_sidebar", "sidebar_content"]

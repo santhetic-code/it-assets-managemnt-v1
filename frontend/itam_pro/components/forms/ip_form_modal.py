@@ -366,7 +366,7 @@ def ip_form_modal() -> rx.Component:
                             _text_input(
                                 value=IPState.form_keterangan,
                                 on_change=IPState.set_form_keterangan,
-                                placeholder="Catatan port internal, cluster, atau fungsi tambahan...",
+                                placeholder="Catatan port internal, cluster, atau fungsi...",
                             ),
                             spacing="1",
                             align="start",

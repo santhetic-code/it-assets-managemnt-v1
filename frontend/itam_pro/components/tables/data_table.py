@@ -1,7 +1,7 @@
 """
-Komponen Data Table Generik ITAM Pro.
-Mendukung kolom sticky di kiri, header sortable (ikon ↕), chip list (konektivitas),
-condition_badge, status_badge, dan empty state kustom.
+Komponen Data Table Generik ITAM Pro (Tahap 6d).
+Mendukung line-clamp 2 baris + tooltip, visibilitas kolom dinamis (Atur kolom),
+lebar minimum anti-overlap, serta seluruh warna dari token Color.
 """
 from typing import Any, Literal, Required, TypedDict
 
@@ -9,7 +9,15 @@ import reflex as rx
 
 from itam_pro.components.ui.badge import app_badge, connector_chip
 from itam_pro.components.ui.status_badge import asset_condition_badge, asset_status_badge
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size, Space
+from itam_pro.styles import (
+    FONT_FAMILY,
+    Color,
+    FontSize,
+    FontWeight,
+    Radius,
+    Size,
+    Space,
+)
 
 RenderType = Literal[
     "text",
@@ -30,6 +38,7 @@ class ColumnDef(TypedDict, total=False):
     key: Required[str]
     header: Required[Any]
     width: str
+    min_width: str
     render_type: RenderType
     sub_key: str
     sticky_left: bool
@@ -39,8 +48,20 @@ class ColumnDef(TypedDict, total=False):
     date_tone_key: str
 
 
+_TWO_LINE_CLAMP_STYLE: dict[str, Any] = {
+    "display": "-webkit-box",
+    "-webkit-line-clamp": "2",
+    "-webkit-box-orient": "vertical",
+    "overflow": "hidden",
+    "text_overflow": "ellipsis",
+    "white_space": "normal",
+    "word_break": "break-word",
+    "line_height": "1.35",
+}
+
+
 def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
-    """Render isi sel berdasarkan render_type yang didefinisikan pada kolom."""
+    """Render isi sel berdasarkan render_type dengan dukungan 2-line clamp + tooltip."""
     key = col["key"]
     rtype = col.get("render_type", "text")
     is_sticky = col.get("sticky_left", False)
@@ -49,6 +70,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
         return rx.hstack(
             rx.text(
                 row[key],
+                title=row[key],
                 font_size=FontSize.SM,
                 font_weight=FontWeight.BOLD,
                 color=rx.cond(row["is_conflict"], Color.DANGER_FG, Color.ACCENT),
@@ -80,17 +102,11 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
                 font_size=FontSize.SM,
                 font_weight=FontWeight.BOLD,
                 color=Color.TEXT,
-                style=rx.Style(
-                    {
-                        "white_space": "nowrap",
-                        "overflow": "hidden",
-                        "text_overflow": "ellipsis",
-                        "line_height": "1.2",
-                    }
-                ),
+                style=rx.Style(_TWO_LINE_CLAMP_STYLE),
             ),
             rx.text(
                 row[sub_k],
+                title=row[sub_k],
                 font_size=FontSize.XS,
                 font_weight=FontWeight.MEDIUM,
                 color=rx.cond(
@@ -98,10 +114,19 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
                     Color.WARNING_FG,
                     Color.MUTED,
                 ),
-                style=rx.Style({"line_height": "1.15", "white_space": "nowrap"}),
+                style=rx.Style(
+                    {
+                        "line_height": "1.15",
+                        "white_space": "nowrap",
+                        "overflow": "hidden",
+                        "text_overflow": "ellipsis",
+                        "max_width": "100%",
+                    }
+                ),
             ),
             spacing="1",
             align="start",
+            width="100%",
         )
 
     if rtype == "chip":
@@ -114,13 +139,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
             font_size=FontSize.SM,
             font_weight=FontWeight.BOLD,
             color=Color.ACCENT,
-            style=rx.Style(
-                {
-                    "white_space": "nowrap",
-                    "overflow": "hidden",
-                    "text_overflow": "ellipsis",
-                }
-            ),
+            style=rx.Style(_TWO_LINE_CLAMP_STYLE),
         )
 
     if rtype == "bold":
@@ -130,13 +149,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
             font_size=FontSize.SM,
             font_weight=FontWeight.BOLD,
             color=Color.TEXT,
-            style=rx.Style(
-                {
-                    "white_space": "nowrap",
-                    "overflow": "hidden",
-                    "text_overflow": "ellipsis",
-                }
-            ),
+            style=rx.Style(_TWO_LINE_CLAMP_STYLE),
         )
 
     if rtype == "chips":
@@ -163,6 +176,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
     if rtype == "date":
         return rx.text(
             row[key],
+            title=row[key],
             font_size=FontSize.SM,
             font_weight=FontWeight.REGULAR,
             color=rx.cond(row[key] == "—", Color.MUTED, Color.TEXT),
@@ -175,13 +189,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef) -> rx.Component:
         font_size=FontSize.SM,
         font_weight=FontWeight.BOLD if is_sticky else FontWeight.MEDIUM,
         color=rx.cond(row[key] == "—", Color.MUTED, Color.TEXT),
-        style=rx.Style(
-            {
-                "white_space": "nowrap",
-                "overflow": "hidden",
-                "text_overflow": "ellipsis",
-            }
-        ),
+        style=rx.Style(_TWO_LINE_CLAMP_STYLE),
     )
 
 
@@ -190,15 +198,18 @@ def _header_cell(
     sort_by: Any = "",
     sort_dir: Any = "asc",
     on_sort: Any | None = None,
+    hidden_columns: Any | None = None,
 ) -> rx.Component:
-    """Sel header tabel: teks 12px uppercase muted, latar #F7F9FD, dukungan sort ↕."""
+    """Sel header tabel dengan dukungan sort ↕ dan visibilitas kolom dinamis."""
+    key = col["key"]
     is_sticky = col.get("sticky_left", False)
     is_sortable = col.get("sortable", False) and (on_sort is not None)
-    s_key = col.get("sort_key", col["key"])
+    s_key = col.get("sort_key", key)
+    min_w = col.get("min_width", col.get("width", "110px"))
 
     header_style: dict[str, Any] = {
         "width": col.get("width", "auto"),
-        "min_width": col.get("width", "90px"),
+        "min_width": min_w,
         "height": Size.TABLE_HEADER_H,
         "padding": "0 16px",
         "text_align": "left",
@@ -210,7 +221,14 @@ def _header_cell(
         "background_color": Color.TABLE_HEADER_BG,
         "border_bottom": f"1px solid {Color.BORDER}",
         "white_space": "nowrap",
+        "box_sizing": "border-box",
     }
+    if hidden_columns is not None:
+        header_style["display"] = rx.cond(
+            hidden_columns.contains(key),
+            "none",
+            "table-cell",
+        )
     if is_sticky:
         header_style.update(
             {
@@ -279,7 +297,6 @@ def _row_action_menu(
     on_delete: Any,
     duplicate_label: str = "Duplikat x N",
 ) -> rx.Component:
-    """Menu aksi '⋯' per baris."""
     return rx.menu.root(
         rx.menu.trigger(
             rx.el.button(
@@ -295,7 +312,7 @@ def _row_action_menu(
                         "border": "none",
                         "border_radius": Radius.BADGE_KBD,
                         "color": Color.MUTED,
-                        "font_size": "18px",
+                        "font_size": FontSize.LOGO,
                         "font_weight": FontWeight.EXTRABOLD,
                         "cursor": "pointer",
                         "display": "inline-flex",
@@ -312,31 +329,17 @@ def _row_action_menu(
             ),
         ),
         rx.menu.content(
-            rx.menu.item(
-                "Lihat Rincian",
-                on_click=on_view(row_id),
-            ),
-            rx.menu.item(
-                "Edit",
-                on_click=on_edit(row_id),
-            ),
-            rx.menu.item(
-                duplicate_label,
-                on_click=on_duplicate(row_id),
-            ),
+            rx.menu.item("Lihat Rincian", on_click=on_view(row_id)),
+            rx.menu.item("Edit", on_click=on_edit(row_id)),
+            rx.menu.item(duplicate_label, on_click=on_duplicate(row_id)),
             rx.menu.separator(),
-            rx.menu.item(
-                "Hapus",
-                color="red",
-                on_click=on_delete(row_id),
-            ),
+            rx.menu.item("Hapus", color="red", on_click=on_delete(row_id)),
             align="end",
         ),
     )
 
 
 def _skeleton_row(col_count: int) -> rx.Component:
-    """Baris skeleton loading dengan tinggi seragam 52px."""
     return rx.el.tr(
         rx.el.td(
             rx.box(
@@ -345,7 +348,7 @@ def _skeleton_row(col_count: int) -> rx.Component:
                         "width": "16px",
                         "height": "16px",
                         "background_color": Color.SKELETON,
-                        "border_radius": "4px",
+                        "border_radius": Radius.BADGE_KBD,
                     }
                 )
             ),
@@ -365,7 +368,7 @@ def _skeleton_row(col_count: int) -> rx.Component:
                             "width": "75%",
                             "height": "14px",
                             "background_color": Color.SKELETON,
-                            "border_radius": "6px",
+                            "border_radius": Radius.BADGE_KBD,
                         }
                     )
                 ),
@@ -386,7 +389,7 @@ def _skeleton_row(col_count: int) -> rx.Component:
                         "width": "24px",
                         "height": "14px",
                         "background_color": Color.SKELETON,
-                        "border_radius": "6px",
+                        "border_radius": Radius.BADGE_KBD,
                     }
                 )
             ),
@@ -407,7 +410,6 @@ def _empty_table_state(
     action_label: Any,
     on_action: Any,
 ) -> rx.Component:
-    """Tampilan kosong dengan pesan dan tombol aksi yang dapat dikonfigurasi."""
     return rx.center(
         rx.vstack(
             rx.center(
@@ -478,15 +480,14 @@ def reusable_data_table(
     sort_by: Any = "",
     sort_dir: Any = "asc",
     on_sort: Any | None = None,
+    hidden_columns: Any | None = None,
     show_action_header: bool = True,
     empty_message: Any = "Tidak ada aset yang cocok",
     empty_subtitle: Any = "Coba ubah kata kunci pencarian atau atur ulang kriteria filter Anda.",
     empty_action_label: Any = "Reset filter",
     on_empty_action: Any | None = None,
 ) -> rx.Component:
-    """
-    Komponen Tabel Data Generik ITAM Pro dengan dukungan kolom sticky, sort ↕, dan chips.
-    """
+    """Komponen Tabel Data Generik ITAM Pro dengan dukungan Atur Kolom dan Line-Clamp 2."""
     dup_handler = on_duplicate_row if on_duplicate_row is not None else on_edit_row
     empty_handler = on_empty_action if on_empty_action is not None else on_reset_filter
 
@@ -495,15 +496,26 @@ def reusable_data_table(
         col: ColumnDef,
         row_bg: Any,
     ) -> rx.Component:
+        key = col["key"]
         is_sticky = col.get("sticky_left", False)
+        min_w = col.get("min_width", col.get("width", "110px"))
         cell_style: dict[str, Any] = {
             "width": col.get("width", "auto"),
-            "min_width": col.get("width", "90px"),
+            "min_width": min_w,
             "max_width": col.get("width", "260px"),
-            "height": Size.TABLE_ROW_H,
-            "padding": "0 16px",
+            "min_height": Size.TABLE_ROW_H,
+            "padding": "8px 16px",
             "border_bottom": f"1px solid {Color.DIVIDER}",
+            "overflow": "hidden",
+            "vertical_align": "middle",
+            "box_sizing": "border-box",
         }
+        if hidden_columns is not None:
+            cell_style["display"] = rx.cond(
+                hidden_columns.contains(key),
+                "none",
+                "table-cell",
+            )
         if is_sticky:
             cell_style.update(
                 {
@@ -526,7 +538,7 @@ def reusable_data_table(
         row_bg = rx.cond(
             is_highlighted,
             Color.ROW_SELECTED,
-            rx.cond(is_conflict, "#FEF2F2", Color.SURFACE),
+            rx.cond(is_conflict, Color.CONFLICT_ROW_BG, Color.SURFACE),
         )
 
         return rx.el.tr(
@@ -576,6 +588,7 @@ def reusable_data_table(
                 style=rx.Style(
                     {
                         "width": "52px",
+                        "min_width": "52px",
                         "height": Size.TABLE_ROW_H,
                         "padding": "0 12px",
                         "text_align": "right",
@@ -588,7 +601,7 @@ def reusable_data_table(
             on_click=on_row_click(row_id),
             style=rx.Style(
                 {
-                    "height": Size.TABLE_ROW_H,
+                    "min_height": Size.TABLE_ROW_H,
                     "background_color": row_bg,
                     "cursor": "pointer",
                     "transition": "background-color 0.12s ease",
@@ -646,6 +659,7 @@ def reusable_data_table(
                             sort_by=sort_by,
                             sort_dir=sort_dir,
                             on_sort=on_sort,
+                            hidden_columns=hidden_columns,
                         )
                         for col in columns
                     ],
@@ -654,6 +668,7 @@ def reusable_data_table(
                         style=rx.Style(
                             {
                                 "width": "52px",
+                                "min_width": "52px",
                                 "height": Size.TABLE_HEADER_H,
                                 "padding": "0 12px",
                                 "text_align": "right",

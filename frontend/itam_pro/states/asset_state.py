@@ -3,6 +3,7 @@ State Generik Inventaris Aset ITAM Pro (Tahap 6c-1).
 Menangani halaman `/assets` (Semua Aset) dan `/assets/c/[slug]` (View Kategori)
 berdasarkan konfigurasi di `services/category_config.py`.
 """
+import json
 import math
 from typing import Any
 
@@ -11,10 +12,12 @@ import reflex as rx
 from itam_pro.services.api_client import api_client
 from itam_pro.services.category_config import (
     CATEGORY_CONFIGS,
+    DEFAULT_HIDDEN_COLUMNS_BY_SLUG,
     CategoryFieldDef,
     get_config_by_slug,
     get_config_for_category_name,
 )
+from itam_pro.services.validators import validate_asset_business_rules
 from itam_pro.services.mock.master_data import (
     MASTER_JENIS_PC,
     MASTER_KATEGORI,
@@ -62,6 +65,43 @@ class AssetState(rx.State):
 
     # Filter Atribut Kategori
     attr_filters: dict[str, str] = {}
+
+    column_prefs_json: str = rx.LocalStorage("{}", name="itam_asset_col_prefs")
+
+    @rx.var
+    def hidden_columns(self) -> list[str]:
+        """Daftar key kolom yang disembunyikan untuk view saat ini (disimpan di LocalStorage)."""
+        try:
+            prefs = json.loads(self.column_prefs_json or "{}")
+        except ValueError:
+            prefs = {}
+        slug_key = self.current_slug or "all"
+        if slug_key in prefs and isinstance(prefs[slug_key], list):
+            return [str(x) for x in prefs[slug_key]]
+        return list(DEFAULT_HIDDEN_COLUMNS_BY_SLUG.get(self.current_slug, []))
+
+    def toggle_column_visibility(self, col_key: str, _checked: Any = None) -> None:
+        try:
+            prefs = json.loads(self.column_prefs_json or "{}")
+        except ValueError:
+            prefs = {}
+        slug_key = self.current_slug or "all"
+        current_hidden = list(self.hidden_columns)
+        if col_key in current_hidden:
+            current_hidden = [k for k in current_hidden if k != col_key]
+        else:
+            current_hidden.append(col_key)
+        prefs[slug_key] = current_hidden
+        self.column_prefs_json = json.dumps(prefs)
+
+    def reset_column_visibility(self) -> None:
+        try:
+            prefs = json.loads(self.column_prefs_json or "{}")
+        except ValueError:
+            prefs = {}
+        slug_key = self.current_slug or "all"
+        prefs[slug_key] = list(DEFAULT_HIDDEN_COLUMNS_BY_SLUG.get(self.current_slug, []))
+        self.column_prefs_json = json.dumps(prefs)
 
     # Pilihan baris & Detail Drawer
     selected_ids: list[str] = []
@@ -827,21 +867,19 @@ class AssetState(rx.State):
         self.form_error = ""
         kat = self.form_kategori
 
-        if kat != "Monitor" and not self.form_nama_aset.strip():
-            self.form_error = "Nama Aset / Hostname wajib diisi."
+        biz_err = validate_asset_business_rules(
+            {
+                "kategori": kat,
+                "nama_aset": self.form_nama_aset,
+                "status": self.form_status,
+                "digunakan_oleh": self.form_digunakan_oleh,
+                "tanggal_masuk_gudang": self.form_tanggal_masuk,
+                "tanggal_keluar_gudang": self.form_tanggal_keluar,
+            }
+        )
+        if biz_err:
+            self.form_error = biz_err
             return None
-
-        if self.form_status == "Digunakan" and kat != "Monitor":
-            if not self.form_digunakan_oleh.strip():
-                self.form_error = "Field 'Digunakan Oleh' wajib diisi bila status Digunakan."
-                return None
-
-        if self.form_tanggal_masuk and self.form_tanggal_keluar:
-            if self.form_tanggal_keluar < self.form_tanggal_masuk:
-                self.form_error = (
-                    "Tanggal Keluar Gudang tidak boleh sebelum Tanggal Masuk Gudang."
-                )
-                return None
 
         cfg = get_config_for_category_name(kat)
         attrs: dict[str, Any] = dict(self.form_attributes)

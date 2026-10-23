@@ -21,13 +21,20 @@ from itam_pro.components.ui import (
     detail_drawer,
     secondary_button,
 )
-from itam_pro.services.category_config import build_table_columns_for_slug
+from itam_pro.services.category_config import (
+    build_column_toggle_options,
+    build_table_columns_for_slug,
+)
 from itam_pro.states.asset_state import AssetState
 from itam_pro.styles import Color, FontSize, FontWeight, Radius, Space
 
 ALL_ASSETS_COLUMNS = build_table_columns_for_slug("")
 PC_VIEW_COLUMNS = build_table_columns_for_slug("pc")
 MONITOR_VIEW_COLUMNS = build_table_columns_for_slug("monitor")
+
+ALL_ASSETS_COL_OPTIONS = build_column_toggle_options("")
+PC_COL_OPTIONS = build_column_toggle_options("pc")
+MONITOR_COL_OPTIONS = build_column_toggle_options("monitor")
 
 
 def _inventory_header() -> rx.Component:
@@ -217,6 +224,10 @@ def _filter_bar_by_slug() -> rx.Component:
                     dropdowns=all_dropdowns,
                     on_reset=AssetState.reset_filters,
                     result_count_text=AssetState.result_count_label,
+                    column_options=ALL_ASSETS_COL_OPTIONS,
+                    hidden_columns=AssetState.hidden_columns,
+                    on_toggle_column=AssetState.toggle_column_visibility,
+                    on_reset_columns=AssetState.reset_column_visibility,
                 ),
             ),
             (
@@ -228,6 +239,10 @@ def _filter_bar_by_slug() -> rx.Component:
                     dropdowns=pc_dropdowns,
                     on_reset=AssetState.reset_filters,
                     result_count_text=AssetState.result_count_label,
+                    column_options=PC_COL_OPTIONS,
+                    hidden_columns=AssetState.hidden_columns,
+                    on_toggle_column=AssetState.toggle_column_visibility,
+                    on_reset_columns=AssetState.reset_column_visibility,
                 ),
             ),
             (
@@ -239,6 +254,10 @@ def _filter_bar_by_slug() -> rx.Component:
                     dropdowns=monitor_dropdowns,
                     on_reset=AssetState.reset_filters,
                     result_count_text=AssetState.result_count_label,
+                    column_options=MONITOR_COL_OPTIONS,
+                    hidden_columns=AssetState.hidden_columns,
+                    on_toggle_column=AssetState.toggle_column_visibility,
+                    on_reset_columns=AssetState.reset_column_visibility,
                 ),
             ),
             table_filter_bar(
@@ -248,6 +267,10 @@ def _filter_bar_by_slug() -> rx.Component:
                 dropdowns=default_cat_dropdowns,
                 on_reset=AssetState.reset_filters,
                 result_count_text=AssetState.result_count_label,
+                column_options=ALL_ASSETS_COL_OPTIONS,
+                hidden_columns=AssetState.hidden_columns,
+                on_toggle_column=AssetState.toggle_column_visibility,
+                on_reset_columns=AssetState.reset_column_visibility,
             ),
         ),
     )
@@ -275,6 +298,7 @@ def _table_by_slug() -> rx.Component:
             sort_by=AssetState.sort_by,
             sort_dir=AssetState.sort_dir,
             on_sort=AssetState.toggle_sort,
+            hidden_columns=AssetState.hidden_columns,
             empty_message=AssetState.empty_state_title,
             empty_subtitle=AssetState.empty_state_subtitle,
             empty_action_label=AssetState.empty_state_action_label,

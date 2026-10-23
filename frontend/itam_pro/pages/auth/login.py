@@ -181,9 +181,9 @@ def _welcome_outline_button() -> rx.Component:
                     "margin_top": "32px",
                     "height": "46px",
                     "padding": "0 44px",
-                    "background_color": "rgba(255, 255, 255, 0.06)",
+                    "background_color": Color.WHITE_ALPHA_06,
                     "color": Color.WHITE,
-                    "border": "1.5px solid rgba(255, 255, 255, 0.72)",
+                    "border": f"1.5px solid {Color.WHITE_ALPHA_72}",
                     "border_radius": Radius.CONTROL,
                     "font_family": FONT_FAMILY,
                     "font_size": FontSize.MD,
@@ -194,7 +194,7 @@ def _welcome_outline_button() -> rx.Component:
             ),
             _hover=rx.Style(
                 {
-                    "background_color": "rgba(255, 255, 255, 0.16)",
+                    "background_color": Color.WHITE_ALPHA_16,
                     "border_color": Color.WHITE,
                 }
             ),
