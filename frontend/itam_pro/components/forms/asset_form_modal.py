@@ -75,20 +75,20 @@ def _section_divider(title: str) -> rx.Component:
 
 def _text_input(
     value: Any,
-    on_change: Any,
+    on_change: Any | None = None,
     placeholder: str = "",
     disabled: Any = False,
-    input_type: Any = "text",
+    input_type: str = "text",
     list_id: str | None = None,
 ) -> rx.Component:
-    return rx.el.input(
-        type=input_type,
-        value=value,
-        on_change=on_change,
-        placeholder=placeholder,
-        disabled=disabled,
-        list=list_id,
-        style=rx.Style(
+    input_props: dict[str, Any] = {
+        "type": input_type,
+        "value": value,
+        "placeholder": placeholder,
+        "disabled": disabled,
+        "read_only": on_change is None,
+        "list": list_id,
+        "style": rx.Style(
             {
                 "width": "100%",
                 "height": Size.FILTER_CONTROL_H,
@@ -104,7 +104,11 @@ def _text_input(
                 "outline": "none",
             }
         ),
-    )
+    }
+    if on_change is not None:
+        input_props["on_change"] = on_change
+
+    return rx.el.input(**input_props)
 
 
 def _select_input(
@@ -600,7 +604,6 @@ def asset_form_modal() -> rx.Component:
                                 _field_label("ID Aset (Otomatis)"),
                                 _text_input(
                                     value=AssetState.form_id_aset,
-                                    on_change=lambda _: None,
                                     disabled=True,
                                 ),
                                 spacing="1",
