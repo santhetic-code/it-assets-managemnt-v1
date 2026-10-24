@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
+from itam_pro.services.mock.finance_mock import action_jadikan_aset, query_purchases
 from itam_pro.services.mock.ip_mock import (
     create_mock_ip_entry,
     delete_mock_ip_entry,
@@ -296,6 +297,33 @@ class APIClient:
 
     def get_vms_on_host_sync(self, host_asset_id: str) -> list[dict[str, str]]:
         return get_vms_on_host(host_asset_id=host_asset_id)
+
+    async def get_purchases(
+        self,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+    ) -> dict[str, Any]:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return query_purchases(filters, page, page_size)
+        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+
+    async def convert_purchase_to_asset(
+        self,
+        id_pembelian: str,
+        payload: dict[str, str],
+    ) -> bool:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            action_jadikan_aset(
+                id_pembelian,
+                payload["kategori"],
+                payload["kepemilikan"],
+                payload["lokasi"],
+            )
+            return True
+        return True
 
 
 api_client = APIClient()

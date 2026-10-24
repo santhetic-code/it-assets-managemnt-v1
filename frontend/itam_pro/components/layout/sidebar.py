@@ -180,8 +180,7 @@ def sidebar_content() -> rx.Component:
             ),
             _sidebar_group(
                 "Finance",
-                _nav_link_item("Rekap Pembelian", "/purchases", "shopping-cart"),
-                _nav_link_item("Invoice", "/invoices", "file-text"),
+                _nav_link_item("Pembelian & Invoice", "/finance/purchases", "shopping-cart"),
             ),
             _sidebar_group(
                 "Security",

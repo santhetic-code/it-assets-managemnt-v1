@@ -206,18 +206,22 @@ def _column_visibility_popover(
 
 
 def table_filter_bar(
-    search_value: Any,
-    on_search_change: Any,
-    search_placeholder: str,
-    dropdowns: list[FilterDropdownConfig],
-    on_reset: Any,
-    result_count_text: Any,
+    search_value: Any = "",
+    on_search_change: Any = None,
+    search_placeholder: str = "Cari...",
+    dropdowns: list[FilterDropdownConfig] | None = None,
+    on_reset: Any = None,
+    result_count_text: Any = "",
     column_options: list[ColumnToggleOption] | None = None,
     hidden_columns: Any | None = None,
     on_toggle_column: Any | None = None,
     on_reset_columns: Any | None = None,
+    *,
+    on_search: Any = None,
 ) -> rx.Component:
     """Bar filter standar di atas tabel dengan dukungan tombol 'Atur kolom'."""
+    actual_search_change = on_search_change if on_search_change is not None else on_search
+    actual_dropdowns = dropdowns or []
     return rx.box(
         rx.hstack(
             # Kotak Pencarian
@@ -239,7 +243,7 @@ def table_filter_bar(
                 rx.el.input(
                     type="text",
                     value=search_value,
-                    on_change=on_search_change,
+                    on_change=actual_search_change,
                     placeholder=search_placeholder,
                     style=rx.Style(
                         {
@@ -260,7 +264,7 @@ def table_filter_bar(
                 style=rx.Style({"position": "relative"}),
             ),
             # Dropdown Filter
-            *[_filter_select(d) for d in dropdowns],
+            *[_filter_select(d) for d in actual_dropdowns],
             # Tombol Reset Filter
             rx.el.button(
                 "Reset filter",
@@ -279,7 +283,9 @@ def table_filter_bar(
                         "cursor": "pointer",
                     }
                 ),
-            ),
+            )
+            if on_reset is not None
+            else rx.fragment(),
             spacing="2",
             align="center",
             wrap="wrap",

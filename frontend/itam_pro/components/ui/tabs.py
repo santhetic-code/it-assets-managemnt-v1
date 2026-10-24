@@ -20,9 +20,41 @@ def _tab_button(
     active_tab: Any,
     on_change: Any,
 ) -> rx.Component:
-    """Render satu tombol tab beserta badge jumlah unit."""
-    tab_key = item["key"]
+    if isinstance(item, dict):
+        tab_key = item.get("key") or item.get("value", "")
+    else:
+        tab_key = item["key"]
     is_active = active_tab == tab_key
+    has_count = isinstance(item, dict) and "count" in item and item["count"] is not None
+
+    badge_elem = (
+        rx.box(
+            rx.text(
+                item["count"],
+                font_size=FontSize.XS,
+                font_weight=FontWeight.BOLD,
+                color=rx.cond(is_active, Color.ACCENT, Color.MUTED),
+                line_height="1",
+            ),
+            style=rx.Style(
+                {
+                    "padding": "3px 8px",
+                    "background_color": rx.cond(
+                        is_active,
+                        Color.INFO_BG,
+                        Color.TABLE_HEADER_BG,
+                    ),
+                    "border": f"1px solid {Color.BORDER}",
+                    "border_radius": Radius.FULL,
+                    "display": "inline-flex",
+                    "align_items": "center",
+                    "justify_content": "center",
+                }
+            ),
+        )
+        if has_count
+        else rx.fragment()
+    )
 
     return rx.el.button(
         rx.hstack(
@@ -32,30 +64,7 @@ def _tab_button(
                 font_weight=rx.cond(is_active, FontWeight.BOLD, FontWeight.SEMIBOLD),
                 color=rx.cond(is_active, Color.ACCENT, Color.MUTED),
             ),
-            rx.box(
-                rx.text(
-                    item["count"],
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.BOLD,
-                    color=rx.cond(is_active, Color.ACCENT, Color.MUTED),
-                    line_height="1",
-                ),
-                style=rx.Style(
-                    {
-                        "padding": "3px 8px",
-                        "background_color": rx.cond(
-                            is_active,
-                            Color.INFO_BG,
-                            Color.TABLE_HEADER_BG,
-                        ),
-                        "border": f"1px solid {Color.BORDER}",
-                        "border_radius": Radius.FULL,
-                        "display": "inline-flex",
-                        "align_items": "center",
-                        "justify_content": "center",
-                    }
-                ),
-            ),
+            badge_elem,
             spacing="2",
             align="center",
         ),
@@ -93,15 +102,21 @@ def app_tabs(
         | rx.Var[list[dict[str, Any]]]
         | rx.Var[list[TabItemConfig]]
         | Any
-    ),
-    active_tab: Any,
-    on_change: Any,
+    ) = None,
+    active_tab: Any = None,
+    on_change: Any = None,
+    *,
+    items: Any = None,
+    active_value: Any = None,
 ) -> rx.Component:
     """Baris navigasi tab di bagian atas kartu tabel."""
+    target_tabs = items if tabs is None and items is not None else tabs
+    target_active = active_value if active_tab is None and active_value is not None else active_tab
+
     tab_children = (
-        rx.foreach(tabs, lambda tab: _tab_button(tab, active_tab, on_change))
-        if isinstance(tabs, rx.Var)
-        else [_tab_button(tab, active_tab, on_change) for tab in tabs]
+        rx.foreach(target_tabs, lambda tab: _tab_button(tab, target_active, on_change))
+        if isinstance(target_tabs, rx.Var)
+        else [_tab_button(tab, target_active, on_change) for tab in (target_tabs or [])]
     )
     children = [tab_children] if isinstance(tab_children, rx.Component) else tab_children
     return rx.box(

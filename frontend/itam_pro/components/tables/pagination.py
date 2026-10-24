@@ -69,22 +69,45 @@ def _page_token_button(
 
 
 def table_pagination(
-    summary_text: Any,
-    current_page: Any,
-    current_page_str: Any,
-    total_pages: Any,
-    page_tokens: Any,
-    on_prev: Any,
-    on_next: Any,
-    on_page_select: Any,
+    summary_text: Any = "",
+    current_page: Any = 1,
+    current_page_str: Any = "1",
+    total_pages: Any = 1,
+    page_tokens: Any = None,
+    on_prev: Any = None,
+    on_next: Any = None,
+    on_page_select: Any = None,
+    *,
+    page: Any = None,
+    total_items: Any = None,
+    page_size: Any = None,
 ) -> rx.Component:
     """Footer paginasi generik untuk komponen tabel."""
-    is_first = current_page <= 1
-    is_last = current_page >= total_pages
+    act_page = page if page is not None else current_page
+    if page is None:
+        act_page_str = current_page_str
+    else:
+        act_page_str = act_page.to(str) if hasattr(act_page, "to") else str(act_page)
+    act_tokens = page_tokens if page_tokens is not None else [act_page_str]
+    act_prev = on_prev
+    act_next = on_next
+    act_select = on_page_select
+
+    if isinstance(summary_text, str) and summary_text == "" and total_items is not None:
+        act_summary = rx.cond(
+            total_items > 0,
+            f"Total {total_items} item",
+            "0 item",
+        )
+    else:
+        act_summary = summary_text
+
+    is_first = act_page <= 1
+    is_last = act_page >= total_pages
 
     return rx.box(
         rx.text(
-            summary_text,
+            act_summary,
             font_size=FontSize.SM,
             font_weight=FontWeight.REGULAR,
             color=Color.MUTED,
@@ -105,7 +128,7 @@ def table_pagination(
                 ),
                 type="button",
                 disabled=is_first,
-                on_click=on_prev,
+                on_click=act_prev,
                 style=rx.Style(
                     {
                         "height": Size.PAGINATION_BTN,
@@ -124,8 +147,8 @@ def table_pagination(
             # Daftar Nomor Halaman + Elipsis
             rx.hstack(
                 rx.foreach(
-                    page_tokens,
-                    lambda tok: _page_token_button(tok, current_page_str, on_page_select),
+                    act_tokens,
+                    lambda tok: _page_token_button(tok, act_page_str, act_select),
                 ),
                 spacing="1",
                 align="center",
@@ -145,7 +168,7 @@ def table_pagination(
                 ),
                 type="button",
                 disabled=is_last,
-                on_click=on_next,
+                on_click=act_next,
                 style=rx.Style(
                     {
                         "height": Size.PAGINATION_BTN,

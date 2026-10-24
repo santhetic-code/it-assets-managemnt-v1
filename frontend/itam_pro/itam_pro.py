@@ -4,12 +4,14 @@ Entry Point & Routing Utama ITAM Pro.
 import reflex as rx
 
 from itam_pro.pages.auth import login_page
+from itam_pro.pages.finance import purchases_view_page
 from itam_pro.pages.infrastructure import ip_vm_page
 from itam_pro.pages.inventory import assets_view_page
 from itam_pro.pages.overview import dashboard_page
 from itam_pro.states.asset_state import AssetState
 from itam_pro.states.auth_state import AuthState
 from itam_pro.states.dashboard_state import DashboardState
+from itam_pro.states.finance_state import FinanceState
 from itam_pro.states.ip_state import IPState
 from itam_pro.styles import BASE_STYLE, GOOGLE_FONTS_URL
 
@@ -71,6 +73,14 @@ app.add_page(
     on_load=[AuthState.check_auth, IPState.load_ip_page],
 )
 
+# Route Modul Finance: Pembelian & Invoice
+app.add_page(
+    purchases_view_page,
+    route="/finance/purchases",
+    title="Pembelian & Invoice · ITAM Pro",
+    on_load=[AuthState.check_auth, FinanceState.load_finance_page],
+)
+
 # Redirect kompatibilitas untuk route lama
 app.add_page(
     lambda: _redirect_page("/assets/c/pc"),
@@ -86,4 +96,14 @@ app.add_page(
     lambda: _redirect_page("/infrastructure/ip"),
     route="/infrastructure/ip-vm",
     on_load=rx.redirect("/infrastructure/ip"),
+)
+app.add_page(
+    lambda: _redirect_page("/finance/purchases"),
+    route="/purchases",
+    on_load=rx.redirect("/finance/purchases"),
+)
+app.add_page(
+    lambda: _redirect_page("/finance/purchases?tab=invoice"),
+    route="/invoices",
+    on_load=rx.redirect("/finance/purchases?tab=invoice"),
 )

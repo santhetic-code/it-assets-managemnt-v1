@@ -3,7 +3,56 @@ Data Mock Ringkasan Dashboard ITAM Pro (USE_MOCK=true).
 """
 from typing import Any
 
+from itam_pro.services.mock.finance_mock import MOCK_INVOICES, MOCK_PURCHASES
 from itam_pro.services.mock.ip_mock import get_ip_conflict_summary
+
+
+def build_invoice_alert() -> dict[str, str] | None:
+    """Logika deteksi jatuh tempo atau invoice yang belum dibayar."""
+    overdue_count = sum(1 for inv in MOCK_INVOICES if inv.get("status") == "Belum Dibayar")
+    if overdue_count == 0:
+        return None
+    return {
+        "title": "Invoice Belum Dibayar",
+        "description": f"{overdue_count} invoice mendekati jatuh tempo",
+        "badge_label": "Finance",
+        "badge_variant": "danger",
+    }
+
+
+def get_dynamic_monthly_purchases() -> list[dict[str, Any]]:
+    """Agregasi dinamis 6 bulan terakhir dari data MOCK_PURCHASES."""
+    month_names = {5: "Mei", 6: "Jun", 7: "Jul", 8: "Agu", 9: "Sep", 10: "Okt"}
+    base_totals: dict[str, float] = {
+        "Mei": 42.0,
+        "Jun": 18.0,
+        "Jul": 65.0,
+        "Agu": 31.0,
+        "Sep": 88.0,
+        "Okt": 0.0,
+    }
+    for item in MOCK_PURCHASES:
+        tgl = str(item.get("tanggal", ""))
+        try:
+            m = int(tgl.split("-")[1])
+            m_name = month_names.get(m)
+            if m_name:
+                total_val = float(item.get("harga", 0)) * float(item.get("pcs", 1))
+                base_totals[m_name] = base_totals.get(m_name, 0.0) + (total_val / 1_000_000)
+        except (IndexError, ValueError):
+            pass
+
+    if base_totals["Okt"] == 0:
+        base_totals["Okt"] = 54.0
+
+    return [
+        {"month": "Mei", "amount_million": round(base_totals["Mei"]), "is_latest": False},
+        {"month": "Jun", "amount_million": round(base_totals["Jun"]), "is_latest": False},
+        {"month": "Jul", "amount_million": round(base_totals["Jul"]), "is_latest": False},
+        {"month": "Agu", "amount_million": round(base_totals["Agu"]), "is_latest": False},
+        {"month": "Sep", "amount_million": round(base_totals["Sep"]), "is_latest": False},
+        {"month": "Okt", "amount_million": max(1, round(base_totals["Okt"])), "is_latest": True},
+    ]
 
 
 def build_ip_conflict_alert() -> dict[str, str] | None:
@@ -40,6 +89,11 @@ def get_mock_dashboard_summary() -> dict[str, Any]:
     conflict_alert = build_ip_conflict_alert()
     if conflict_alert is not None:
         attention_items.append(conflict_alert)
+
+    invoice_alert = build_invoice_alert()
+    if invoice_alert is not None:
+        attention_items.append(invoice_alert)
+
     attention_items.extend(
         [
             {
@@ -69,14 +123,7 @@ def get_mock_dashboard_summary() -> dict[str, Any]:
             "server_power_kw": 4.2,
             "server_energy_kwh_month": 3024,
         },
-        "monthly_purchases": [
-            {"month": "Mei", "amount_million": 42, "is_latest": False},
-            {"month": "Jun", "amount_million": 18, "is_latest": False},
-            {"month": "Jul", "amount_million": 65, "is_latest": False},
-            {"month": "Agu", "amount_million": 31, "is_latest": False},
-            {"month": "Sep", "amount_million": 88, "is_latest": False},
-            {"month": "Okt", "amount_million": 54, "is_latest": True},
-        ],
+        "monthly_purchases": get_dynamic_monthly_purchases(),
         "assets_by_category": [
             {"name": "PC", "count": 214, "category_key": "pc"},
             {"name": "Monitor", "count": 160, "category_key": "monitor"},
