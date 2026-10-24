@@ -17,7 +17,6 @@ from itam_pro.services.category_config import (
     get_config_by_slug,
     get_config_for_category_name,
 )
-from itam_pro.services.validators import validate_asset_business_rules
 from itam_pro.services.mock.master_data import (
     MASTER_JENIS_PC,
     MASTER_KATEGORI,
@@ -31,6 +30,7 @@ from itam_pro.services.mock.master_data import (
     MASTER_UKURAN_MONITOR,
 )
 from itam_pro.services.mock.seed import format_ukuran_layar
+from itam_pro.services.validators import validate_asset_business_rules
 
 
 class AssetState(rx.State):
@@ -316,7 +316,7 @@ class AssetState(rx.State):
             return "Menampilkan 0 dari 0"
         start = (self.page - 1) * self.page_size + 1
         end = min(self.total, self.page * self.page_size)
-        return f"Menampilkan {start}–{end} dari {self.total}"
+        return f"Menampilkan {start}-{end} dari {self.total}"
 
     @rx.var
     def empty_state_title(self) -> str:
@@ -462,7 +462,7 @@ class AssetState(rx.State):
     def _resolve_slug_from_router(self) -> str:
         params = self.router.page.params or {}
         slug = str(params.get("slug", "")).strip().lower()
-        path = str(self.router.page.path or "")
+        path = self.router.page.path or ""
         if not slug and "/assets/c/" in path:
             slug = path.split("/assets/c/", 1)[1].strip("/").lower()
         return slug if slug in CATEGORY_CONFIGS else ""
@@ -722,7 +722,7 @@ class AssetState(rx.State):
         self.form_duplicate_count = "1"
         kategori = str(item.get("kategori", "PC"))
         self.form_kategori = kategori
-        self.form_category_locked = bool(self.current_slug != "")
+        self.form_category_locked = self.current_slug != ""
 
         if mode == "edit":
             self.form_id_aset = str(item.get("id_aset", ""))

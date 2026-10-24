@@ -13,3 +13,7 @@ src = ["frontend", "backend"]
 select = ["E", "F", "I", "UP", "RUF"]
 ignore = ["RUF012"]
 allowed-confusables = ["×"]
+
+[tool.pytest.ini_options]
+pythonpath = ["frontend", "backend"]
+testpaths = ["frontend/tests"]

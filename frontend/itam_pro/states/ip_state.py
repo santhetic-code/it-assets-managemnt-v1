@@ -133,7 +133,7 @@ class IPState(rx.State):
             return "Menampilkan 0 dari 0"
         start = (self.page - 1) * self.page_size + 1
         end = min(self.total, self.page * self.page_size)
-        return f"Menampilkan {start}–{end} dari {self.total}"
+        return f"Menampilkan {start}-{end} dari {self.total}"
 
     # --- COMPUTED VARS: DETAIL DRAWER ---
 
@@ -439,7 +439,7 @@ class IPState(rx.State):
         self.form_modal_open = True
 
     @rx.event
-    def open_edit_modal(self, row_id: str = "") -> None:
+    def open_edit_modal(self, row_id: str) -> None:
         target = row_id or self.active_entry_id
         for item in self.items:
             if item.get("id") == target:
@@ -447,7 +447,7 @@ class IPState(rx.State):
                 return
 
     @rx.event
-    def open_duplicate_modal(self, row_id: str = "") -> None:
+    def open_duplicate_modal(self, row_id: str) -> None:
         target = row_id or self.active_entry_id
         for item in self.items:
             if item.get("id") == target:
@@ -569,7 +569,7 @@ class IPState(rx.State):
     # --- EVENT HANDLERS: HAPUS ENTRI ---
 
     @rx.event
-    def confirm_delete_entry(self, row_id: str = "") -> None:
+    def confirm_delete_entry(self, row_id: str) -> None:
         target = row_id or self.active_entry_id
         for item in self.items:
             if item.get("id") == target:

@@ -1,0 +1,8 @@
+.web/
+.states/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+AGENTS.md
+CLAUDE.md

@@ -212,8 +212,53 @@ def sidebar_content() -> rx.Component:
     )
 
 
-def app_sidebar() -> rx.Component:
+def sidebar() -> rx.Component:
+    """Komponen sidebar desktop utama (dipanggil oleh base_layout.py)."""
     return sidebar_content()
 
 
-__all__ = ["app_sidebar", "sidebar_content"]
+def app_sidebar() -> rx.Component:
+    """Alias kompatibilitas untuk sidebar."""
+    return sidebar_content()
+
+
+def mobile_sidebar_drawer() -> rx.Component:
+    """Drawer navigasi sidebar untuk layar mobile (<900px)."""
+    return rx.cond(
+        NavState.mobile_drawer_open,
+        rx.box(
+            rx.box(
+                on_click=NavState.close_mobile_drawer,
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "inset": "0",
+                        "background_color": Color.SCRIM,
+                        "z_index": "80",
+                    }
+                ),
+            ),
+            rx.box(
+                sidebar_content(),
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "top": "0",
+                        "left": "0",
+                        "bottom": "0",
+                        "width": Size.SIDEBAR_W,
+                        "z_index": "90",
+                    }
+                ),
+            ),
+        ),
+        rx.fragment(),
+    )
+
+
+__all__ = [
+    "app_sidebar",
+    "mobile_sidebar_drawer",
+    "sidebar",
+    "sidebar_content",
+]

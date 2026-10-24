@@ -24,7 +24,7 @@ from itam_pro.components.ui import (
     secondary_button,
 )
 from itam_pro.states.ip_state import IPState
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size, Space
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Space
 
 IP_TABLE_COLUMNS: list[ColumnDef] = [
     {
