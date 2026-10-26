@@ -56,6 +56,8 @@ CATEGORY_PREFIX_MAP: dict[str, str] = {
     "Router": "RTR",
     "HDD": "HDD",
     "Komponen PC": "CMP",
+    "Printer": "PRN",
+    "Scanner": "SCN",
     "Lainnya": "AST",
 }
 
@@ -79,6 +81,7 @@ DEFAULT_HIDDEN_COLUMNS_BY_SLUG: dict[str, list[str]] = {
     "pc": ["mainboard", "keyboard", "mouse"],
     "monitor": [],
     "ups": [],
+    "printer": [],
 }
 
 PC_FIELDS: list[CategoryFieldDef] = [
@@ -370,6 +373,40 @@ CATEGORY_CONFIGS: dict[str, CategoryConfig] = {
         "included_categories": ["Komponen PC"],
         "view_columns": DEFAULT_VIEW_COLUMNS,
         "fields": [],
+    },
+    "printer": {
+        "slug": "printer",
+        "code": "PRN",
+        "name": "Printer",
+        "subtitle": "Inventaris printer dan scanner operasional.",
+        "add_button_label": "+ Tambah Printer",
+        "pinned": False,
+        "included_categories": ["Printer", "Scanner"],
+        "view_columns": ["kategori", "nama_aset", "lokasi", "status"],
+        "tab_field": "jenis",
+        "tab_options": ["Semua", "LaserJet", "InkJet", "Dot Matrix", "Thermal"],
+        "fields": [
+            {
+                "key": "jenis",
+                "name": "jenis",
+                "label": "Jenis",
+                "type": "select",
+                "options": ["LaserJet", "InkJet", "Dot Matrix", "Thermal"],
+                "required": True,
+                "show_in_list": True,
+                "filterable": True,
+            },
+            {
+                "key": "konektivitas",
+                "name": "konektivitas",
+                "label": "Konektivitas",
+                "type": "multiselect",
+                "options": ["USB", "LAN", "Wi-Fi"],
+                "required": False,
+                "show_in_list": True,
+                "filterable": True,
+            },
+        ],
     },
     "lainnya": {
         "slug": "lainnya",

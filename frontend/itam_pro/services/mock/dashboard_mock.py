@@ -3,21 +3,72 @@ Data Mock Ringkasan Dashboard ITAM Pro (USE_MOCK=true).
 """
 from typing import Any
 
-from itam_pro.services.mock.finance_mock import MOCK_INVOICES, MOCK_PURCHASES
+from itam_pro.services.mock.finance_mock import MOCK_BILLS, MOCK_PURCHASES
 from itam_pro.services.mock.ip_mock import get_ip_conflict_summary
+from itam_pro.services.mock.maintenance_mock import (
+    MOCK_MAINTENANCE_PLANS,
+    calculate_plan_status,
+)
+from itam_pro.services.recurrence import calculate_bill_status
 
 
-def build_invoice_alert() -> dict[str, str] | None:
-    """Logika deteksi jatuh tempo atau invoice yang belum dibayar."""
-    overdue_count = sum(1 for inv in MOCK_INVOICES if inv.get("status") == "Belum Dibayar")
-    if overdue_count == 0:
-        return None
-    return {
-        "title": "Invoice Belum Dibayar",
-        "description": f"{overdue_count} invoice mendekati jatuh tempo",
-        "badge_label": "Finance",
-        "badge_variant": "danger",
-    }
+def build_maintenance_alerts() -> list[dict[str, str]]:
+    """Peringatan Maintenance: jadwal terlambat dan hasil 'Perlu tindak lanjut'."""
+    alerts: list[dict[str, str]] = []
+    for plan in MOCK_MAINTENANCE_PLANS:
+        target = plan.get("objek_asset_id") or plan.get("objek_teks", "")
+        # 1. Deteksi hasil 'Perlu tindak lanjut'
+        if plan.get("terakhir_hasil") == "Perlu tindak lanjut":
+            alerts.append(
+                {
+                    "title": f"Tindak Lanjut: {target}",
+                    "description": f"{plan.get('kegiatan', '')} - Perlu penanganan",
+                    "badge_label": "Maintenance",
+                    "badge_variant": "warning",
+                }
+            )
+        # 2. Deteksi status Terlambat
+        status_info = calculate_plan_status(plan.get("jadwal_berikutnya", ""))
+        if status_info["status"] == "Terlambat":
+            alerts.append(
+                {
+                    "title": f"Maintenance: {target}",
+                    "description": f"{plan.get('kegiatan', '')} ({status_info['label']})",
+                    "badge_label": "Maintenance",
+                    "badge_variant": "danger",
+                }
+            )
+    return alerts
+
+
+def build_bill_alerts() -> list[dict[str, str]]:
+    """Peringatan Tagihan Berulang yang Terlambat / Segera jatuh tempo."""
+    alerts: list[dict[str, str]] = []
+    for bill in MOCK_BILLS:
+        if not bill["aktif"]:
+            continue
+        stat = calculate_bill_status(bill["jatuh_tempo"], bill["pengingat_hari"])
+        if stat["status"] == "Terlambat":
+            alerts.append(
+                {
+                    "title": f"Tagihan: {bill['nama']}",
+                    "description": (
+                        f"Jatuh tempo terlewat {stat['label'].replace('Terlambat ', '')}"
+                    ),
+                    "badge_label": "Finance",
+                    "badge_variant": "danger",
+                }
+            )
+        elif stat["status"] == "Segera":
+            alerts.append(
+                {
+                    "title": f"Tagihan: {bill['nama']}",
+                    "description": f"Jatuh tempo {stat['label']}",
+                    "badge_label": "Finance",
+                    "badge_variant": "warning",
+                }
+            )
+    return alerts
 
 
 def get_dynamic_monthly_purchases() -> list[dict[str, Any]]:
@@ -78,21 +129,14 @@ def build_ip_conflict_alert() -> dict[str, str] | None:
 
 def get_mock_dashboard_summary() -> dict[str, Any]:
     """Kembalikan data mentah ringkasan dashboard."""
-    attention_items: list[dict[str, str]] = [
-        {
-            "title": "UPS Jaringan",
-            "description": "Maintenance lewat 5 hari",
-            "badge_label": "Terlambat",
-            "badge_variant": "danger",
-        },
-    ]
+    attention_items: list[dict[str, str]] = []
+
     conflict_alert = build_ip_conflict_alert()
     if conflict_alert is not None:
         attention_items.append(conflict_alert)
 
-    invoice_alert = build_invoice_alert()
-    if invoice_alert is not None:
-        attention_items.append(invoice_alert)
+    attention_items.extend(build_maintenance_alerts())
+    attention_items.extend(build_bill_alerts())
 
     attention_items.extend(
         [
@@ -111,6 +155,12 @@ def get_mock_dashboard_summary() -> dict[str, Any]:
         ]
     )
 
+    overdue_maint_count = sum(
+        1
+        for p in MOCK_MAINTENANCE_PLANS
+        if calculate_plan_status(p.get("jadwal_berikutnya", ""))["status"] == "Terlambat"
+    )
+
     return {
         "kpis": {
             "total_assets": 482,
@@ -118,7 +168,7 @@ def get_mock_dashboard_summary() -> dict[str, Any]:
             "in_use_assets": 391,
             "in_use_percent": 81,
             "in_maintenance": 18,
-            "overdue_maintenance": 4,
+            "overdue_maintenance": overdue_maint_count,
             "expiring_warranty_30d": 9,
             "server_power_kw": 4.2,
             "server_energy_kwh_month": 3024,

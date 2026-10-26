@@ -176,7 +176,7 @@ def sidebar_content() -> rx.Component:
             ),
             _sidebar_group(
                 "Operations",
-                _nav_link_item("Jadwal Maintenance", "/maintenance", "wrench"),
+                _nav_link_item("Jadwal Maintenance", "/operations/maintenance", "wrench"),
             ),
             _sidebar_group(
                 "Finance",

@@ -17,9 +17,11 @@ def stat_card(
     *,
     tone: str = "info",
     note: str = "",
+    description: str = "",
     note_tone: str = "neutral",
 ) -> rx.Component:
     """Render satu kartu KPI dari objek dictionary/Var state atau argumen posisional."""
+    effective_note = note or description
     if value is None and not isinstance(item_or_label, str):
         label = item_or_label["label"]
         val = item_or_label["value"]
@@ -32,7 +34,7 @@ def stat_card(
         val = value
         ic = icon
         chip_tone_val = tone
-        note_val = note
+        note_val = effective_note
         note_tone_val = note_tone
 
     chip_fg = rx.match(

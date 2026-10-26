@@ -369,6 +369,7 @@ def assets_view_page() -> rx.Component:
             chips_section_title="Konektivitas",
             chips_items=AssetState.active_chips_items,
             history_items=AssetState.active_history_info,
+            maintenance_logs=AssetState.active_maintenance_logs,
             on_edit=AssetState.edit_active_asset,
             on_duplicate=AssetState.duplicate_active_asset,
             on_delete=AssetState.delete_active_asset,

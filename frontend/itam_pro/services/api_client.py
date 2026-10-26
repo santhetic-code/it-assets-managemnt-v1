@@ -11,7 +11,13 @@ from dotenv import load_dotenv
 
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
-from itam_pro.services.mock.finance_mock import action_jadikan_aset, query_purchases
+from itam_pro.services.mock.finance_mock import (
+    action_jadikan_aset,
+    action_pay_bill,
+    query_bills,
+    query_invoices,
+    query_purchases,
+)
 from itam_pro.services.mock.ip_mock import (
     create_mock_ip_entry,
     delete_mock_ip_entry,
@@ -20,6 +26,12 @@ from itam_pro.services.mock.ip_mock import (
     is_valid_ipv4,
     query_mock_ip_entries,
     update_mock_ip_entry,
+)
+from itam_pro.services.mock.maintenance_mock import (
+    action_buat_jadwal_massal,
+    action_tandai_selesai,
+    query_maintenance_logs,
+    query_maintenance_plans,
 )
 from itam_pro.services.mock.seed import (
     create_mock_assets,
@@ -322,6 +334,86 @@ class APIClient:
                 payload["kepemilikan"],
                 payload["lokasi"],
             )
+            return True
+        return True
+
+    async def get_invoices(
+        self,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+    ) -> dict[str, Any]:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return query_invoices(filters, page, page_size)
+        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+
+    async def get_bills(
+        self,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+    ) -> dict[str, Any]:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return query_bills(filters, page, page_size)
+        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+
+    async def pay_bill(self, bill_id: str, tgl_bayar: str, nominal: int) -> bool:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            action_pay_bill(bill_id, tgl_bayar, nominal)
+            return True
+        return True
+
+    async def get_maintenance_plans(
+        self,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+    ) -> dict[str, Any]:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return query_maintenance_plans(filters, page, page_size)
+        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+
+    async def get_maintenance_logs(
+        self,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+    ) -> dict[str, Any]:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return query_maintenance_logs(filters, page, page_size)
+        return {"items": [], "total": 0, "page": page, "page_size": page_size}
+
+    async def mark_maintenance_complete(
+        self,
+        plan_id: str,
+        tgl_selesai: str,
+        hasil: str,
+        catatan: str,
+        pic: str,
+    ) -> bool:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            action_tandai_selesai(plan_id, tgl_selesai, hasil, catatan, pic)
+            return True
+        return True
+
+    async def create_bulk_maintenance(
+        self,
+        kategori: str,
+        kegiatan: str,
+        jenis: str,
+        frekuensi: str,
+        tgl_mulai: str,
+        pic: str,
+    ) -> bool:
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            action_buat_jadwal_massal(kategori, kegiatan, jenis, frekuensi, tgl_mulai, pic)
             return True
         return True
 

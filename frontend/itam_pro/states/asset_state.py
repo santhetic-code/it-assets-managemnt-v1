@@ -419,6 +419,16 @@ class AssetState(rx.State):
         return len(self.active_chips_items) > 0
 
     @rx.var
+    def active_maintenance_logs(self) -> list[dict[str, Any]]:
+        item = self._get_active_item()
+        if not item:
+            return []
+        code = str(item.get("id_aset", ""))
+        from itam_pro.services.mock.maintenance_mock import MOCK_MAINTENANCE_LOGS
+
+        return [log for log in MOCK_MAINTENANCE_LOGS if log.get("objek_asset_id") == code]
+
+    @rx.var
     def active_history_info(self) -> list[dict[str, str]]:
         item = self._get_active_item()
         if not item:

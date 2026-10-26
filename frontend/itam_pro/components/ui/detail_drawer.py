@@ -7,7 +7,16 @@ from typing import Any
 
 import reflex as rx
 
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Size
+from itam_pro.styles import (
+    FONT_FAMILY,
+    Color,
+    FontSize,
+    FontWeight,
+    Radius,
+    Shadow,
+    Size,
+    Space,
+)
 
 from .badge import app_badge, connector_chip
 from .status_badge import asset_condition_badge, asset_status_badge
@@ -157,6 +166,66 @@ def _history_row(item: dict[str, Any]) -> rx.Component:
     )
 
 
+def _logs_mini_table(logs: Any) -> rx.Component:
+    """Tabel mini log maintenance untuk tab Riwayat & Log di drawer."""
+    return rx.vstack(
+        rx.text(
+            "LOG MAINTENANCE TERKAIT",
+            font_size=FontSize.GROUP_LABEL,
+            font_weight=FontWeight.BOLD,
+            color=Color.MUTED,
+            letter_spacing="0.06em",
+        ),
+        rx.box(
+            rx.table.root(
+                rx.table.header(
+                    rx.table.row(
+                        rx.table.column_header_cell("Tgl"),
+                        rx.table.column_header_cell("Kegiatan"),
+                        rx.table.column_header_cell("Hasil"),
+                        rx.table.column_header_cell("PIC"),
+                    )
+                ),
+                rx.table.body(
+                    rx.foreach(
+                        logs,
+                        lambda log: rx.table.row(
+                            rx.table.cell(log["tanggal_selesai"]),
+                            rx.table.cell(log["kegiatan"]),
+                            rx.table.cell(
+                                app_badge(
+                                    label=log["hasil"],
+                                    variant=rx.match(
+                                        log["hasil"],
+                                        ("Normal", "success"),
+                                        ("Perlu tindak lanjut", "warning"),
+                                        "neutral",
+                                    ),
+                                )
+                            ),
+                            rx.table.cell(log["dikerjakan_oleh"]),
+                        ),
+                    )
+                ),
+                variant="surface",
+                size="1",
+                width="100%",
+            ),
+            style=rx.Style(
+                {
+                    "border": f"1px solid {Color.BORDER}",
+                    "border_radius": Radius.CONTROL,
+                    "overflow": "hidden",
+                    "width": "100%",
+                }
+            ),
+        ),
+        spacing="2",
+        width="100%",
+        margin_bottom=Space.S3,
+    )
+
+
 def _drawer_tab_button(
     label: str,
     tab_key: str,
@@ -216,6 +285,7 @@ def detail_drawer(
     section4_items: Any | None = None,
     duplicate_label: str = "Duplikat × N",
     on_key_down: Any | None = None,
+    maintenance_logs: Any | None = None,
     tabs: tuple[tuple[str, str], tuple[str, str]] = (
         ("detail", "Rincian Aset"),
         ("history", "Riwayat & Log"),
@@ -370,6 +440,16 @@ def detail_drawer(
                             align="start",
                         ),
                         rx.vstack(
+                            _logs_mini_table(maintenance_logs)
+                            if maintenance_logs is not None
+                            else rx.fragment(),
+                            rx.text(
+                                "RIWAYAT AKTIVITAS",
+                                font_size=FontSize.GROUP_LABEL,
+                                font_weight=FontWeight.BOLD,
+                                color=Color.MUTED,
+                                letter_spacing="0.06em",
+                            ),
                             rx.foreach(history_items, _history_row),
                             spacing="3",
                             width="100%",

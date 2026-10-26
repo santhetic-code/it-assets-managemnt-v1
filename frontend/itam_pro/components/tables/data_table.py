@@ -171,7 +171,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
 
     if rtype == "badge":
         variant_key = str(col.get("badge_variant_key", ""))
-        variant = row[variant_key] if variant_key and variant_key in row else "neutral"
+        variant = row[variant_key] if variant_key else "neutral"
         return app_badge(label=row[key], variant=variant)
 
     if rtype == "date":

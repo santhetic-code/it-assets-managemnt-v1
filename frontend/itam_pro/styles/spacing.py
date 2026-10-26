@@ -12,6 +12,7 @@ class Space:
     S6 = "24px"
     S7 = "28px"
     S8 = "32px"
+    SECTION = "24px"
 
 
 class Size:
