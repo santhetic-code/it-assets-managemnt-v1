@@ -1,6 +1,6 @@
 """
 Komponen Topbar ITAM Pro.
-Tinggi 68px, putih, border bawah #E1E8F5, padding 0 32px.
+Tinggi 68px, putih, border bawah Color.BORDER, padding 0 32px.
 """
 import reflex as rx
 

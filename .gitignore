@@ -6,3 +6,8 @@ assets/external/
 .web
 .states
 *.db
+
+# Data & Kredensial
+docs/data/private/
+*kredensial*
+*password*

@@ -1,6 +1,6 @@
 """
 Komponen Pagination Generik ITAM Pro.
-'Menampilkan X-Y dari N', tombol prev/next, halaman aktif #1D4ED8, dukungan elipsis.
+'Menampilkan X-Y dari N', tombol prev/next, halaman aktif Color.ACCENT, dukungan elipsis.
 """
 from typing import Any
 

@@ -344,7 +344,11 @@ def query_maintenance_logs(
 
     asset_id = filters.get("asset_id")
     if asset_id:
-        filtered = [log_entry for log_entry in filtered if log_entry.get("objek_asset_id") == asset_id]
+        filtered = [
+            log_entry
+            for log_entry in filtered
+            if log_entry.get("objek_asset_id") == asset_id
+        ]
 
     start = max(0, (page - 1) * page_size)
     return {
@@ -431,11 +435,11 @@ def action_buat_jadwal_massal(
 
 
 __all__ = [
-    "MOCK_MAINTENANCE_PLANS",
     "MOCK_MAINTENANCE_LOGS",
-    "calculate_plan_status",
-    "query_maintenance_plans",
-    "query_maintenance_logs",
-    "action_tandai_selesai",
+    "MOCK_MAINTENANCE_PLANS",
     "action_buat_jadwal_massal",
+    "action_tandai_selesai",
+    "calculate_plan_status",
+    "query_maintenance_logs",
+    "query_maintenance_plans",
 ]

@@ -156,14 +156,14 @@ class AssetState(rx.State):
     @rx.var
     def page_subtitle(self) -> str:
         cfg = get_config_by_slug(self.current_slug)
-        if cfg:
+        if cfg and cfg.get("subtitle"):
             return cfg["subtitle"]
         return "Kelola seluruh unit fisik perangkat keras IT dalam satu basis data terpadu."
 
     @rx.var
     def add_button_label(self) -> str:
         cfg = get_config_by_slug(self.current_slug)
-        if cfg:
+        if cfg and cfg.get("add_button_label"):
             return cfg["add_button_label"]
         return "+ Tambah Aset"
 

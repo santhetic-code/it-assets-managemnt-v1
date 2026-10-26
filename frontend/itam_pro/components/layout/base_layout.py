@@ -1,6 +1,6 @@
 """
 Base Layout Wrapper ITAM Pro.
-Grid 248px (Sidebar) + 1fr (Topbar & Konten), latar #F2F5FB, padding konten 28px 32px.
+Grid 248px (Sidebar) + 1fr (Topbar & Konten), latar Color.BG, padding konten 28px 32px.
 """
 import reflex as rx
 

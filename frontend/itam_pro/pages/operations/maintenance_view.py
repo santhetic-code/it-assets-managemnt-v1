@@ -229,7 +229,8 @@ def _buat_jadwal_massal_dialog() -> rx.Component:
                         color=Color.TEXT,
                     ),
                     rx.text(
-                        "Jadwal serentak akan digenerate untuk semua unit aset pada kategori yang dipilih.",
+                        "Jadwal serentak akan digenerate untuk semua unit aset pada "
+                        "kategori yang dipilih.",
                         font_size=FontSize.SM,
                         color=Color.MUTED,
                     ),

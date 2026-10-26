@@ -1,6 +1,6 @@
 """
 Komponen Checkbox Reusable ITAM Pro.
-Kotak 18px, accent #1D4ED8, label teks muted #55627F.
+Kotak 18px, accent Color.ACCENT, label teks muted Color.MUTED.
 """
 from typing import Any
 
@@ -14,7 +14,7 @@ def app_checkbox(
     checked: Any,
     on_change: Any,
 ) -> rx.Component:
-    """Checkbox standar dengan ukuran 18x18px dan warna aksen #1D4ED8."""
+    """Checkbox standar dengan ukuran 18x18px dan warna aksen Color.ACCENT."""
     return rx.el.label(
         rx.hstack(
             rx.el.input(
