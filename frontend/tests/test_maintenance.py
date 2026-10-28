@@ -17,15 +17,15 @@ from itam_pro.services.mock.maintenance_mock import (
 
 
 def test_printer_category_config() -> None:
-    """1. Uji konfigurasi kategori Printer (tanpa view dan tidak dipin)."""
+    """1. Uji konfigurasi kategori Printer & Scanner."""
     cfg = get_config_by_slug("printer")
     assert cfg is not None
     assert cfg["name"] == "Printer"
     assert cfg["code"] == "PRN"
-    assert cfg["pinned"] is False
-    assert cfg["view_columns"] == []
-    assert cfg["tab_field"] == ""
+    assert cfg["tab_field"] == "jenis"
+    assert "LaserJet" in cfg["tab_options"]
     assert "Printer" in cfg["included_categories"]
+    assert "Scanner" in cfg["included_categories"]
     assert CATEGORY_PREFIX_MAP.get("Printer") == "PRN"
     assert CATEGORY_PREFIX_MAP.get("Scanner") == "SCN"
 

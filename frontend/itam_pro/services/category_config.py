@@ -33,8 +33,8 @@ class CategoryConfig(TypedDict, total=False):
     slug: Required[str]
     code: Required[str]
     name: Required[str]
-    subtitle: NotRequired[str]
-    add_button_label: NotRequired[str]
+    subtitle: Required[str]
+    add_button_label: Required[str]
     pinned: Required[bool]
     included_categories: Required[list[str]]
     view_columns: Required[list[str]]
@@ -378,11 +378,35 @@ CATEGORY_CONFIGS: dict[str, CategoryConfig] = {
         "slug": "printer",
         "code": "PRN",
         "name": "Printer",
-        "pinned": False,  # Tidak dipin di sidebar
-        "included_categories": ["Printer"],
-        "view_columns": [],  # Tidak punya view terpisah
-        "tab_field": "",
-        "fields": [],
+        "subtitle": "Inventaris printer dan scanner operasional.",
+        "add_button_label": "+ Tambah Printer",
+        "pinned": False,
+        "included_categories": ["Printer", "Scanner"],
+        "view_columns": ["kategori", "nama_aset", "lokasi", "status"],
+        "tab_field": "jenis",
+        "tab_options": ["Semua", "LaserJet", "InkJet", "Dot Matrix", "Thermal"],
+        "fields": [
+            {
+                "key": "jenis",
+                "name": "jenis",
+                "label": "Jenis",
+                "type": "select",
+                "options": ["LaserJet", "InkJet", "Dot Matrix", "Thermal"],
+                "required": True,
+                "show_in_list": True,
+                "filterable": True,
+            },
+            {
+                "key": "konektivitas",
+                "name": "konektivitas",
+                "label": "Konektivitas",
+                "type": "multiselect",
+                "options": ["USB", "LAN", "Wi-Fi"],
+                "required": False,
+                "show_in_list": True,
+                "filterable": True,
+            },
+        ],
     },
     "lainnya": {
         "slug": "lainnya",

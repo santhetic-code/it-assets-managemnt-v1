@@ -1,18 +1,20 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_production_mock_safeguard():
-    """Aplikasi harus crash/exit jika berjalan di produksi dengan mock data."""
+    """Aplikasi harus crash jika berjalan di produksi dengan mock data."""
+    frontend_dir = Path(__file__).resolve().parent.parent
     env = os.environ.copy()
     env["APP_ENV"] = "production"
     env["USE_MOCK"] = "true"
+    env["PYTHONPATH"] = str(frontend_dir)
 
-    # Jalankan inisialisasi module untuk memicu sys.exit(1)
-    python_cmd = sys.executable or "python"
     result = subprocess.run(
-        [python_cmd, "-c", "from itam_pro import itam_pro"],
+        [sys.executable, "-c", "import itam_pro.config"],
+        cwd=str(frontend_dir),
         env=env,
         capture_output=True,
         text=True,

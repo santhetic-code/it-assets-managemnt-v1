@@ -1,12 +1,9 @@
 """
 Entry Point & Routing Utama ITAM Pro.
 """
-import os
-import sys
-
 import reflex as rx
-from dotenv import load_dotenv
 
+from itam_pro.config import APP_ENV, USE_MOCK  # noqa: F401  (guard production dijalankan saat import)
 from itam_pro.pages.auth import login_page
 from itam_pro.pages.finance import purchases_view_page
 from itam_pro.pages.infrastructure import ip_vm_page
@@ -20,18 +17,6 @@ from itam_pro.states.finance_state import FinanceState
 from itam_pro.states.ip_state import IPState
 from itam_pro.states.maintenance_state import MaintenanceState
 from itam_pro.styles import BASE_STYLE, GOOGLE_FONTS_URL
-
-load_dotenv()
-
-APP_ENV = os.getenv("APP_ENV", "dev").lower()
-USE_MOCK = os.getenv("USE_MOCK", "true").lower() == "true"
-
-if APP_ENV == "production" and USE_MOCK:
-    print(
-        "FATAL ERROR: DILARANG menjalankan aplikasi di lingkungan production dengan USE_MOCK=true. "
-        "Harap sambungkan ke database nyata."
-    )
-    sys.exit(1)
 
 
 def root_redirect_page() -> rx.Component:
