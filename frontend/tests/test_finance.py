@@ -68,7 +68,11 @@ def test_action_jadikan_aset_generates_n_physical_assets() -> None:
     initial_asset_count = len(MOCK_ASSETS)
 
     # Cari item pembelian dengan pcs = 2 (SSD NVMe Samsung 980 1TB)
-    target_id = "PRC-2026-001"
+    target_id = (
+        "PRC-CSV-001"
+        if any(p["id_pembelian"] == "PRC-CSV-001" for p in MOCK_PURCHASES)
+        else "PRC-2026-001"
+    )
     target_purchase = next(p for p in MOCK_PURCHASES if p["id_pembelian"] == target_id)
     pcs = target_purchase["pcs"]
     assert pcs == 2

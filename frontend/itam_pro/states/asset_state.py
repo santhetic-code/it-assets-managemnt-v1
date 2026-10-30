@@ -30,6 +30,7 @@ from itam_pro.services.mock.master_data import (
     MASTER_UKURAN_MONITOR,
 )
 from itam_pro.services.mock.seed import format_ukuran_layar
+from itam_pro.services.router_utils import get_current_params
 from itam_pro.services.validators import validate_asset_business_rules
 
 
@@ -130,6 +131,7 @@ class AssetState(rx.State):
     form_digunakan_oleh: str = ""
     form_catatan: str = ""
     form_duplicate_count: str = "1"
+    duplicate_count_form: int = 1
 
     # Field Spesifikasi Kategori pada Form (disimpan ke asset.attributes)
     form_attributes: dict[str, str] = {}
@@ -470,7 +472,7 @@ class AssetState(rx.State):
     # --- EVENT HANDLERS: LOAD & NAVIGASI ---
 
     def _resolve_slug_from_router(self) -> str:
-        params = self.router.page.params or {}
+        params = get_current_params(self.router)
         slug = str(params.get("slug", "")).strip().lower()
         path = self.router.page.path or ""
         if not slug and "/assets/c/" in path:
@@ -480,6 +482,7 @@ class AssetState(rx.State):
     @rx.event
     async def load_view_data(self) -> None:
         """Dipanggil saat halaman `/assets` atau `/assets/c/[slug]` dimuat."""
+        params = get_current_params(self.router)
         new_slug = self._resolve_slug_from_router()
         if new_slug != self.current_slug:
             self.current_slug = new_slug
@@ -500,6 +503,15 @@ class AssetState(rx.State):
                 self.active_tab = tab_opts[0]
             else:
                 self.active_tab = ""
+
+        # Tangani query parameter URL seperti ?status=Digunakan atau ?kategori=Monitor
+        param_status = str(params.get("status", "")).strip()
+        param_kategori = str(params.get("kategori", "")).strip()
+
+        if param_status or param_kategori:
+            self.status_filter = param_status
+            self.kategori_filter = param_kategori
+            self.page = 1
 
         await self.fetch_assets()
 
@@ -698,6 +710,7 @@ class AssetState(rx.State):
         self.form_error = ""
         self.form_sn_warning = ""
         self.form_duplicate_count = "1"
+        self.duplicate_count_form = 1
 
         cfg = get_config_by_slug(self.current_slug)
         if cfg:
@@ -730,6 +743,7 @@ class AssetState(rx.State):
         self.form_mode = mode
         self.form_error = ""
         self.form_duplicate_count = "1"
+        self.duplicate_count_form = 1
         kategori = str(item.get("kategori", "PC"))
         self.form_kategori = kategori
         self.form_category_locked = self.current_slug != ""
@@ -856,8 +870,23 @@ class AssetState(rx.State):
         self.form_catatan = val
 
     @rx.event
+    def set_duplicate_count(self, value: str) -> None:
+        """Atur jumlah unit dengan validasi ketat (maksimal 50)."""
+        try:
+            count = int(value.strip())
+            if count < 1:
+                count = 1
+            elif count > 50:
+                count = 50
+            self.duplicate_count_form = count
+        except ValueError:
+            # Menangani nilai tidak valid atau string kosong
+            self.duplicate_count_form = 1
+        self.form_duplicate_count = str(self.duplicate_count_form)
+
+    @rx.event
     def set_form_duplicate_count(self, val: str) -> None:
-        self.form_duplicate_count = val
+        self.set_duplicate_count(val)
 
     @rx.event
     def set_form_attr(self, key: str, val: str) -> None:
@@ -946,12 +975,12 @@ class AssetState(rx.State):
         if self.form_mode == "edit":
             await api_client.update_asset(asset_id=self.form_id_aset, payload=payload)
         else:
-            dup_count = (
-                int(self.form_duplicate_count)
-                if self.form_duplicate_count.strip().isdigit()
-                else 1
-            )
-            await api_client.create_assets(payload=payload, duplicate_count=max(1, dup_count))
+            try:
+                dup_count = int(self.form_duplicate_count.strip())
+                dup_count = max(1, min(50, dup_count))
+            except (ValueError, AttributeError):
+                dup_count = max(1, min(50, getattr(self, "duplicate_count_form", 1)))
+            await api_client.create_assets(payload=payload, duplicate_count=dup_count)
 
         self.form_modal_open = False
         await self.fetch_assets()
@@ -961,12 +990,12 @@ class AssetState(rx.State):
         payload = self._validate_and_build_payload()
         if payload is None:
             return
-        dup_count = (
-            int(self.form_duplicate_count)
-            if self.form_duplicate_count.strip().isdigit()
-            else 1
-        )
-        await api_client.create_assets(payload=payload, duplicate_count=max(1, dup_count))
+        try:
+            dup_count = int(self.form_duplicate_count.strip())
+            dup_count = max(1, min(50, dup_count))
+        except (ValueError, AttributeError):
+            dup_count = max(1, min(50, getattr(self, "duplicate_count_form", 1)))
+        await api_client.create_assets(payload=payload, duplicate_count=dup_count)
         await self.fetch_assets()
         self.open_add_modal()
 

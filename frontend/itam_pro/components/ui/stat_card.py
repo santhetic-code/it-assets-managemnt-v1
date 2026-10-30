@@ -19,9 +19,11 @@ def stat_card(
     note: str = "",
     description: str = "",
     note_tone: str = "neutral",
+    href: str = "",
 ) -> rx.Component:
     """Render satu kartu KPI dari objek dictionary/Var state atau argumen posisional."""
     effective_note = note or description
+    card_href = href
     if value is None and not isinstance(item_or_label, str):
         label = item_or_label["label"]
         val = item_or_label["value"]
@@ -29,6 +31,13 @@ def stat_card(
         chip_tone_val = item_or_label["chip_tone"]
         note_val = item_or_label["note"]
         note_tone_val = item_or_label["note_tone"]
+        if isinstance(item_or_label, dict):
+            card_href = item_or_label.get("href", href)
+        else:
+            try:
+                card_href = item_or_label["href"]
+            except Exception:
+                card_href = href
     else:
         label = item_or_label
         val = value
@@ -61,7 +70,7 @@ def stat_card(
         Color.MUTED,
     )
 
-    return rx.box(
+    card_box = rx.box(
         # Baris Atas: Label 13px muted + Chip Ikon 36px
         rx.hstack(
             rx.text(
@@ -121,8 +130,25 @@ def stat_card(
                 "display": "flex",
                 "flex_direction": "column",
                 "justify_content": "space-between",
+                "transition": "all 0.15s ease",
+                "_hover": {
+                    "border_color": Color.ACCENT,
+                    "transform": "translateY(-1px)",
+                    "box_shadow": "0 2px 8px rgba(0, 0, 0, 0.05)",
+                },
             }
         ),
+    )
+
+    return rx.cond(
+        card_href != "",
+        rx.link(
+            card_box,
+            href=card_href,
+            text_decoration="none",
+            width="100%",
+        ),
+        card_box,
     )
 
 

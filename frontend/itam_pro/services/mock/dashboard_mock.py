@@ -3,6 +3,7 @@ Data Mock Ringkasan Dashboard ITAM Pro (USE_MOCK=true).
 """
 from typing import Any
 
+from itam_pro.services.dashboard_service import calculate_dashboard_metrics
 from itam_pro.services.mock.finance_mock import MOCK_BILLS, MOCK_PURCHASES
 from itam_pro.services.mock.ip_mock import get_ip_conflict_summary
 from itam_pro.services.mock.maintenance_mock import (
@@ -161,26 +162,17 @@ def get_mock_dashboard_summary() -> dict[str, Any]:
         if calculate_plan_status(p.get("jadwal_berikutnya", ""))["status"] == "Terlambat"
     )
 
+    metrics = calculate_dashboard_metrics()
+    kpis = dict(metrics.get("kpis", {}))
+    kpis.setdefault("new_assets_this_month", 2)
+    kpis.setdefault("in_maintenance", metrics["kpis"].get("maintenance_attention", 0))
+    kpis.setdefault("overdue_maintenance", overdue_maint_count)
+    kpis.setdefault("expiring_warranty_30d", 2)
+
     return {
-        "kpis": {
-            "total_assets": 482,
-            "new_assets_this_month": 12,
-            "in_use_assets": 391,
-            "in_use_percent": 81,
-            "in_maintenance": 18,
-            "overdue_maintenance": overdue_maint_count,
-            "expiring_warranty_30d": 9,
-            "server_power_kw": 4.2,
-            "server_energy_kwh_month": 3024,
-        },
-        "monthly_purchases": get_dynamic_monthly_purchases(),
-        "assets_by_category": [
-            {"name": "PC", "count": 214, "category_key": "pc"},
-            {"name": "Monitor", "count": 160, "category_key": "monitor"},
-            {"name": "Server", "count": 38, "category_key": "server"},
-            {"name": "UPS", "count": 24, "category_key": "ups"},
-            {"name": "Lainnya", "count": 46, "category_key": "other"},
-        ],
+        "kpis": kpis,
+        "monthly_purchases": metrics.get("monthly_purchases", []),
+        "assets_by_category": metrics.get("assets_by_category", []),
         "ups_loads": [
             {"name": "UPS Server 1", "capacity_kva": 6.0, "load_percent": 78},
             {"name": "UPS Server 2", "capacity_kva": 6.0, "load_percent": 64},

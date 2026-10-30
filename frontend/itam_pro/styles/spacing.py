@@ -54,12 +54,15 @@ class Size:
 
 
 class Radius:
+    SM = "6px"
     BADGE_KBD = "6px"
     CONNECTOR_CHIP = "7px"      # Radius chip kecil per konektor monitor
     CHIP = "10px"
     CONTROL = "10px"
+    MD = "10px"
     LOGO_BOX = "12px"
     CARD = "14px"
+    LG = "14px"
     LOGIN_CARD = "24px"
     FULL = "9999px"
 

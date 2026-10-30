@@ -146,37 +146,50 @@ def _monthly_purchases_card() -> rx.Component:
 
 def _category_legend_row(item: CategoryAssetItem) -> rx.Component:
     """Baris legenda untuk donut chart Aset per Kategori."""
-    return rx.hstack(
+    return rx.link(
         rx.hstack(
-            rx.box(
-                style=rx.Style(
-                    {
-                        "width": Size.LEGEND_DOT,
-                        "height": Size.LEGEND_DOT,
-                        "border_radius": Radius.FULL,
-                        "background_color": item["fill"],
-                        "flex_shrink": "0",
-                    }
+            rx.hstack(
+                rx.box(
+                    style=rx.Style(
+                        {
+                            "width": Size.LEGEND_DOT,
+                            "height": Size.LEGEND_DOT,
+                            "border_radius": Radius.FULL,
+                            "background_color": item["fill"],
+                            "flex_shrink": "0",
+                        }
+                    ),
                 ),
+                rx.text(
+                    item["name"],
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.REGULAR,
+                    color=Color.MUTED,
+                ),
+                spacing="2",
+                align="center",
             ),
             rx.text(
-                item["name"],
+                item["formatted_value"],
                 font_size=FontSize.SM,
-                font_weight=FontWeight.REGULAR,
-                color=Color.MUTED,
+                font_weight=FontWeight.BOLD,
+                color=Color.TEXT,
             ),
-            spacing="2",
+            width="100%",
+            justify="between",
             align="center",
+            padding_y="4px",
+            padding_x="6px",
+            border_radius=Radius.SM,
+            transition="all 0.15s ease",
+            _hover={
+                "background_color": Color.SURFACE_HOVER,
+                "cursor": "pointer",
+            },
         ),
-        rx.text(
-            item["formatted_value"],
-            font_size=FontSize.SM,
-            font_weight=FontWeight.BOLD,
-            color=Color.TEXT,
-        ),
+        href=item["href"],
+        text_decoration="none",
         width="100%",
-        justify="between",
-        align="center",
     )
 
 
@@ -185,60 +198,65 @@ def _assets_by_category_card() -> rx.Component:
     return app_card(
         rx.box(
             # Donut Chart dengan label total di tengah
-            rx.box(
-                rx.recharts.responsive_container(
-                    rx.recharts.pie_chart(
-                        rx.recharts.pie(
-                            data=DashboardState.category_assets,
-                            data_key="value",
-                            name_key="name",
-                            cx="50%",
-                            cy="50%",
-                            inner_radius=50,
-                            outer_radius=74,
-                            padding_angle=2,
-                            stroke="none",
+            rx.link(
+                rx.box(
+                    rx.recharts.responsive_container(
+                        rx.recharts.pie_chart(
+                            rx.recharts.pie(
+                                data=DashboardState.category_assets,
+                                data_key="value",
+                                name_key="name",
+                                cx="50%",
+                                cy="50%",
+                                inner_radius=50,
+                                outer_radius=74,
+                                padding_angle=2,
+                                stroke="none",
+                            ),
+                            rx.recharts.tooltip(),
                         ),
-                        rx.recharts.tooltip(),
+                        width="100%",
+                        height=170,
                     ),
-                    width="100%",
-                    height=170,
-                ),
-                # Overlay angka total di tengah lubang donut
-                rx.vstack(
-                    rx.text(
-                        DashboardState.total_assets_formatted,
-                        font_size=FontSize.DONUT_TOTAL,
-                        font_weight=FontWeight.EXTRABOLD,
-                        color=Color.TEXT,
-                        line_height="1.1",
+                    # Overlay angka total di tengah lubang donut
+                    rx.vstack(
+                        rx.text(
+                            DashboardState.total_assets_formatted,
+                            font_size=FontSize.DONUT_TOTAL,
+                            font_weight=FontWeight.EXTRABOLD,
+                            color=Color.TEXT,
+                            line_height="1.1",
+                        ),
+                        rx.text(
+                            "total aset",
+                            font_size=FontSize.GROUP_LABEL,
+                            font_weight=FontWeight.REGULAR,
+                            color=Color.MUTED,
+                            line_height="1.1",
+                        ),
+                        spacing="0",
+                        align="center",
+                        justify="center",
+                        style=rx.Style(
+                            {
+                                "position": "absolute",
+                                "inset": "0",
+                                "pointer_events": "none",
+                            }
+                        ),
                     ),
-                    rx.text(
-                        "total aset",
-                        font_size=FontSize.GROUP_LABEL,
-                        font_weight=FontWeight.REGULAR,
-                        color=Color.MUTED,
-                        line_height="1.1",
-                    ),
-                    spacing="0",
-                    align="center",
-                    justify="center",
                     style=rx.Style(
                         {
-                            "position": "absolute",
-                            "inset": "0",
-                            "pointer_events": "none",
+                            "position": "relative",
+                            "width": "165px",
+                            "height": "170px",
+                            "flex_shrink": "0",
+                            "cursor": "pointer",
                         }
                     ),
                 ),
-                style=rx.Style(
-                    {
-                        "position": "relative",
-                        "width": "165px",
-                        "height": "170px",
-                        "flex_shrink": "0",
-                    }
-                ),
+                href="/assets",
+                text_decoration="none",
             ),
             # Legenda Kategori + Jumlah
             rx.vstack(

@@ -89,6 +89,10 @@ MASTER_STATUS_MONITOR: list[str] = [
 ]
 
 
+# [TERBUKA]: Diisi setelah verifikasi fisik dari pemilik data (11C)
+VM_HOST_ASSETS: list[dict] = []
+
+
 def get_all_master_options() -> dict[str, list[str]]:
     """Kembalikan seluruh daftar opsi master untuk kebutuhan State dan Form."""
     return {
@@ -118,5 +122,6 @@ __all__ = [
     "MASTER_STATUS",
     "MASTER_STATUS_MONITOR",
     "MASTER_UKURAN_MONITOR",
+    "VM_HOST_ASSETS",
     "get_all_master_options",
 ]

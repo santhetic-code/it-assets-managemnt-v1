@@ -8,6 +8,7 @@ from typing import Any
 import reflex as rx
 
 from itam_pro.services.api_client import api_client
+from itam_pro.services.router_utils import get_current_params
 
 VALID_TABS = ("daftar", "kalender", "riwayat")
 
@@ -52,7 +53,7 @@ class MaintenanceState(rx.State):
     @rx.event
     async def load_page(self) -> None:
         """Dipanggil saat on_load route /operations/maintenance."""
-        params = self.router.page.params or {}
+        params = get_current_params(self.router)
         tab = str(params.get("tab", "daftar")).strip().lower()
         if tab not in VALID_TABS:
             tab = "daftar"
