@@ -750,10 +750,10 @@ def asset_form_modal() -> rx.Component:
                             rx.cond(
                                 AssetState.form_mode == "add",
                                 rx.vstack(
-                                    _field_label("Duplikat × N Unit"),
+                                    _field_label("Duplikat × N Unit (Maks 50)"),
                                     _text_input(
                                         value=AssetState.form_duplicate_count,
-                                        on_change=AssetState.set_form_duplicate_count,
+                                        on_change=AssetState.set_duplicate_count,
                                         input_type="number",
                                     ),
                                     spacing="1",

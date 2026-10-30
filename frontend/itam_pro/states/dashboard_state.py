@@ -17,11 +17,12 @@ class KPICardItem(TypedDict):
     note_tone: str
     icon: str
     chip_tone: str
+    href: str
 
 
 class MonthlyPurchaseItem(TypedDict):
     month: str
-    amount: int
+    amount: int | float
     fill: str
 
 
@@ -30,6 +31,7 @@ class CategoryAssetItem(TypedDict):
     value: int
     formatted_value: str
     fill: str
+    href: str
 
 
 class UPSLoadItem(TypedDict):
@@ -69,6 +71,8 @@ CATEGORY_COLOR_MAP: dict[str, str] = {
     "monitor": Color.CHART_MONITOR,
     "server": Color.SIDEBAR,
     "ups": Color.CHART_UPS,
+    "router": Color.PURPLE_FG,
+    "ssd": Color.SUCCESS_FG,
     "other": Color.CHART_OTHER,
 }
 
@@ -111,6 +115,7 @@ class DashboardState(rx.State):
                 "note_tone": "success",
                 "icon": "box",
                 "chip_tone": "info",
+                "href": "/assets",
             },
             {
                 "label": "Sedang Dipakai",
@@ -119,6 +124,7 @@ class DashboardState(rx.State):
                 "note_tone": "muted",
                 "icon": "smartphone",
                 "chip_tone": "success",
+                "href": "/assets?status=Digunakan",
             },
             {
                 "label": "Dalam Maintenance",
@@ -127,6 +133,7 @@ class DashboardState(rx.State):
                 "note_tone": "danger",
                 "icon": "calendar",
                 "chip_tone": "warning",
+                "href": "/maintenance",
             },
             {
                 "label": "Garansi ≤ 30 Hari",
@@ -135,6 +142,7 @@ class DashboardState(rx.State):
                 "note_tone": "warning",
                 "icon": "shield-check",
                 "chip_tone": "purple",
+                "href": "/assets",
             },
             {
                 "label": "Daya Server",
@@ -143,18 +151,19 @@ class DashboardState(rx.State):
                 "note_tone": "muted",
                 "icon": "zap",
                 "chip_tone": "info",
+                "href": "/assets?kategori=Server",
             },
         ]
 
         raw_purchases = data.get("monthly_purchases", [])
-        total_purchase = sum(int(item.get("amount_million", 0)) for item in raw_purchases)
+        total_purchase = sum(float(item.get("amount_million", 0)) for item in raw_purchases)
         self.purchase_subtitle = (
-            f"Juta rupiah · total 6 bulan Rp {format_id_number(total_purchase)} jt"
+            f"Juta rupiah · total 6 bulan Rp {format_id_number(total_purchase, decimals=1)} jt"
         )
         self.monthly_purchases = [
             {
                 "month": str(item["month"]),
-                "amount": int(item["amount_million"]),
+                "amount": round(float(item["amount_million"]), 1),
                 "fill": Color.ACCENT if item.get("is_latest") else Color.CHART_BAR,
             }
             for item in raw_purchases
@@ -167,8 +176,9 @@ class DashboardState(rx.State):
                 "value": int(cat["count"]),
                 "formatted_value": format_id_number(int(cat["count"])),
                 "fill": CATEGORY_COLOR_MAP.get(
-                    str(cat.get("category_key", "")), Color.CHART_OTHER
+                    str(cat.get("category_key", "")).lower(), Color.CHART_OTHER
                 ),
+                "href": f"/assets?kategori={cat['name']}",
             }
             for cat in raw_categories
         ]

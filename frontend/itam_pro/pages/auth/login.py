@@ -267,11 +267,10 @@ def _blue_sliding_panel() -> rx.Component:
                 margin_bottom="26px",
                 max_width=rx.cond(AuthState.is_form_state, "420px", "540px"),
             ),
-            # 3 Poin Centang: Horizontal (gap 22px) saat Welcome, Vertikal (gap 12px) saat Form
+            # Poin Centang Fitur: Horizontal (gap 22px) saat Welcome, Vertikal (gap 12px) saat Form
             rx.box(
                 _brand_feature_row("Inventaris terpusat"),
-                _brand_feature_row("Audit terekam otomatis"),
-                _brand_feature_row("Kredensial terenkripsi"),
+                _brand_feature_row("Pemantauan beban server terpusat"),
                 style=rx.Style(
                     {
                         "display": "flex",

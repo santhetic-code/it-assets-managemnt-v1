@@ -9,15 +9,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-APP_ENV = os.getenv("APP_ENV", "dev").lower()
-USE_MOCK = os.getenv("USE_MOCK", "true").lower() == "true"
+_raw_env = os.getenv("APP_ENV", "dev").lower().strip()
 
-if APP_ENV == "production" and USE_MOCK:
+# Validasi nilai APP_ENV secara ketat
+if _raw_env not in ["dev", "production"]:
     print(
-        "FATAL ERROR: DILARANG menjalankan aplikasi di lingkungan production "
-        "dengan USE_MOCK=true. Harap sambungkan ke database nyata.",
+        f"FATAL ERROR: Nilai APP_ENV='{_raw_env}' tidak valid. Harus 'dev' atau 'production'.",
         file=sys.stderr,
     )
     sys.exit(1)
 
-__all__ = ["APP_ENV", "USE_MOCK"]
+APP_ENV = _raw_env
+USE_MOCK = os.getenv("USE_MOCK", "true").lower().strip() == "true"
+
+
+def validate_production_env():
+    if APP_ENV == "production" and USE_MOCK:
+        print(
+            "FATAL ERROR: DILARANG menjalankan aplikasi di lingkungan production "
+            "dengan USE_MOCK=true. Harap sambungkan ke database nyata.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+validate_production_env()
+
+__all__ = ["APP_ENV", "USE_MOCK", "validate_production_env"]

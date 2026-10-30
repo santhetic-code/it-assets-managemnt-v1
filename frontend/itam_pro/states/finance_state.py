@@ -8,6 +8,7 @@ from typing import Any
 import reflex as rx
 
 from itam_pro.services.api_client import api_client
+from itam_pro.services.router_utils import get_current_params
 
 VALID_TABS = ("pembelian", "invoice", "tagihan")
 TAB_LABELS = {"pembelian": "pembelian", "invoice": "invoice", "tagihan": "tagihan"}
@@ -159,7 +160,7 @@ class FinanceState(rx.State):
 
     @rx.event
     async def load_finance_page(self) -> None:
-        params = self.router.page.params or {}
+        params = get_current_params(self.router)
         tab = str(params.get("tab", "pembelian"))
         if tab not in VALID_TABS:
             tab = "pembelian"

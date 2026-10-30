@@ -3,6 +3,8 @@ Unified Mock Database ITAM Pro (Tahap 6c-1).
 Seluruh aset disimpan dalam satu tabel `MOCK_ASSETS` dengan field `attributes` (dict JSON)
 dan `parent_asset_id`.
 """
+import csv
+import os
 from copy import deepcopy
 from datetime import datetime
 from typing import Any
@@ -148,60 +150,6 @@ MOCK_ASSETS: list[dict[str, Any]] = [
             "monitor": 'Samsung 21,5" (MON-0003)',
             "keyboard": "Logitech K120",
             "mouse": "Logitech B100",
-        },
-    },
-    {
-        "id_aset": "SRV-0001",
-        "nama_aset": "SRV-PROXMOX-01",
-        "kategori": "Server",
-        "sn_pid": "SN-DELL-R740-01",
-        "tanggal_masuk_gudang": "2024-05-01",
-        "tanggal_keluar_gudang": "2024-05-03",
-        "kepemilikan": "XML",
-        "lokasi": "Kantor Blok 14",
-        "kondisi": "Baru",
-        "status": "Digunakan",
-        "digunakan_oleh": "Hypervisor VM Produksi",
-        "catatan": " Dipantau via Zabbix Agent 2",
-        "parent_asset_id": None,
-        "attributes": {
-            "jenis": "Server",
-            "os": "Proxmox VE 8.2",
-            "ram": "64 GB ECC DDR4",
-            "vga": "Matrox G200eW3",
-            "cpu": "Dual Xeon Silver 4210R",
-            "mainboard": "Dell PowerEdge R740",
-            "hdd_ssd": "2x 1TB NVMe RAID-1",
-            "monitor": "—",
-            "keyboard": "—",
-            "mouse": "—",
-        },
-    },
-    {
-        "id_aset": "SRV-0002",
-        "nama_aset": "SRV-ZABBIX-MON",
-        "kategori": "Server",
-        "sn_pid": "SN-SRV-ZBX-02",
-        "tanggal_masuk_gudang": "2024-09-10",
-        "tanggal_keluar_gudang": "2024-09-12",
-        "kepemilikan": "XML",
-        "lokasi": "Kantor Blok 14",
-        "kondisi": "Baru",
-        "status": "Digunakan",
-        "digunakan_oleh": "Monitoring Zabbix & Grafana",
-        "catatan": "Monitoring disk SMART & trafik jaringan",
-        "parent_asset_id": None,
-        "attributes": {
-            "jenis": "Server",
-            "os": "Ubuntu Server 24.04 LTS",
-            "ram": "32 GB DDR4",
-            "vga": "Onboard",
-            "cpu": "Intel Core i7-12700",
-            "mainboard": "ASUS TUF B660M-PLUS",
-            "hdd_ssd": "SSD NVMe 1 TB",
-            "monitor": "—",
-            "keyboard": "—",
-            "mouse": "—",
         },
     },
     {
@@ -408,6 +356,76 @@ MOCK_ASSETS: list[dict[str, Any]] = [
         "attributes": {},
     },
 ]
+
+
+def _load_server_csv() -> list[dict[str, Any]]:
+    csv_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "..", "docs", "data", "rekap_watt_server.csv"
+    )
+    if not os.path.exists(csv_path):
+        csv_path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "docs", "data", "rekap_watt_server.csv"
+        )
+    servers: list[dict[str, Any]] = []
+    if os.path.exists(csv_path):
+        with open(csv_path, encoding="utf-8") as f:
+            reader = list(csv.DictReader(f))
+            for row in reader:
+                if row.get("ID SERVER", "").upper().startswith("ESTIMASI"):
+                    continue
+
+                nama_aset = row.get("ID SERVER", "").strip()
+                if not nama_aset:
+                    continue
+
+                # Atribut inti sementara (DATA SEMENTARA - lengkapi)
+                servers.append(
+                    {
+                        "id_aset": f"SRV-{len(servers) + 1:04d}",
+                        "nama_aset": nama_aset,
+                        "kategori": "Server",
+                        "sn_pid": "-",
+                        "tanggal_masuk_gudang": "2024-01-01",
+                        "tanggal_keluar_gudang": "2024-01-02",
+                        "kepemilikan": "XML",
+                        "lokasi": "Kantor Pusat",
+                        "kondisi": "Baru",
+                        "status": "Digunakan",
+                        "digunakan_oleh": "Operasional IT",
+                        "catatan": "Diimpor dari rekap_watt_server.csv",
+                        "parent_asset_id": None,
+                        "attributes": {
+                            "jenis": "Server",
+                            "cpu": row.get("CPU", "") or row.get("MODEL PROSESOR (CPU)", ""),
+                            "vga": row.get("GPU", "") or row.get("KARTU GRAFIS (GPU)", ""),
+                            "ram": row.get("RAM", "") or row.get("KONFIGURASI RAM", ""),
+                            "hdd_ssd": (
+                                row.get("Penyimpanan", "")
+                                or row.get("KONFIGURASI PENYIMPANAN", "")
+                            ),
+                            "tdp_total_w": (
+                                row.get("TOTAL (W)")
+                                or row.get("TOTAL TDP (W)")
+                                or "0"
+                            ).replace(",", "."),
+                            "psu_min_w": (
+                                row.get("PSU (Min)")
+                                or row.get("PSU MINIMUM (W)")
+                                or "0"
+                            ).replace(",", "."),
+                            "psu_rekomendasi_w": (
+                                row.get("PSU (Rekomendasi)")
+                                or row.get("PSU REKOMENDASI (W)")
+                                or "0"
+                            ).replace(",", "."),
+                        },
+                    }
+                )
+    return servers
+
+
+MOCK_ASSETS.extend(_load_server_csv())
+
 
 # Counter sekuensial per prefix agar ID Aset tidak pernah dipakai ulang
 _PREFIX_COUNTERS: dict[str, int] = {

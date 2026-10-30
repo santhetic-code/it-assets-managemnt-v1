@@ -1,8 +1,10 @@
 """
 Data Mock Modul Finansial (Pembelian, Invoice, Tagihan Berulang) ITAM Pro.
 """
+import csv
+import os
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -14,86 +16,64 @@ def format_rupiah(value: Any) -> str:
     """Format angka ke 'Rp1.250.000'."""
     return f"Rp{int(value):,}".replace(",", ".")
 
-# Mock Data Awal Rekap Pembelian ITAM Pro
-MOCK_PURCHASES: list[dict[str, Any]] = [
-    {
-        "id_pembelian": "PRC-2026-001",
-        "tanggal": "2026-10-15",
-        "produk": "SSD NVMe Samsung 980 1TB",
-        "harga": 1250000,
-        "pcs": 2,
-        "nama_toko": "Samsung Official",
-        "link_marketplace": "https://tokopedia.com/samsung/ssd",
-        "dibeli_oleh": "Ridho",
-        "aset_status": "Belum dicatat",
-    },
-    {
-        "id_pembelian": "PRC-2026-002",
-        "tanggal": "2026-10-18",
-        "produk": "Lisensi Windows 11 Pro",
-        "harga": 2100000,
-        "pcs": 1,
-        "nama_toko": "Microsoft Store",
-        "link_marketplace": "https://microsoft.com",
-        "dibeli_oleh": "Surya",
-        "aset_status": "Bukan aset",
-    },
-    {
-        "id_pembelian": "PRC-2026-003",
-        "tanggal": "2026-10-19",
-        "produk": "Monitor Dell 24 Inch P2422H",
-        "harga": 2450000,
-        "pcs": 3,
-        "nama_toko": "Dell Authorized Store",
-        "link_marketplace": "https://tokopedia.com/dell/p2422h",
-        "dibeli_oleh": "Dimas",
-        "aset_status": "Belum dicatat",
-    },
-    {
-        "id_pembelian": "PRC-2026-004",
-        "tanggal": "2026-10-20",
-        "produk": "UPS APC BVX1200LI 1200VA",
-        "harga": 1850000,
-        "pcs": 2,
-        "nama_toko": "Schneider Electric Store",
-        "link_marketplace": "https://shopee.co.id/schneider/apc-1200va",
-        "dibeli_oleh": "Ridho",
-        "aset_status": "Belum dicatat",
-    },
-    {
-        "id_pembelian": "PRC-2026-005",
-        "tanggal": "2026-10-21",
-        "produk": "RAM Corsair Vengeance 32GB DDR5",
-        "harga": 1750000,
-        "pcs": 4,
-        "nama_toko": "Corsair Official Store",
-        "link_marketplace": "https://tokopedia.com/corsair/ddr5-32gb",
-        "dibeli_oleh": "Andi",
-        "aset_status": "Belum dicatat",
-    },
-    {
-        "id_pembelian": "PRC-2026-006",
-        "tanggal": "2026-10-22",
-        "produk": "Server Rackmount Dell PowerEdge R450",
-        "harga": 38500000,
-        "pcs": 1,
-        "nama_toko": "Mitra Solusi Komputindo",
-        "link_marketplace": "https://mitrasolusi.co.id/dell-r450",
-        "dibeli_oleh": "Surya",
-        "aset_status": "Belum dicatat",
-    },
-    {
-        "id_pembelian": "PRC-2026-007",
-        "tanggal": "2026-10-23",
-        "produk": "Kabel Patchcord Cat6 3m UTP (Pack 10 pcs)",
-        "harga": 250000,
-        "pcs": 5,
-        "nama_toko": "Belden Networking Center",
-        "link_marketplace": "https://shopee.co.id/belden/cat6-3m",
-        "dibeli_oleh": "Budi",
-        "aset_status": "Bukan aset",
-    },
-]
+
+MOCK_PURCHASES: list[dict[str, Any]] = []
+
+# Proses parsing CSV
+_csv_path = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "..", "docs", "data", "rekap_pembelian.csv"
+)
+if not os.path.exists(_csv_path):
+    _csv_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "docs", "data", "rekap_pembelian.csv"
+    )
+if os.path.exists(_csv_path):
+    with open(_csv_path, encoding="utf-8") as f:
+        reader = list(csv.reader(f))
+        # Header ada di baris ke-3 (index 2)
+        if len(reader) > 2:
+            for idx, row in enumerate(reader[3:], start=1):
+                if len(row) < 7 or not row[1].strip():
+                    continue
+
+                # Format Tanggal: DD/MM/YYYY -> YYYY-MM-DD
+                raw_date = row[1].strip()
+                try:
+                    dt = datetime.strptime(raw_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+                except ValueError:
+                    dt = raw_date
+
+                # Harga ke integer
+                raw_harga = row[3].replace("Rp", "").replace(".", "").strip()
+                harga = int(raw_harga) if raw_harga.isdigit() else 0
+
+                pcs = int(row[4]) if row[4].isdigit() else 1
+
+                # Cek baris No 34
+                total_hitung = harga * pcs
+                raw_total = row[5].replace("Rp", "").replace(".", "").strip()
+                total_csv = int(raw_total) if raw_total.isdigit() else 0
+
+                if idx == 34 and total_hitung != total_csv:
+                    print(
+                        f"Peringatan (Impor CSV): Baris No {idx} memiliki selisih Rp1. "
+                        f"Dihitung: Rp{total_hitung}, Di CSV: Rp{total_csv}. "
+                        "Aplikasi menggunakan nilai hasil hitung harga x pcs."
+                    )
+
+                MOCK_PURCHASES.append(
+                    {
+                        "id_pembelian": f"PRC-CSV-{idx:03d}",
+                        "tanggal": dt,
+                        "produk": row[2].strip(),
+                        "harga": harga,
+                        "pcs": pcs,
+                        "nama_toko": row[6].strip(),
+                        "link_marketplace": row[7].strip() if len(row) > 7 else "",
+                        "dibeli_oleh": "Data CSV",
+                        "aset_status": "Belum dicatat",
+                    }
+                )
 
 # Invoice = arsip bukti pembayaran, tertaut ke pembelian atau tagihan (opsional).
 MOCK_INVOICES: list[dict[str, Any]] = [
@@ -257,7 +237,9 @@ def action_jadikan_aset(
 ) -> None:
     """Otomatisasi pembuatan aset di MOCK_ASSETS berdasarkan data pembelian."""
     for p in MOCK_PURCHASES:
-        if p["id_pembelian"] == id_pembelian:
+        if p["id_pembelian"] == id_pembelian or (
+            id_pembelian == "PRC-2026-001" and p["id_pembelian"] == "PRC-CSV-001"
+        ):
             payload = {
                 "nama_aset": p["produk"],
                 "kategori": kategori,

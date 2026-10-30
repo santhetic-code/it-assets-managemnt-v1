@@ -6,6 +6,8 @@ from typing import Any
 
 import reflex as rx
 
+from itam_pro.services.router_utils import get_current_raw_path
+
 
 class NavState(rx.State):
     """State untuk drawer navigasi mobile dan deteksi path aktif."""
@@ -20,9 +22,9 @@ class NavState(rx.State):
     @rx.var
     def active_path(self) -> str:
         """Kembalikan path URL aktual tanpa query string atau trailing slash."""
-        raw = str(self.router.page.raw_path or "").strip()
+        raw = get_current_raw_path(self.router).strip()
         if not raw:
-            raw = str(self.router.page.path or "/dashboard").strip()
+            raw = str(getattr(self.router.page, "path", "/dashboard") or "/dashboard").strip()
         clean = raw.split("?", 1)[0].split("#", 1)[0].rstrip("/")
         return clean if clean else "/dashboard"
 
