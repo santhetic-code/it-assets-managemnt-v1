@@ -31,7 +31,7 @@ def _page_token_button(
         rx.el.button(
             token,
             type="button",
-            on_click=on_page_select(token),
+            on_click=on_page_select(token) if on_page_select is not None else None,
             style=rx.Style(
                 {
                     "min_width": Size.PAGINATION_BTN,

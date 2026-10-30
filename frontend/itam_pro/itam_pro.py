@@ -6,16 +6,19 @@ import reflex as rx
 from itam_pro.config import APP_ENV, USE_MOCK  # noqa: F401  (guard production dijalankan saat import)
 from itam_pro.pages.auth import login_page
 from itam_pro.pages.finance import purchases_view_page
-from itam_pro.pages.infrastructure import ip_vm_page
+from itam_pro.pages.infrastructure import ip_vm_page, watt_server_page
 from itam_pro.pages.inventory import assets_view_page
 from itam_pro.pages.operations.maintenance_view import maintenance_view_page
 from itam_pro.pages.overview import dashboard_page
+from itam_pro.pages.security.credential_view import credential_view_page
 from itam_pro.states.asset_state import AssetState
 from itam_pro.states.auth_state import AuthState
+from itam_pro.states.credential_state import CredentialState
 from itam_pro.states.dashboard_state import DashboardState
 from itam_pro.states.finance_state import FinanceState
 from itam_pro.states.ip_state import IPState
 from itam_pro.states.maintenance_state import MaintenanceState
+from itam_pro.states.power_state import PowerState
 from itam_pro.styles import BASE_STYLE, GOOGLE_FONTS_URL
 
 
@@ -76,6 +79,14 @@ app.add_page(
     on_load=[AuthState.check_auth, IPState.load_ip_page],
 )
 
+# Route Modul Infrastructure: Rekap Watt Server
+app.add_page(
+    watt_server_page,
+    route="/watt-server",
+    title="Rekap Watt Server · ITAM Pro",
+    on_load=[AuthState.check_auth, PowerState.load_power_page],
+)
+
 # Route Modul Finance: Pembelian & Invoice
 app.add_page(
     purchases_view_page,
@@ -90,6 +101,14 @@ app.add_page(
     route="/operations/maintenance",
     title="Jadwal Maintenance · ITAM Pro",
     on_load=[AuthState.check_auth, MaintenanceState.load_page],
+)
+
+# Route Modul Security: Credential Manager
+app.add_page(
+    credential_view_page,
+    route="/security/credentials",
+    title="Credential Manager · ITAM Pro",
+    on_load=[AuthState.check_auth, CredentialState.load_page],
 )
 
 # Redirect kompatibilitas untuk route lama
@@ -122,4 +141,9 @@ app.add_page(
     lambda: _redirect_page("/operations/maintenance"),
     route="/maintenance",
     on_load=rx.redirect("/operations/maintenance"),
+)
+app.add_page(
+    lambda: _redirect_page("/security/credentials"),
+    route="/credentials",
+    on_load=rx.redirect("/security/credentials"),
 )

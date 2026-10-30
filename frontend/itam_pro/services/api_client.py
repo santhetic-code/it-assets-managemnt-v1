@@ -10,6 +10,10 @@ import httpx
 
 from itam_pro.config import USE_MOCK
 from itam_pro.services.mock.auth_mock import verify_mock_login
+from itam_pro.services.mock.credential_mock import (
+    get_filtered_credentials,
+    reveal_mock_credential,
+)
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
 from itam_pro.services.mock.finance_mock import (
     action_jadikan_aset,
@@ -41,6 +45,11 @@ from itam_pro.services.mock.seed import (
     peek_next_asset_id,
     query_mock_assets,
     update_mock_asset,
+)
+from itam_pro.services.power_service import (
+    query_server_power,
+    remove_server_power_entry,
+    save_server_power_entry,
 )
 
 BACKEND_URL: str = os.getenv("BACKEND_INTERNAL_URL", "http://backend:8001")
@@ -412,6 +421,82 @@ class APIClient:
             await asyncio.sleep(0.08)
             action_buat_jadwal_massal(kategori, kegiatan, jenis, frekuensi, tgl_mulai, pic)
             return True
+        return True
+
+    async def get_credentials(
+        self,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 10,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Ambil daftar kredensial berdasarkan permissions token."""
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            # Simulasi baca hak akses dari token mock
+            permissions = {
+                "website": "edit",
+                "detail_pc": "edit",
+                "sql_server": "edit",
+                "mikrotik": "edit",
+                "internet_kantor": "edit",
+                "email": "edit",
+                "sosmed": "edit",
+                "lainnya": "edit",
+            }
+            if token == "mock-token-member":
+                permissions = {"website": "reveal", "mikrotik": "view"}
+            elif token == "mock-token-viewer":
+                permissions = {}
+            return get_filtered_credentials(permissions, filters, page, page_size)
+        return {
+            "items": [],
+            "total": 0,
+            "page": page,
+            "page_size": page_size,
+            "tab_counts": {},
+        }
+
+    async def reveal_credential(
+        self,
+        crd_id: str,
+        field_key: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        """Buka rahasia kredensial (dengan audit trail)."""
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return await reveal_mock_credential(crd_id, field_key, actor)
+        return {"value": "", "expires_in": 0}
+
+    async def get_server_power(
+        self,
+        filters: dict[str, Any],
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """Ambil daftar Rekap Watt Server beserta ringkasan ESTIMASI."""
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return query_server_power(filters=filters, page=page, page_size=page_size)
+        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+
+    async def save_server_power(
+        self,
+        payload: dict[str, Any],
+        asset_id: str = "",
+    ) -> dict[str, Any]:
+        """Tambah atau perbarui entri Rekap Watt Server secara manual."""
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return save_server_power_entry(payload=payload, asset_id=asset_id)
+        return {}
+
+    async def delete_server_power(self, asset_id: str) -> bool:
+        """Hapus satu entri server dari Rekap Watt Server."""
+        if USE_MOCK:
+            await asyncio.sleep(0.08)
+            return remove_server_power_entry(asset_id=asset_id)
         return True
 
 
