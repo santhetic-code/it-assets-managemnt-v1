@@ -1,6 +1,6 @@
 """
 Komponen Card Standar Reusable ITAM Pro.
-Putih, border #E1E8F5, radius 14px, padding 20px, dengan slot judul + tautan kanan.
+Putih, border Color.BORDER, radius 14px, padding 20px, dengan slot judul + tautan kanan.
 """
 from typing import Any
 

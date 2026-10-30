@@ -86,5 +86,10 @@ class Color:
     PROGRESS_MED = "#F59E0B"
     PROGRESS_HIGH = "#DC2626"
 
+    # Common UI & Neutral Palette
+    GRAY_100 = "#F3F4F6"
+    GRAY_200 = "#E5E7EB"
+    BLUE_500 = "#3B82F6"
+
 
 __all__ = ["Color"]

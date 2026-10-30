@@ -3,6 +3,7 @@ Entry Point & Routing Utama ITAM Pro.
 """
 import reflex as rx
 
+from itam_pro.config import APP_ENV, USE_MOCK  # noqa: F401  (guard production dijalankan saat import)
 from itam_pro.pages.auth import login_page
 from itam_pro.pages.finance import purchases_view_page
 from itam_pro.pages.infrastructure import ip_vm_page

@@ -7,8 +7,8 @@ import os
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
 
+from itam_pro.config import USE_MOCK
 from itam_pro.services.mock.auth_mock import verify_mock_login
 from itam_pro.services.mock.dashboard_mock import get_mock_dashboard_summary
 from itam_pro.services.mock.finance_mock import (
@@ -43,9 +43,6 @@ from itam_pro.services.mock.seed import (
     update_mock_asset,
 )
 
-load_dotenv()
-
-USE_MOCK: bool = os.getenv("USE_MOCK", "true").lower() == "true"
 BACKEND_URL: str = os.getenv("BACKEND_INTERNAL_URL", "http://backend:8001")
 
 

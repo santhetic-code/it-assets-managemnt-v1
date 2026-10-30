@@ -14,7 +14,7 @@ SLIDE_EASING = "cubic-bezier(0.65, 0, 0.35, 1)"
 def _background_decorations() -> rx.Component:
     """4 ornamen hiasan latar belakang di luar kartu (aria-hidden)."""
     return rx.box(
-        # 1. Cincin tebal 48px warna #CBDAF9 diameter 560 di pojok kiri-atas
+        # 1. Cincin tebal 48px warna Color.DECOR_RING diameter 560 di pojok kiri-atas
         rx.box(
             style=rx.Style(
                 {
@@ -28,7 +28,7 @@ def _background_decorations() -> rx.Component:
                 }
             ),
         ),
-        # 2. Lingkaran solid #C7D7F8 diameter 460 di pojok kanan-bawah
+        # 2. Lingkaran solid Color.DECOR_CIRCLE diameter 460 di pojok kanan-bawah
         rx.box(
             style=rx.Style(
                 {
@@ -42,7 +42,7 @@ def _background_decorations() -> rx.Component:
                 }
             ),
         ),
-        # 3. Kotak outline 10px #CBDAF9 radius 22, diputar 18 derajat, kanan-atas
+        # 3. Kotak outline 10px Color.DECOR_RING radius 22, diputar 18 derajat, kanan-atas
         rx.box(
             style=rx.Style(
                 {
@@ -57,7 +57,7 @@ def _background_decorations() -> rx.Component:
                 }
             ),
         ),
-        # 4. Lingkaran kecil #1340C7 opacity .18 di kiri-bawah
+        # 4. Lingkaran kecil Color.BRAND opacity .18 di kiri-bawah
         rx.box(
             style=rx.Style(
                 {
@@ -204,7 +204,7 @@ def _welcome_outline_button() -> rx.Component:
 
 def _blue_sliding_panel() -> rx.Component:
     """
-    Panel biru (#1340C7) di dalam kartu:
+    Panel biru (Color.BRAND) di dalam kartu:
     - State Welcome: lebar 100%, konten rata tengah, headline 42px, 3 poin horizontal.
     - State Form: menyusut ke 52.4%, konten rata kiri, headline 34px, 3 poin vertikal.
     """
@@ -349,7 +349,7 @@ def _blue_sliding_panel() -> rx.Component:
 
 
 def _mobile_brand_header() -> rx.Component:
-    """Logo ITAM Pro biru (#1340C7) di atas form saat layar mobile (<800px)."""
+    """Logo ITAM Pro biru (Color.BRAND) di atas form saat layar mobile (<800px)."""
     return rx.hstack(
         rx.center(
             rx.icon(tag="box", size=20, color=Color.WHITE, stroke_width=2.2),
@@ -562,7 +562,7 @@ def _right_form_panel() -> rx.Component:
 def login_page() -> rx.Component:
     """
     Halaman utama /login:
-    Latar #DCE6FB, min-height 100vh, flex center, padding 48px 24px,
+    Latar Color.LOGIN_BG, min-height 100vh, flex center, padding 48px 24px,
     dengan satu Kartu Tengah (maks 1040px, tinggi 640px, radius 24).
     """
     return rx.box(

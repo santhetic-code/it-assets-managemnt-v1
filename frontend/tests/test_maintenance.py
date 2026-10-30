@@ -12,10 +12,8 @@ from itam_pro.services.mock.maintenance_mock import (
     action_buat_jadwal_massal,
     action_tandai_selesai,
     calculate_plan_status,
-    query_maintenance_logs,
     query_maintenance_plans,
 )
-from itam_pro.services.recurrence import next_due
 
 
 def test_printer_category_config() -> None:
@@ -112,7 +110,11 @@ def test_action_buat_jadwal_massal() -> None:
             pic="Ridho",
         )
         assert len(MOCK_MAINTENANCE_PLANS) > count_before
-        created = [p for p in MOCK_MAINTENANCE_PLANS if p["kegiatan"] == "Pengecekan fisik baterai & grounding"]
+        created = [
+            p
+            for p in MOCK_MAINTENANCE_PLANS
+            if p["kegiatan"] == "Pengecekan fisik baterai & grounding"
+        ]
         assert len(created) > 0
         assert all(p["frekuensi"] == "6 bulan" for p in created)
         assert all(p["jadwal_berikutnya"] == "2026-11-01" for p in created)

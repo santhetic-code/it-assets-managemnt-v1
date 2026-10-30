@@ -4,6 +4,14 @@
 
 ---
 
+## 📌 Status Pengembangan
+
+- [x] **Frontend:** Python 3.12 + Reflex `0.9.12`, Design System Semantik, Unified Mock Services, Modul Halaman Lengkap (Inventory, Infrastructure, Operations, Finance, Auth), Guard APP_ENV, dan Pytest Unit Tests.
+- [ ] **Backend:** Python 3.12 + FastAPI + SQLModel (*direncanakan*)
+- [ ] **Database & Migrasi:** PostgreSQL 16 Alpine + Alembic (*direncanakan*)
+
+---
+
 ## 🏗️ Arsitektur & Mode `USE_MOCK`
 
 Proyek ini menggunakan arsitektur **Decoupled Containerized Web Application**:
@@ -23,7 +31,7 @@ Seluruh komunikasi data dari Reflex State melewati satu pintu di `frontend/itam_
 ### Opsi 1: Menjalankan Secara Lokal (`reflex run`)
 ```powershell
 # 1. Masuk ke direktori proyek dan aktifkan virtual environment Python 3.12
-cd D:\it-assets-managemnt-v1
+cd it-assets-managemnt-v1
 .\.venv\Scripts\Activate.ps1
 
 # 2. Salin konfigurasi environment
@@ -42,7 +50,7 @@ docker compose up -d --build
 ---
 
 ## 🧪 Pengujian Unit (Pytest)
-Pengujian logika bisnis murni dapat dijalankan dari direktori `frontend/`:
+Pengujian logika bisnis dan standar UI dapat dijalankan dengan perintah:
 ```bash
 cd frontend
 pytest -v

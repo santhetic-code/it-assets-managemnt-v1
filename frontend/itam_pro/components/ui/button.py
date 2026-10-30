@@ -72,7 +72,7 @@ def secondary_button(
     on_click: Any | None = None,
     icon_tag: str | None = None,
 ) -> rx.Component:
-    """Tombol sekunder putih dengan border #D5DEEE (contoh: 'Export Laporan')."""
+    """Tombol sekunder putih dengan border Color.INPUT_BORDER (contoh: 'Export Laporan')."""
     return rx.el.button(
         rx.hstack(
             rx.icon(tag=icon_tag, size=Size.ICON_SM, color=Color.TEXT)
@@ -119,7 +119,7 @@ def action_primary_button(
     label: str | rx.Var[str],
     on_click: Any | None = None,
 ) -> rx.Component:
-    """Tombol utama di header halaman (tinggi 42px, warna #1D4ED8, contoh: '+ Tambah Aset')."""
+    """Tombol utama di header halaman (tinggi 42px, warna Color.ACCENT, contoh: '+ Tambah Aset')."""
     return rx.el.button(
         rx.text(
             label,
