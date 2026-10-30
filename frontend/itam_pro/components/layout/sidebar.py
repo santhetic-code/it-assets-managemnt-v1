@@ -184,7 +184,7 @@ def sidebar_content() -> rx.Component:
             ),
             _sidebar_group(
                 "Security",
-                _nav_link_item("Credential Manager", "/credentials", "key-round"),
+                _nav_link_item("Credential Manager", "/security/credentials", "key-round"),
                 _nav_link_item("Audit Log", "/audit-log", "scroll-text"),
             ),
             _sidebar_group(

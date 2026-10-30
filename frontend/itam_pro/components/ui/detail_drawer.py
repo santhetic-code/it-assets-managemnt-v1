@@ -268,10 +268,10 @@ def detail_drawer(
     on_tab_change: Any,
     general_items: Any,
     usage_items: Any,
-    history_items: Any,
-    on_edit: Any,
-    on_duplicate: Any,
-    on_delete: Any,
+    history_items: Any = None,
+    on_edit: Any = None,
+    on_duplicate: Any = None,
+    on_delete: Any = None,
     category_var: Any | None = None,
     condition_var: Any | None = None,
     status_var: Any | None = None,
@@ -296,7 +296,7 @@ def detail_drawer(
     Mendukung grup key-value, grup chip konektor, serta tab Riwayat & Log.
     """
     tab1_key, tab1_label = tabs[0]
-    tab2_key, tab2_label = tabs[1]
+    tab2_key, tab2_label = tabs[1] if len(tabs) > 1 else ("", "")
 
     return rx.cond(
         is_open,
@@ -413,7 +413,9 @@ def detail_drawer(
                         tab_key=tab2_key,
                         active_tab=active_tab,
                         on_tab_change=on_tab_change,
-                    ),
+                    )
+                    if len(tabs) > 1
+                    else rx.fragment(),
                     spacing="2",
                     width="100%",
                     padding_x="24px",
@@ -450,7 +452,9 @@ def detail_drawer(
                                 color=Color.MUTED,
                                 letter_spacing="0.06em",
                             ),
-                            rx.foreach(history_items, _history_row),
+                            rx.foreach(history_items, _history_row)
+                            if history_items is not None
+                            else rx.fragment(),
                             spacing="3",
                             width="100%",
                             align="start",

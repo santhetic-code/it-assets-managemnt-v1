@@ -42,6 +42,8 @@ class Color:
     BG = "#F2F5FB"
     SURFACE = "#FFFFFF"
     SURFACE_HOVER = "#F8FAFC"
+    CARD_BG = "#FFFFFF"
+    APP_BG = "#F2F5FB"
     TABLE_HEADER_BG = "#F7F9FD"
     ROW_HOVER = "#F7F9FD"
     ROW_SELECTED = "#EEF3FF"

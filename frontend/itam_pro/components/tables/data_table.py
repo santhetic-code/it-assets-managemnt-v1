@@ -31,6 +31,7 @@ RenderType = Literal[
     "status_badge",
     "chips",
     "date",
+    "secret_mask",
 ]
 
 
@@ -62,7 +63,10 @@ _TWO_LINE_CLAMP_STYLE: dict[str, Any] = {
 
 def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -> rx.Component:
     """Render isi sel berdasarkan render_type dengan dukungan 2-line clamp + tooltip."""
-    raw_key = col.get("key") or col.get("accessor", "")
+    accessor = col.get("accessor")
+    if callable(accessor):
+        return accessor(row)
+    raw_key = col.get("key") or accessor or ""
     key: str = str(raw_key) if raw_key else ""
     rtype = str(col.get("render_type", "text"))
     is_sticky = bool(col.get("sticky_left", False))
@@ -184,6 +188,16 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
             white_space="nowrap",
         )
 
+    if rtype == "secret_mask":
+        has_sec = row["secret_ada"]
+        return rx.text(
+            rx.cond(has_sec, "••••••••", "—"),
+            font_size=FontSize.SM,
+            font_weight=rx.cond(has_sec, FontWeight.BOLD, FontWeight.MEDIUM),
+            color=rx.cond(has_sec, Color.TEXT, Color.MUTED),
+            letter_spacing=rx.cond(has_sec, "0.1em", "normal"),
+        )
+
     return rx.text(
         row[key],
         title=row[key],
@@ -202,8 +216,9 @@ def _header_cell(
     hidden_columns: Any | None = None,
 ) -> rx.Component:
     """Sel header tabel dengan dukungan sort ↕ dan visibilitas kolom dinamis."""
-    raw_key = col.get("key") or col.get("accessor", "")
-    key: str = str(raw_key) if raw_key else ""
+    accessor = col.get("accessor")
+    raw_key = col.get("key") or (accessor if not callable(accessor) else "")
+    key: str = str(raw_key) if raw_key else str(col.get("header", ""))
     is_sticky = bool(col.get("sticky_left", False))
     is_sortable = bool(col.get("sortable", False)) and (on_sort is not None)
     s_key = str(col.get("sort_key", key))
@@ -513,7 +528,9 @@ def reusable_data_table(
         col: ColumnDef | dict[str, Any],
         row_bg: Any,
     ) -> rx.Component:
-        key = col.get("key") or col.get("accessor", "")
+        accessor = col.get("accessor")
+        raw_key = col.get("key") or (accessor if not callable(accessor) else "")
+        key = str(raw_key) if raw_key else str(col.get("header", ""))
         is_sticky = col.get("sticky_left", False)
         min_w = col.get("min_width", col.get("width", "110px"))
         cell_style: dict[str, Any] = {
