@@ -784,9 +784,15 @@ def reusable_data_table(
         ),
     )
 
+    loading_var = (
+        actual_loading
+        if isinstance(actual_loading, rx.Var)
+        else rx.Var.create(bool(actual_loading))
+    )
+
     return rx.box(
         rx.cond(
-            (~actual_loading) & (actual_rows.length() == 0),
+            (~loading_var) & (actual_rows.length() == 0),
             _empty_table_state(
                 empty_message=empty_message,
                 empty_subtitle=empty_subtitle,

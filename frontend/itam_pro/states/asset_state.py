@@ -30,7 +30,7 @@ from itam_pro.services.mock.master_data import (
     MASTER_UKURAN_MONITOR,
 )
 from itam_pro.services.mock.seed import format_ukuran_layar
-from itam_pro.services.router_utils import get_current_params
+from itam_pro.services.router_utils import get_current_params, get_current_raw_path
 from itam_pro.services.validators import validate_asset_business_rules
 
 
@@ -474,7 +474,7 @@ class AssetState(rx.State):
     def _resolve_slug_from_router(self) -> str:
         params = get_current_params(self.router)
         slug = str(params.get("slug", "")).strip().lower()
-        path = self.router.page.path or ""
+        path = get_current_raw_path(self.router)
         if not slug and "/assets/c/" in path:
             slug = path.split("/assets/c/", 1)[1].strip("/").lower()
         return slug if slug in CATEGORY_CONFIGS else ""
@@ -870,22 +870,25 @@ class AssetState(rx.State):
         self.form_catatan = val
 
     @rx.event
-    def set_duplicate_count(self, value: str) -> None:
+    def set_duplicate_count(self, value: float | str) -> None:
         """Atur jumlah unit dengan validasi ketat (maksimal 50)."""
         try:
-            count = int(value.strip())
+            if isinstance(value, (int, float)):
+                count = int(value)
+            else:
+                count = int(value.strip())
             if count < 1:
                 count = 1
             elif count > 50:
                 count = 50
             self.duplicate_count_form = count
-        except ValueError:
+        except (ValueError, TypeError):
             # Menangani nilai tidak valid atau string kosong
             self.duplicate_count_form = 1
         self.form_duplicate_count = str(self.duplicate_count_form)
 
     @rx.event
-    def set_form_duplicate_count(self, val: str) -> None:
+    def set_form_duplicate_count(self, val: float | str) -> None:
         self.set_duplicate_count(val)
 
     @rx.event
