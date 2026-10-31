@@ -124,7 +124,7 @@ class MaintenanceState(rx.State):
         self.selesai_pic = val
 
     @rx.event
-    async def submit_tandai_selesai(self) -> None:
+    async def submit_tandai_selesai(self) -> rx.event.EventSpec | None:
         if not self.selesai_plan_id:
             return
         await api_client.mark_maintenance_complete(
@@ -179,7 +179,7 @@ class MaintenanceState(rx.State):
         self.massal_pic = val
 
     @rx.event
-    async def submit_massal(self) -> None:
+    async def submit_massal(self) -> rx.event.EventSpec:
         await api_client.create_bulk_maintenance(
             kategori=self.massal_kategori,
             kegiatan=self.massal_kegiatan,
