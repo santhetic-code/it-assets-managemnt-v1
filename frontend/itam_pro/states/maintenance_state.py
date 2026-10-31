@@ -76,7 +76,7 @@ class MaintenanceState(rx.State):
             self.logs = res.get("items", [])
 
     @rx.event
-    async def set_tab(self, tab: str) -> None:
+    async def set_tab(self, tab: str) -> rx.event.EventSpec:
         self.active_tab = tab
         await self._fetch_current_tab()
         return rx.redirect(f"/operations/maintenance?tab={tab}")
