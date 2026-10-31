@@ -120,6 +120,7 @@ class PowerState(rx.State):
         end = min(self.total_items, self.page * self.page_size)
         return f"Menampilkan {start}-{end} dari {self.total_items} server"
 
+    @rx.event
     async def load_power_page(self) -> None:
         """Muat data saat halaman /watt-server dibuka."""
         await self.fetch_power_data()
@@ -350,14 +351,23 @@ class PowerState(rx.State):
     def set_form_hdd_ssd(self, val: str) -> None:
         self.form_hdd_ssd = val
 
-    def set_form_tdp_w(self, val: str) -> None:
-        self.form_tdp_w = val
+    def set_form_tdp_w(self, val: float | str) -> None:
+        if isinstance(val, float) and val.is_integer():
+            self.form_tdp_w = str(int(val))
+        else:
+            self.form_tdp_w = str(val) if val is not None else ""
 
-    def set_form_psu_min_w(self, val: str) -> None:
-        self.form_psu_min_w = val
+    def set_form_psu_min_w(self, val: float | str) -> None:
+        if isinstance(val, float) and val.is_integer():
+            self.form_psu_min_w = str(int(val))
+        else:
+            self.form_psu_min_w = str(val) if val is not None else ""
 
-    def set_form_psu_rek_w(self, val: str) -> None:
-        self.form_psu_rek_w = val
+    def set_form_psu_rek_w(self, val: float | str) -> None:
+        if isinstance(val, float) and val.is_integer():
+            self.form_psu_rek_w = str(int(val))
+        else:
+            self.form_psu_rek_w = str(val) if val is not None else ""
 
     def set_form_catatan(self, val: str) -> None:
         self.form_catatan = val

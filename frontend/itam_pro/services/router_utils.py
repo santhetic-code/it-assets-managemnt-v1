@@ -1,23 +1,36 @@
 """
-Utilitas Router Reflex untuk ITAM Pro.
-Abstraksi untuk menghindari DeprecationWarning dari pemanggilan langsung
-self.router.page.raw_path / params.
+Utilitas Router ITAM Pro. (Menggantikan pemakaian router.page yang deprecated).
 """
 from typing import Any
 
 
 def get_current_raw_path(router_obj: Any) -> str:
     """Mendapatkan raw_path dengan aman untuk menghindari DeprecationWarning di masa depan."""
+    if hasattr(router_obj, "url") and hasattr(router_obj.url, "path"):
+        val = router_obj.url.path
+        if isinstance(val, str) and val.strip():
+            return val.strip()
     if hasattr(router_obj, "page") and hasattr(router_obj.page, "raw_path"):
-        return str(router_obj.page.raw_path or "")
-    # Fallback jika struktur Reflex berubah di versi mendatang
+        val = router_obj.page.raw_path
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    if hasattr(router_obj, "page") and hasattr(router_obj.page, "path"):
+        val = router_obj.page.path
+        if isinstance(val, str) and val.strip():
+            return val.strip()
     return str(getattr(router_obj, "session", {}).get("client_ip", "/"))
 
 
 def get_current_params(router_obj: Any) -> dict[str, Any]:
     """Mendapatkan dictionary params route dengan aman."""
     if hasattr(router_obj, "page") and hasattr(router_obj.page, "params"):
-        return dict(router_obj.page.params or {})
+        params = router_obj.page.params
+        if isinstance(params, dict):
+            return dict(params)
+    if hasattr(router_obj, "url") and hasattr(router_obj.url, "query_parameters"):
+        query = router_obj.url.query_parameters
+        if isinstance(query, dict):
+            return dict(query)
     return {}
 
 

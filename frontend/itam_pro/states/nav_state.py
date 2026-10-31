@@ -24,7 +24,7 @@ class NavState(rx.State):
         """Kembalikan path URL aktual tanpa query string atau trailing slash."""
         raw = get_current_raw_path(self.router).strip()
         if not raw:
-            raw = str(getattr(self.router.page, "path", "/dashboard") or "/dashboard").strip()
+            raw = "/dashboard"
         clean = raw.split("?", 1)[0].split("#", 1)[0].rstrip("/")
         return clean if clean else "/dashboard"
 

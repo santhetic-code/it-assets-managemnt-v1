@@ -30,7 +30,7 @@ from itam_pro.services.mock.master_data import (
     MASTER_UKURAN_MONITOR,
 )
 from itam_pro.services.mock.seed import format_ukuran_layar
-from itam_pro.services.router_utils import get_current_params
+from itam_pro.services.router_utils import get_current_params, get_current_raw_path
 from itam_pro.services.validators import validate_asset_business_rules
 
 
@@ -474,7 +474,7 @@ class AssetState(rx.State):
     def _resolve_slug_from_router(self) -> str:
         params = get_current_params(self.router)
         slug = str(params.get("slug", "")).strip().lower()
-        path = self.router.page.path or ""
+        path = get_current_raw_path(self.router)
         if not slug and "/assets/c/" in path:
             slug = path.split("/assets/c/", 1)[1].strip("/").lower()
         return slug if slug in CATEGORY_CONFIGS else ""

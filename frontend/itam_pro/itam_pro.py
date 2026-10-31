@@ -3,7 +3,7 @@ Entry Point & Routing Utama ITAM Pro.
 """
 import reflex as rx
 
-from itam_pro.config import APP_ENV, USE_MOCK  # noqa: F401  (guard production dijalankan saat import)
+from itam_pro.config import APP_ENV, USE_MOCK  # noqa: F401
 from itam_pro.pages.auth import login_page
 from itam_pro.pages.finance import purchases_view_page
 from itam_pro.pages.infrastructure import ip_vm_page, watt_server_page
@@ -11,6 +11,7 @@ from itam_pro.pages.inventory import assets_view_page
 from itam_pro.pages.operations.maintenance_view import maintenance_view_page
 from itam_pro.pages.overview import dashboard_page
 from itam_pro.pages.security.credential_view import credential_view_page
+from itam_pro.services.startup_checks import validate_production_env
 from itam_pro.states.asset_state import AssetState
 from itam_pro.states.auth_state import AuthState
 from itam_pro.states.credential_state import CredentialState
@@ -20,6 +21,9 @@ from itam_pro.states.ip_state import IPState
 from itam_pro.states.maintenance_state import MaintenanceState
 from itam_pro.states.power_state import PowerState
 from itam_pro.styles import BASE_STYLE, GOOGLE_FONTS_URL
+
+# Lakukan pemeriksaan fatal sebelum membuat aplikasi dan mendaftarkan halaman
+validate_production_env()
 
 
 def root_redirect_page() -> rx.Component:
