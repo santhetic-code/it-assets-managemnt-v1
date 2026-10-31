@@ -18,7 +18,17 @@ def get_current_raw_path(router_obj: Any) -> str:
         val = router_obj.page.path
         if isinstance(val, str) and val.strip():
             return val.strip()
-    return str(getattr(router_obj, "session", {}).get("client_ip", "/"))
+
+    # Fallback yang lebih aman tanpa menggunakan .get() pada objek internal
+    session_obj = getattr(router_obj, "session", None)
+    if session_obj:
+        ip = getattr(session_obj, "client_ip", None)
+        if ip is not None:
+            return str(ip)
+        if isinstance(session_obj, dict):
+            return str(session_obj.get("client_ip", "/"))
+
+    return "/"
 
 
 def get_current_params(router_obj: Any) -> dict[str, Any]:
