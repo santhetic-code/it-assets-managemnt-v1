@@ -870,25 +870,21 @@ class AssetState(rx.State):
         self.form_catatan = val
 
     @rx.event
-    def set_duplicate_count(self, value: float | str) -> None:
+    def set_duplicate_count(self, value: str | float | int) -> None:
         """Atur jumlah unit dengan validasi ketat (maksimal 50)."""
         try:
-            if isinstance(value, (int, float)):
-                count = int(value)
-            else:
-                count = int(value.strip())
+            count = int(float(value)) if isinstance(value, (float, str)) else int(value)
             if count < 1:
                 count = 1
             elif count > 50:
                 count = 50
             self.duplicate_count_form = count
         except (ValueError, TypeError):
-            # Menangani nilai tidak valid atau string kosong
             self.duplicate_count_form = 1
         self.form_duplicate_count = str(self.duplicate_count_form)
 
     @rx.event
-    def set_form_duplicate_count(self, val: float | str) -> None:
+    def set_form_duplicate_count(self, val: str | float | int) -> None:
         self.set_duplicate_count(val)
 
     @rx.event

@@ -4,15 +4,19 @@ Entry Point & Routing Utama ITAM Pro.
 import reflex as rx
 
 from itam_pro.config import APP_ENV, USE_MOCK  # noqa: F401
+from itam_pro.pages.admin import account_settings_page
 from itam_pro.pages.auth import login_page
 from itam_pro.pages.finance import purchases_view_page
 from itam_pro.pages.infrastructure import ip_vm_page, watt_server_page
 from itam_pro.pages.inventory import assets_view_page
 from itam_pro.pages.operations.maintenance_view import maintenance_view_page
 from itam_pro.pages.overview import dashboard_page
+from itam_pro.pages.security.audit_view import audit_view_page
 from itam_pro.pages.security.credential_view import credential_view_page
 from itam_pro.services.startup_checks import validate_production_env
+from itam_pro.states.account_state import AccountState
 from itam_pro.states.asset_state import AssetState
+from itam_pro.states.audit_state import AuditState
 from itam_pro.states.auth_state import AuthState
 from itam_pro.states.credential_state import CredentialState
 from itam_pro.states.dashboard_state import DashboardState
@@ -113,6 +117,22 @@ app.add_page(
     route="/security/credentials",
     title="Credential Manager · ITAM Pro",
     on_load=[AuthState.check_auth, CredentialState.load_page],
+)
+
+# Route Modul Security: Audit Log
+app.add_page(
+    audit_view_page,
+    route="/audit-log",
+    title="Audit Log · ITAM Pro",
+    on_load=[AuthState.check_auth, AuditState.load_page],
+)
+
+# Route Modul Admin: Pengaturan Akun
+app.add_page(
+    account_settings_page,
+    route="/account-settings",
+    title="Pengaturan Akun · ITAM Pro",
+    on_load=[AuthState.check_auth, AccountState.load_page],
 )
 
 # Redirect kompatibilitas untuk route lama

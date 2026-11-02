@@ -264,7 +264,7 @@ def _profile_menu() -> rx.Component:
                     align="center",
                 ),
                 on_click=NavState.select_menu(
-                    "Admin", "Pengaturan Akun", "/admin/account-settings", False
+                    "Admin", "Pengaturan Akun", "/account-settings", True
                 ),
             ),
             rx.menu.separator(),

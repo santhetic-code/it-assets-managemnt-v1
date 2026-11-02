@@ -7,7 +7,7 @@ assets/external/
 .states
 *.db
 
-# Data & Kredensial
+# Data & Kredensial Private
 docs/data/private/
 *kredensial*.csv
 *credential*.csv
