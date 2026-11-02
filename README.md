@@ -7,8 +7,8 @@
 ## 📌 Status Pengembangan
 
 - [x] **Frontend:** Python 3.12 + Reflex `0.9.12`, Design System Semantik, Unified Mock Services, Modul Halaman Lengkap (Inventory, Infrastructure, Operations, Finance, Auth), Guard APP_ENV, dan Pytest Unit Tests.
-- [ ] **Backend:** Python 3.12 + FastAPI + SQLModel (*direncanakan*)
-- [ ] **Database & Migrasi:** PostgreSQL 16 Alpine + Alembic (*direncanakan*)
+- [x] **Backend:** B0 selesai: fondasi FastAPI, SQLModel, Alembic, Docker, dan CI terpasang.
+- [x] **Database & Migrasi:** PostgreSQL 16 Alpine + Alembic baseline migration 0001 terpasang.
 
 ---
 
@@ -50,8 +50,32 @@ docker compose up -d --build
 ---
 
 ## 🧪 Pengujian Unit (Pytest)
-Pengujian logika bisnis dan standar UI dapat dijalankan dengan perintah:
+
+### Menjalankan Pengujian Frontend
 ```bash
 cd frontend
 pytest -v
+cd ..
+```
+
+### Menjalankan Pengujian Backend
+```bash
+pytest backend/tests -v
+```
+
+---
+
+## 🗄️ Migrasi Database (Alembic)
+
+Saat mengembangkan model data baru atau mengubah skema database backend:
+
+```bash
+# 1. Membuat migrasi baru (selalu cantumkan rev-id berurutan)
+docker compose exec backend alembic revision --autogenerate --rev-id 0002 -m "pesan migrasi"
+
+# 2. Menjalankan migrasi ke versi terbaru
+docker compose exec backend alembic upgrade head
+
+# 3. Memeriksa konsistensi model dan riwayat migrasi
+docker compose exec backend alembic check
 ```

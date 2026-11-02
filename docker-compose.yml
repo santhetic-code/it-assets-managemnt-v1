@@ -31,6 +31,12 @@ services:
         condition: service_healthy
     networks:
       - itam_net
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py", "/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
   frontend:
@@ -46,7 +52,8 @@ services:
     volumes:
       - ./frontend:/app
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - itam_net
     command: reflex run --env dev --frontend-port 3000 --backend-port 8000 --backend-host 0.0.0.0
