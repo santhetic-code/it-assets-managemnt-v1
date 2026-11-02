@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     jwt_secret_key: str = DEFAULT_SECRET
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 480
     fernet_master_key: str = DEFAULT_SECRET
 
     postgres_user: str = "itam"
