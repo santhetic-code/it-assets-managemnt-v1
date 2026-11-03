@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import assets, auth, ip_vm, master
+from app.api.v1 import assets, auth, ip_vm, master, power
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -25,5 +25,13 @@ api_router.include_router(
     ip_vm.router,
     prefix="/ips",
     tags=["ip-vm"],
+    include_in_schema=False,
+)
+api_router.include_router(power.router, prefix="/watt-server", tags=["power"])
+api_router.include_router(power.router, prefix="/power", tags=["power"], include_in_schema=False)
+api_router.include_router(
+    power.router,
+    prefix="/server-power",
+    tags=["power"],
     include_in_schema=False,
 )
