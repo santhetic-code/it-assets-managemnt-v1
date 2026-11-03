@@ -6,6 +6,7 @@ from sqlmodel import select
 from app.core.security import create_access_token, verify_password
 from app.deps import CurrentUserDep, SessionDep
 from app.models.user import User
+from app.schemas.audit import record_audit_log
 from app.schemas.auth import LoginRequest, TokenResponse, UserPublic
 
 router = APIRouter()
@@ -29,6 +30,18 @@ def login(payload: LoginRequest, session: SessionDep) -> TokenResponse:
             detail="Akun pengguna tidak aktif",
         )
 
+    record_audit_log(
+        session,
+        username=user.username,
+        nama_pengguna=user.full_name,
+        role=user.role,
+        aksi="Login",
+        modul="Autentikasi",
+        target_id=user.username,
+        detail=f"Pengguna '{user.username}' berhasil login ke sistem",
+        level_risiko="Rendah",
+    )
+
     user_public = UserPublic.from_user(user)
     token = create_access_token(subject=user.username, role=user.role)
     return TokenResponse(
@@ -45,4 +58,3 @@ def login(payload: LoginRequest, session: SessionDep) -> TokenResponse:
 def get_me(current_user: CurrentUserDep) -> UserPublic:
     """Mengembalikan profil pengguna yang sedang login."""
     return UserPublic.from_user(current_user)
-

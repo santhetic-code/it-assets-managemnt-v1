@@ -15,6 +15,7 @@ from app.core.security import (
 from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
 from app.models.base import utcnow
 from app.models.credential import Credential
+from app.schemas.audit import record_audit_log
 from app.schemas.credential import (
     CREDENTIAL_TYPE_PERMISSIONS,
     CredentialCreate,
@@ -248,6 +249,18 @@ def _perform_reveal(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Kredensial tidak dapat didekripsi",
         ) from exc
+
+    record_audit_log(
+        session,
+        username=current_user.username,
+        nama_pengguna=getattr(current_user, "full_name", current_user.username),
+        role=current_user.role,
+        aksi="Reveal Kredensial",
+        modul="Kredensial",
+        target_id=row.kode_kredensial,
+        detail=f"Membuka password kredensial '{row.nama_layanan}' ({row.jenis_kredensial})",
+        level_risiko="Tinggi",
+    )
 
     return CredentialRevealResponse(
         id=row.id or 0,

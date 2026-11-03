@@ -76,6 +76,7 @@ class AuthState(rx.State):
     @rx.event
     def logout(self) -> Any:
         """Reset sesi pengguna dan kembali ke halaman /login."""
+        api_client.clear_token()
         self.is_authenticated = False
         self.access_token = ""
         self.current_user = {}
@@ -149,6 +150,7 @@ class AuthState(rx.State):
             )
             self.access_token = auth_data["access_token"]
             self.current_user = auth_data["user"]
+            api_client.set_token(self.access_token)
             self.is_authenticated = True
             self.password = ""
             self.is_loading = False

@@ -7,8 +7,8 @@
 ## 📌 Status Pengembangan
 
 - [x] **Frontend:** Python 3.12 + Reflex `0.9.12`, Design System Semantik, Unified Mock Services, Modul Halaman Lengkap (Inventory, Infrastructure, Operations, Finance, Auth), Guard APP_ENV, dan Pytest Unit Tests.
-- [x] **Backend:** B0, B1, B2, B3, B4, B5, B6, & B7 selesai: fondasi FastAPI, autentikasi JWT, RBAC, Data Master, CRUD Aset TI, alokasi IP numerik & Virtual Machine, layanan Rekap Watt Server & Kapasitas UPS, modul Keuangan (Pembelian, Invoice, Tagihan Berulang), modul Operasional Maintenance, modul Keamanan Credential Manager (Fernet Symmetric Encryption, Masking, Role-Based Type Access & Reveal), dan pengujian unit.
-- [x] **Database & Migrasi:** PostgreSQL 16 Alpine + Alembic migrations 0001 (baseline), 0002 (users), 0003 (assets), 0004 (ip_allocations), 0005 (purchases), 0006 (maintenances), dan 0007 (credentials) terpasang.
+- [x] **Backend:** B0, B1, B2, B3, B4, B5, B6, B7, & B8 selesai: fondasi FastAPI, autentikasi JWT, RBAC, Data Master, CRUD Aset TI, alokasi IP numerik & Virtual Machine, layanan Rekap Watt Server & Kapasitas UPS, modul Keuangan (Pembelian, Invoice, Tagihan Berulang), modul Operasional Maintenance, modul Keamanan Credential Manager, modul Audit Log, modul Manajemen Pengguna & Reset Password, modul Dashboard Agregasi Real-Time, dan integrasi API Client frontend.
+- [x] **Database & Migrasi:** PostgreSQL 16 Alpine + Alembic migrations 0001 (baseline), 0002 (users), 0003 (assets), 0004 (ip_allocations), 0005 (purchases), 0006 (maintenances), 0007 (credentials), dan 0008 (audit_logs) terpasang.
 
 ---
 

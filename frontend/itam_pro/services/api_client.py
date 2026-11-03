@@ -63,6 +63,15 @@ class APIClient:
     def __init__(self) -> None:
         self.base_url = BACKEND_URL
         self.timeout = 10.0
+        self.token: str | None = None
+
+    def set_token(self, token: str | None) -> None:
+        """Simpan token sesi JWT untuk otentikasi otomatis request berikutnya."""
+        self.token = token
+
+    def clear_token(self) -> None:
+        """Hapus token sesi saat logout."""
+        self.token = None
 
     async def request(
         self,
@@ -73,8 +82,9 @@ class APIClient:
         json_data: dict[str, Any] | None = None,
     ) -> dict[str, Any] | list[Any]:
         headers = {"Accept": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        effective_token = token or self.token
+        if effective_token:
+            headers["Authorization"] = f"Bearer {effective_token}"
 
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
             response = await client.request(
@@ -84,7 +94,19 @@ class APIClient:
                 params=params,
                 json=json_data,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                detail_msg = ""
+                try:
+                    err_json = response.json()
+                    if isinstance(err_json, dict) and "detail" in err_json:
+                        detail_msg = str(err_json["detail"])
+                except Exception:
+                    pass
+                if detail_msg:
+                    raise Exception(detail_msg) from exc
+                raise exc
             return response.json()
 
     async def login(
@@ -498,6 +520,86 @@ class APIClient:
             await asyncio.sleep(0.08)
             return remove_server_power_entry(asset_id=asset_id)
         return True
+
+    async def get_audit_logs(
+        self,
+        filters: dict[str, Any] | None = None,
+        page: int = 1,
+        page_size: int = 15,
+    ) -> dict[str, Any]:
+        """Ambil daftar Audit Log berhalaman dari backend."""
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
+        if filters:
+            params.update(filters)
+        res = await self.request("GET", "/api/v1/audit-logs", params=params)
+        return res if isinstance(res, dict) else {"items": res}
+
+    async def get_users(
+        self,
+        filters: dict[str, Any] | None = None,
+        page: int = 1,
+        page_size: int = 10,
+    ) -> dict[str, Any]:
+        """Ambil daftar pengguna dari backend."""
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
+        if filters:
+            params.update(filters)
+        res = await self.request("GET", "/api/v1/users", params=params)
+        return res if isinstance(res, dict) else {"items": res}
+
+    async def change_password(
+        self,
+        old_password: str,
+        new_password: str,
+    ) -> dict[str, Any]:
+        """Ubah password akun sendiri yang sedang login."""
+        res = await self.request(
+            "POST",
+            "/api/v1/users/me/password",
+            json_data={"old_password": old_password, "new_password": new_password},
+        )
+        return res if isinstance(res, dict) else {}
+
+    async def create_user(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Buat akun pengguna baru (Administrator)."""
+        res = await self.request("POST", "/api/v1/users", json_data=payload)
+        return res if isinstance(res, dict) else {}
+
+    async def update_user(
+        self,
+        identifier: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Perbarui data pengguna (Administrator)."""
+        res = await self.request(
+            "PATCH",
+            f"/api/v1/users/{identifier}",
+            json_data=payload,
+        )
+        return res if isinstance(res, dict) else {}
+
+    async def reset_user_password(
+        self,
+        identifier: str,
+        new_password: str,
+    ) -> dict[str, Any]:
+        """Reset password akun pengguna oleh Administrator."""
+        res = await self.request(
+            "POST",
+            f"/api/v1/users/{identifier}/reset-password",
+            json_data={"new_password": new_password},
+        )
+        return res if isinstance(res, dict) else {}
+
+    async def delete_user(self, identifier: str) -> dict[str, Any]:
+        """Hapus akun pengguna oleh Administrator."""
+        res = await self.request("DELETE", f"/api/v1/users/{identifier}")
+        return res if isinstance(res, dict) else {}
+
+    async def get_dashboard(self) -> dict[str, Any]:
+        """Ambil ringkasan Dashboard real-time dari backend."""
+        res = await self.request("GET", "/api/v1/dashboard")
+        return res if isinstance(res, dict) else {}
 
 
 api_client = APIClient()
