@@ -1,5 +1,6 @@
 """Endpoint CRUD IP Address & Virtual Machine (konflik IP, VM tanpa host, urut numerik)."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -80,7 +81,7 @@ def _validate_and_resolve_host(
 
 def _detect_orphan_and_conflict_maps(
     session: Session,
-    rows: list[IPAllocation],
+    rows: Sequence[IPAllocation] | None = None,
 ) -> tuple[set[int], set[str]]:
     """Mendeteksi ID baris VM tanpa host aktif dan daftar IP yang mengalami konflik."""
     all_rows = session.exec(select(IPAllocation)).all()
@@ -112,7 +113,7 @@ def _detect_orphan_and_conflict_maps(
 
 
 def _build_counts_and_summary(
-    all_rows: list[IPAllocation],
+    all_rows: Sequence[IPAllocation],
     orphan_ids: set[int],
     conflict_ips: set[str],
 ) -> tuple[dict[str, int], dict[str, Any]]:
