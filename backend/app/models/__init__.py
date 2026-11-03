@@ -2,12 +2,13 @@
 
 from app.models.asset import Asset
 from app.models.base import NAMING_CONVENTION, TimestampMixin, utcnow
+from app.models.ip_allocation import IPAllocation
 from app.models.user import User, UserRole
 
 __all__ = [
-    "Asset",
     "NAMING_CONVENTION",
     "Asset",
+    "IPAllocation",
     "TimestampMixin",
     "User",
     "UserRole",

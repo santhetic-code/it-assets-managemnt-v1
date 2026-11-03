@@ -7,8 +7,8 @@
 ## 📌 Status Pengembangan
 
 - [x] **Frontend:** Python 3.12 + Reflex `0.9.12`, Design System Semantik, Unified Mock Services, Modul Halaman Lengkap (Inventory, Infrastructure, Operations, Finance, Auth), Guard APP_ENV, dan Pytest Unit Tests.
-- [x] **Backend:** B0, B1, & B2 selesai: fondasi FastAPI, autentikasi JWT, RBAC, Data Master, CRUD Aset TI, auto-generate ID aset, dan pengujian unit.
-- [x] **Database & Migrasi:** PostgreSQL 16 Alpine + Alembic migrations 0001 (baseline), 0002 (users), dan 0003 (assets) terpasang.
+- [x] **Backend:** B0, B1, B2, & B3 selesai: fondasi FastAPI, autentikasi JWT, RBAC, Data Master, CRUD Aset TI, alokasi IP numerik & Virtual Machine, dan pengujian unit.
+- [x] **Database & Migrasi:** PostgreSQL 16 Alpine + Alembic migrations 0001 (baseline), 0002 (users), 0003 (assets), dan 0004 (ip_allocations) terpasang.
 
 ---
 
