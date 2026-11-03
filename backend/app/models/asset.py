@@ -12,7 +12,7 @@ from app.models.base import TimestampMixin
 class Asset(TimestampMixin, SQLModel, table=True):
     """Tabel inventaris aset TI perusahaan."""
 
-    __tablename__: Any = "assets"
+    __tablename__: Any = "assets"  # type: ignore[assignment]
 
     id: int | None = Field(default=None, primary_key=True)
     id_aset: str = Field(index=True, unique=True, max_length=30, nullable=False)

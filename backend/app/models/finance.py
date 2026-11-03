@@ -12,7 +12,7 @@ from app.models.base import TimestampMixin
 class Purchase(TimestampMixin, SQLModel, table=True):
     """Tabel rekap pembelian aset, invoice vendor, dan tagihan rutin berulang."""
 
-    __tablename__: Any = "purchases"
+    __tablename__: Any = "purchases"  # type: ignore[assignment]
 
     id: int | None = Field(default=None, primary_key=True)
     kode_pembelian: str = Field(index=True, unique=True, max_length=30, nullable=False)

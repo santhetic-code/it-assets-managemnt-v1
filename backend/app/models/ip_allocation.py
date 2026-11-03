@@ -11,7 +11,7 @@ from app.models.base import TimestampMixin
 class IPAllocation(TimestampMixin, SQLModel, table=True):
     """Tabel alokasi IP Address perangkat fisik dan Virtual Machine (VM)."""
 
-    __tablename__: Any = "ip_allocations"
+    __tablename__: Any = "ip_allocations"  # type: ignore[assignment]
 
     id: int | None = Field(default=None, primary_key=True)
     ip_address: str = Field(index=True, max_length=45, nullable=False)
