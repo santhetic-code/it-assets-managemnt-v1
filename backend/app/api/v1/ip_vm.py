@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, or_
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
 from app.models.asset import Asset
@@ -177,12 +177,12 @@ def list_ip_allocations(
         pattern = f"%{keyword}%"
         stmt = stmt.where(
             or_(
-                IPAllocation.ip_address.ilike(pattern),
-                IPAllocation.nama_perangkat.ilike(pattern),
-                IPAllocation.hostname.ilike(pattern),
-                IPAllocation.host_name.ilike(pattern),
-                IPAllocation.pengguna.ilike(pattern),
-                IPAllocation.keterangan.ilike(pattern),
+                col(IPAllocation.ip_address).ilike(pattern),
+                col(IPAllocation.nama_perangkat).ilike(pattern),
+                col(IPAllocation.hostname).ilike(pattern),
+                col(IPAllocation.host_name).ilike(pattern),
+                col(IPAllocation.pengguna).ilike(pattern),
+                col(IPAllocation.keterangan).ilike(pattern),
             )
         )
 
@@ -195,7 +195,7 @@ def list_ip_allocations(
             if conflict_ips:
                 stmt = stmt.where(
                     or_(
-                        IPAllocation.ip_address.in_(conflict_ips),
+                        col(IPAllocation.ip_address).in_(conflict_ips),
                         func.lower(IPAllocation.status) == "konflik",
                     )
                 )
@@ -220,7 +220,7 @@ def list_ip_allocations(
         elif t_clean == "konflik":
             stmt = stmt.where(
                 or_(
-                    IPAllocation.ip_address.in_(conflict_ips) if conflict_ips else False,
+                    col(IPAllocation.ip_address).in_(conflict_ips) if conflict_ips else False,
                     func.lower(IPAllocation.status) == "konflik",
                 )
             )
@@ -229,7 +229,7 @@ def list_ip_allocations(
 
     if orphan_only:
         if orphan_ids:
-            stmt = stmt.where(IPAllocation.id.in_(orphan_ids))
+            stmt = stmt.where(col(IPAllocation.id).in_(orphan_ids))
         else:
             stmt = stmt.where(IPAllocation.id == -1)
 
