@@ -1,6 +1,7 @@
 """Model database untuk Pembelian, Invoice, dan Tagihan Berulang (purchases)."""
 
 from datetime import date
+from typing import Any
 
 from sqlalchemy import BigInteger, Column
 from sqlmodel import Field, SQLModel
@@ -11,7 +12,7 @@ from app.models.base import TimestampMixin
 class Purchase(TimestampMixin, SQLModel, table=True):
     """Tabel rekap pembelian aset, invoice vendor, dan tagihan rutin berulang."""
 
-    __tablename__ = "purchases"
+    __tablename__: Any = "purchases"
 
     id: int | None = Field(default=None, primary_key=True)
     kode_pembelian: str = Field(index=True, unique=True, max_length=30, nullable=False)
