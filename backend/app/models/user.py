@@ -1,6 +1,7 @@
 """Model database untuk tabel pengguna (users) dan definisi peran."""
 
 from enum import StrEnum
+from typing import Any
 
 from sqlmodel import Field, SQLModel
 
@@ -18,7 +19,7 @@ class UserRole(StrEnum):
 class User(TimestampMixin, SQLModel, table=True):
     """Tabel pengguna sistem ITAM Pro."""
 
-    __tablename__ = "users"
+    __tablename__: Any = "users"  # type: ignore[assignment]
 
     id: int | None = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True, max_length=50, nullable=False)

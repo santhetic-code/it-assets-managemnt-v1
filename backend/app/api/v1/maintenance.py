@@ -1,0 +1,569 @@
+"""Endpoint CRUD Maintenance: Jadwal, Riwayat, Penyelesaian, & Jadwal Massal (B6)."""
+
+import re
+from datetime import date
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import func
+from sqlmodel import Session, col, select
+
+from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
+from app.models.asset import Asset
+from app.models.base import utcnow
+from app.models.maintenance import Maintenance
+from app.schemas.finance import VALID_BILLING_CYCLES, advance_due_date
+from app.schemas.maintenance import (
+    VALID_MAINTENANCE_STATUSES,
+    VALID_MAINTENANCE_TYPES,
+    VALID_PRIORITIES,
+    BulkMaintenanceRequest,
+    BulkMaintenanceResponse,
+    MaintenanceCompleteRequest,
+    MaintenanceCreate,
+    MaintenancePageResponse,
+    MaintenancePublic,
+    MaintenanceUpdate,
+)
+
+router = APIRouter()
+
+MNT_CODE_PATTERN = re.compile(r"^MNT-(\d+)$")
+
+
+def generate_next_maintenance_code(session: Session) -> str:
+    """Menghasilkan kode otomatis MNT-001, MNT-002, dst."""
+    existing = session.exec(
+        select(Maintenance.kode_maintenance).where(
+            col(Maintenance.kode_maintenance).like("MNT-%")
+        )
+    ).all()
+    max_num = 0
+    for code in existing:
+        match = MNT_CODE_PATTERN.match(code.strip().upper())
+        if match:
+            max_num = max(max_num, int(match.group(1)))
+    return f"MNT-{max_num + 1:03d}"
+
+
+def _resolve_asset(session: Session, id_aset: str) -> Asset:
+    asset = session.exec(
+        select(Asset).where(func.lower(Asset.id_aset) == id_aset.strip().lower())
+    ).first()
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Aset dengan kode '{id_aset}' tidak ditemukan",
+        )
+    return asset
+
+
+def _find_maintenance(session: Session, identifier: str) -> Maintenance:
+    cleaned = identifier.strip()
+    row: Maintenance | None = None
+    if cleaned.isdigit():
+        row = session.get(Maintenance, int(cleaned))
+    if row is None:
+        row = session.exec(
+            select(Maintenance).where(
+                func.lower(Maintenance.kode_maintenance) == cleaned.lower()
+            )
+        ).first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Data maintenance tidak ditemukan",
+        )
+    return row
+
+
+def _compute_maintenance_summary(
+    all_rows: list[Maintenance],
+    today: date | None = None,
+) -> tuple[dict[str, int], dict[str, Any]]:
+    ref_today = today or date.today()
+    public_items = [MaintenancePublic.from_model(r, today=ref_today) for r in all_rows]
+
+    total_all = len(public_items)
+    jadwal_aktif = sum(1 for i in public_items if not i.is_history)
+    terjadwal_count = sum(
+        1
+        for i in public_items
+        if i.status.lower() == "terjadwal" and not i.is_overdue
+    )
+    proses_count = sum(
+        1
+        for i in public_items
+        if i.status.lower() in ("dalam proses", "sedang dikerjakan")
+    )
+    overdue_count = sum(1 for i in public_items if i.is_overdue)
+    selesai_count = sum(1 for i in public_items if i.status.lower() == "selesai")
+    batal_count = sum(1 for i in public_items if i.status.lower() == "dibatalkan")
+    riwayat_count = selesai_count + batal_count
+    rutin_count = sum(1 for i in public_items if i.is_recurring and not i.is_history)
+    total_biaya = sum(
+        i.biaya for i in public_items if i.status.lower() != "dibatalkan"
+    )
+
+    tab_counts = {
+        "Semua": total_all,
+        "all": total_all,
+        "Jadwal": jadwal_aktif,
+        "Terjadwal": terjadwal_count,
+        "Dalam Proses": proses_count,
+        "Terlambat": overdue_count,
+        "Riwayat": riwayat_count,
+        "Selesai": selesai_count,
+        "Rutin": rutin_count,
+    }
+
+    summary: dict[str, Any] = {
+        "total": total_all,
+        "total_jadwal": jadwal_aktif,
+        "terjadwal": terjadwal_count,
+        "dalam_proses": proses_count,
+        "terlambat": overdue_count,
+        "overdue": overdue_count,
+        "total_riwayat": riwayat_count,
+        "selesai": selesai_count,
+        "dibatalkan": batal_count,
+        "jadwal_rutin": rutin_count,
+        "total_biaya": total_biaya,
+    }
+    return tab_counts, summary
+
+
+@router.get("", response_model=MaintenancePageResponse)
+def list_maintenances(
+    session: SessionDep,
+    _: CurrentUserDep,
+    page_params: PageParamsDep,
+    search: str | None = Query(default=None),
+    q: str | None = Query(default=None),
+    tab: str | None = Query(default=None),
+    mode: str | None = Query(default=None),
+    id_aset: str | None = Query(default=None),
+    kategori: str | None = Query(default=None),
+    lokasi: str | None = Query(default=None),
+    jenis: str | None = Query(default=None),
+    prioritas: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    overdue_only: bool = Query(default=False),
+) -> MaintenancePageResponse:
+    """Mengambil daftar jadwal dan riwayat maintenance berhalaman."""
+    all_rows = list(
+        session.exec(
+            select(Maintenance).order_by(
+                col(Maintenance.tanggal_jadwal).asc(),
+                col(Maintenance.id).desc(),
+            )
+        ).all()
+    )
+    today = date.today()
+    tab_counts, summary = _compute_maintenance_summary(all_rows, today=today)
+    all_public = [MaintenancePublic.from_model(r, today=today) for r in all_rows]
+
+    filtered = all_public
+
+    keyword = (search or q or "").strip().lower()
+    if keyword:
+        filtered = [
+            i
+            for i in filtered
+            if keyword in i.kode_maintenance.lower()
+            or keyword in i.id_aset.lower()
+            or keyword in i.nama_aset.lower()
+            or keyword in i.judul.lower()
+            or keyword in i.deskripsi.lower()
+            or keyword in i.teknisi.lower()
+            or keyword in i.tindakan.lower()
+        ]
+
+    active_tab = (tab or mode or "").strip().lower()
+    if active_tab and active_tab not in ("semua", "all"):
+        if active_tab in ("jadwal", "aktif", "schedule", "upcoming"):
+            filtered = [i for i in filtered if not i.is_history]
+        elif active_tab in ("riwayat", "history", "selesai"):
+            filtered = [i for i in filtered if i.is_history]
+        elif active_tab in ("terlambat", "overdue"):
+            filtered = [i for i in filtered if i.is_overdue]
+        elif active_tab in ("dalam proses", "proses"):
+            filtered = [
+                i
+                for i in filtered
+                if i.status.lower() in ("dalam proses", "sedang dikerjakan")
+            ]
+        elif active_tab in ("rutin", "recurring"):
+            filtered = [i for i in filtered if i.is_recurring]
+
+    if overdue_only:
+        filtered = [i for i in filtered if i.is_overdue]
+
+    if id_aset and id_aset.strip():
+        code_clean = id_aset.strip().lower()
+        filtered = [i for i in filtered if i.id_aset.lower() == code_clean]
+
+    if kategori and kategori.strip().lower() not in ("semua", "all", ""):
+        kat_clean = kategori.strip().lower()
+        filtered = [i for i in filtered if i.kategori.lower() == kat_clean]
+
+    if lokasi and lokasi.strip().lower() not in ("semua", "all", ""):
+        loc_clean = lokasi.strip().lower()
+        filtered = [i for i in filtered if i.lokasi.lower() == loc_clean]
+
+    if jenis and jenis.strip().lower() not in ("semua", "all", ""):
+        j_clean = jenis.strip().lower()
+        filtered = [i for i in filtered if i.jenis_maintenance.lower() == j_clean]
+
+    if prioritas and prioritas.strip().lower() not in ("semua", "all", ""):
+        p_clean = prioritas.strip().lower()
+        filtered = [i for i in filtered if i.prioritas.lower() == p_clean]
+
+    if status_filter and status_filter.strip().lower() not in ("semua", "all", ""):
+        st_clean = status_filter.strip().lower()
+        if st_clean in ("terlambat", "overdue"):
+            filtered = [i for i in filtered if i.is_overdue]
+        else:
+            filtered = [
+                i
+                for i in filtered
+                if i.status.lower() == st_clean or i.status_efektif.lower() == st_clean
+            ]
+
+    total = len(filtered)
+    paged = filtered[page_params.offset : page_params.offset + page_params.page_size]
+
+    return MaintenancePageResponse(
+        items=paged,
+        total=total,
+        page=page_params.page,
+        page_size=page_params.page_size,
+        tab_counts=tab_counts,
+        summary=summary,
+        kpi=summary,
+    )
+
+
+@router.post("/bulk", response_model=BulkMaintenanceResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/bulk-schedule",
+    response_model=BulkMaintenanceResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
+def create_bulk_maintenance(
+    payload: BulkMaintenanceRequest,
+    session: SessionDep,
+    _: EditorUserDep,
+) -> BulkMaintenanceResponse:
+    """Membuat jadwal maintenance massal untuk banyak aset sekaligus."""
+    stmt = select(Asset)
+
+    if payload.id_assets:
+        upper_codes = [c.upper() for c in payload.id_assets]
+        stmt = stmt.where(func.upper(Asset.id_aset).in_(upper_codes))
+    else:
+        if payload.only_active_assets:
+            stmt = stmt.where(
+                func.lower(Asset.status).notin_(["rusak", "nonaktif"])
+            )
+        if payload.kategori:
+            stmt = stmt.where(
+                func.lower(Asset.kategori) == payload.kategori.strip().lower()
+            )
+        if payload.lokasi:
+            stmt = stmt.where(
+                func.lower(Asset.lokasi) == payload.lokasi.strip().lower()
+            )
+
+    target_assets = list(
+        session.exec(stmt.order_by(col(Asset.id_aset).asc())).all()
+    )
+    if not target_assets:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tidak ada aset yang cocok dengan kriteria jadwal massal",
+        )
+
+    created_rows: list[Maintenance] = []
+    for asset in target_assets:
+        code = generate_next_maintenance_code(session)
+        row = Maintenance(
+            kode_maintenance=code,
+            id_aset=asset.id_aset,
+            nama_aset=asset.nama_aset,
+            kategori=asset.kategori,
+            lokasi=asset.lokasi,
+            jenis_maintenance=payload.jenis_maintenance,
+            prioritas=payload.prioritas,
+            judul=payload.judul,
+            deskripsi=payload.deskripsi.strip(),
+            tindakan="",
+            teknisi=payload.teknisi.strip(),
+            vendor_servis="",
+            biaya=0,
+            tanggal_jadwal=payload.tanggal_jadwal or date.today(),
+            tanggal_selesai=None,
+            status="Terjadwal",
+            kondisi_setelah=asset.kondisi,
+            is_recurring=payload.is_recurring,
+            siklus=payload.siklus,
+            catatan=payload.catatan.strip(),
+        )
+        session.add(row)
+        session.flush()
+        created_rows.append(row)
+
+    session.commit()
+    for r in created_rows:
+        session.refresh(r)
+
+    return BulkMaintenanceResponse(
+        created_count=len(created_rows),
+        items=[MaintenancePublic.from_model(r) for r in created_rows],
+    )
+
+
+@router.get("/{identifier}", response_model=MaintenancePublic)
+def get_maintenance_detail(
+    identifier: str,
+    session: SessionDep,
+    _: CurrentUserDep,
+) -> MaintenancePublic:
+    """Mengambil detail satu jadwal atau riwayat maintenance."""
+    row = _find_maintenance(session, identifier)
+    return MaintenancePublic.from_model(row)
+
+
+@router.post("", response_model=MaintenancePublic, status_code=status.HTTP_201_CREATED)
+def create_maintenance(
+    payload: MaintenanceCreate,
+    session: SessionDep,
+    _: EditorUserDep,
+) -> MaintenancePublic:
+    """Membuat jadwal atau catatan riwayat maintenance tunggal."""
+    asset = _resolve_asset(session, payload.id_aset)
+
+    if payload.kode_maintenance and payload.kode_maintenance.strip():
+        final_code = payload.kode_maintenance.strip().upper()
+        dup = session.exec(
+            select(Maintenance).where(
+                func.lower(Maintenance.kode_maintenance) == final_code.lower()
+            )
+        ).first()
+        if dup is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Kode maintenance '{final_code}' sudah terdaftar",
+            )
+    else:
+        final_code = generate_next_maintenance_code(session)
+
+    row = Maintenance(
+        kode_maintenance=final_code,
+        id_aset=asset.id_aset,
+        nama_aset=payload.nama_aset.strip() or asset.nama_aset,
+        kategori=payload.kategori.strip() or asset.kategori,
+        lokasi=payload.lokasi.strip() or asset.lokasi,
+        jenis_maintenance=payload.jenis_maintenance,
+        prioritas=payload.prioritas,
+        judul=payload.judul.strip(),
+        deskripsi=payload.deskripsi.strip(),
+        tindakan=payload.tindakan.strip(),
+        teknisi=payload.teknisi,
+        vendor_servis=payload.vendor_servis.strip(),
+        biaya=payload.biaya,
+        tanggal_jadwal=payload.tanggal_jadwal or date.today(),
+        tanggal_selesai=payload.tanggal_selesai,
+        status=payload.status,
+        kondisi_setelah=payload.kondisi_setelah,
+        is_recurring=bool(payload.is_recurring),
+        siklus=payload.siklus,
+        catatan=payload.catatan.strip(),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return MaintenancePublic.from_model(row)
+
+
+def _apply_maintenance_update(
+    identifier: str,
+    payload: MaintenanceUpdate,
+    session: Session,
+) -> MaintenancePublic:
+    row = _find_maintenance(session, identifier)
+    data = payload.model_dump(exclude_unset=True)
+
+    if "jenis_maintenance" in data and data["jenis_maintenance"] is not None:
+        raw_t = str(data["jenis_maintenance"]).strip()
+        matched_t = next(
+            (t for t in VALID_MAINTENANCE_TYPES if t.lower() == raw_t.lower()),
+            None,
+        )
+        if not matched_t:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Jenis maintenance '{raw_t}' tidak valid",
+            )
+        data["jenis_maintenance"] = matched_t
+
+    if "prioritas" in data and data["prioritas"] is not None:
+        raw_p = str(data["prioritas"]).strip()
+        matched_p = next(
+            (p for p in VALID_PRIORITIES if p.lower() == raw_p.lower()),
+            None,
+        )
+        if not matched_p:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Prioritas '{raw_p}' tidak valid",
+            )
+        data["prioritas"] = matched_p
+
+    if "status" in data and data["status"] is not None:
+        raw_st = str(data["status"]).strip()
+        matched_st = next(
+            (s for s in VALID_MAINTENANCE_STATUSES if s.lower() == raw_st.lower()),
+            None,
+        )
+        if not matched_st:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Status '{raw_st}' tidak valid",
+            )
+        data["status"] = "Terjadwal" if matched_st == "Dijadwalkan" else matched_st
+
+    if "siklus" in data and data["siklus"] is not None:
+        raw_c = str(data["siklus"]).strip()
+        if raw_c not in VALID_BILLING_CYCLES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Siklus '{raw_c}' tidak valid",
+            )
+        data["siklus"] = VALID_BILLING_CYCLES[raw_c]
+
+    for key, val in data.items():
+        if key in ("id", "kode_maintenance", "created_at") or val is None:
+            continue
+        if hasattr(row, key):
+            setattr(row, key, val.strip() if isinstance(val, str) else val)
+
+    if row.status == "Selesai" and row.tanggal_selesai is None:
+        row.tanggal_selesai = date.today()
+
+    row.updated_at = utcnow()
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return MaintenancePublic.from_model(row)
+
+
+@router.put("/{identifier}", response_model=MaintenancePublic)
+def update_maintenance_put(
+    identifier: str,
+    payload: MaintenanceUpdate,
+    session: SessionDep,
+    _: EditorUserDep,
+) -> MaintenancePublic:
+    """Memperbarui data jadwal/riwayat maintenance (PUT)."""
+    return _apply_maintenance_update(identifier, payload, session)
+
+
+@router.patch("/{identifier}", response_model=MaintenancePublic)
+def update_maintenance_patch(
+    identifier: str,
+    payload: MaintenanceUpdate,
+    session: SessionDep,
+    _: EditorUserDep,
+) -> MaintenancePublic:
+    """Memperbarui sebagian data jadwal/riwayat maintenance (PATCH)."""
+    return _apply_maintenance_update(identifier, payload, session)
+
+
+@router.post("/{identifier}/complete", response_model=MaintenancePublic)
+def complete_maintenance(
+    identifier: str,
+    session: SessionDep,
+    _: EditorUserDep,
+    payload: MaintenanceCompleteRequest | None = None,
+) -> MaintenancePublic:
+    """Menandai jadwal maintenance selesai, memperbarui aset, & membuat jadwal baru."""
+    row = _find_maintenance(session, identifier)
+    req = payload or MaintenanceCompleteRequest()
+    done_date = req.tanggal_selesai or date.today()
+
+    row.status = "Selesai"
+    row.tanggal_selesai = done_date
+    if req.tindakan is not None:
+        row.tindakan = req.tindakan.strip()
+    if req.teknisi is not None:
+        row.teknisi = req.teknisi.strip()
+    if req.biaya is not None:
+        row.biaya = req.biaya
+    if req.catatan is not None:
+        row.catatan = req.catatan.strip()
+    row.kondisi_setelah = req.kondisi_setelah
+    row.updated_at = utcnow()
+    session.add(row)
+
+    # Sinkronkan kondisi & status aset terkait
+    asset = session.exec(
+        select(Asset).where(func.lower(Asset.id_aset) == row.id_aset.lower())
+    ).first()
+    if asset is not None:
+        asset.kondisi = req.kondisi_setelah
+        if req.status_aset_setelah:
+            asset.status = req.status_aset_setelah
+        asset.updated_at = utcnow()
+        session.add(asset)
+
+    session.flush()
+
+    # Bila jadwal rutin berulang, buat jadwal periode berikutnya secara otomatis
+    if row.is_recurring and req.create_next_schedule and row.siklus != "Sekali":
+        next_date = advance_due_date(row.tanggal_jadwal, row.siklus)
+        next_code = generate_next_maintenance_code(session)
+        next_row = Maintenance(
+            kode_maintenance=next_code,
+            id_aset=row.id_aset,
+            nama_aset=row.nama_aset,
+            kategori=row.kategori,
+            lokasi=row.lokasi,
+            jenis_maintenance=row.jenis_maintenance,
+            prioritas=row.prioritas,
+            judul=row.judul,
+            deskripsi=row.deskripsi,
+            tindakan="",
+            teknisi=row.teknisi,
+            vendor_servis=row.vendor_servis,
+            biaya=0,
+            tanggal_jadwal=next_date,
+            tanggal_selesai=None,
+            status="Terjadwal",
+            kondisi_setelah=req.kondisi_setelah,
+            is_recurring=True,
+            siklus=row.siklus,
+            catatan=row.catatan,
+        )
+        session.add(next_row)
+
+    session.commit()
+    session.refresh(row)
+    return MaintenancePublic.from_model(row)
+
+
+@router.delete("/{identifier}")
+def delete_maintenance(
+    identifier: str,
+    session: SessionDep,
+    _: AdminUserDep,
+) -> dict[str, Any]:
+    """Menghapus jadwal/riwayat maintenance (hanya Administrator)."""
+    row = _find_maintenance(session, identifier)
+    deleted_code = row.kode_maintenance
+    deleted_id = row.id
+    session.delete(row)
+    session.commit()
+    return {"status": "ok", "id": deleted_id, "kode_maintenance": deleted_code}
+
