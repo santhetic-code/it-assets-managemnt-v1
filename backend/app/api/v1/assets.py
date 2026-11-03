@@ -4,7 +4,7 @@ import re
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, or_
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.core.master_data import get_prefix_for_category
 from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
@@ -28,7 +28,7 @@ def generate_next_asset_id(session: Session, kategori: str) -> str:
     """Menghasilkan ID aset otomatis berikutnya dengan format {PREFIX}-{NNN}."""
     prefix = get_prefix_for_category(kategori)
     existing_ids = session.exec(
-        select(Asset.id_aset).where(Asset.id_aset.like(f"{prefix}-%"))
+        select(Asset.id_aset).where(col(Asset.id_aset).like(f"{prefix}-%"))
     ).all()
 
     max_num = 0
@@ -128,12 +128,12 @@ def list_assets(
         pattern = f"%{keyword}%"
         stmt = stmt.where(
             or_(
-                Asset.id_aset.ilike(pattern),
-                Asset.nama_aset.ilike(pattern),
-                Asset.serial_number.ilike(pattern),
-                Asset.merek.ilike(pattern),
-                Asset.model.ilike(pattern),
-                Asset.penanggung_jawab.ilike(pattern),
+                col(Asset.id_aset).ilike(pattern),
+                col(Asset.nama_aset).ilike(pattern),
+                col(Asset.serial_number).ilike(pattern),
+                col(Asset.merek).ilike(pattern),
+                col(Asset.model).ilike(pattern),
+                col(Asset.penanggung_jawab).ilike(pattern),
             )
         )
 
@@ -153,7 +153,7 @@ def list_assets(
     total = session.exec(count_stmt).one()
 
     rows = session.exec(
-        stmt.order_by(Asset.id_aset.asc())
+        stmt.order_by(col(Asset.id_aset).asc())
         .offset(page_params.offset)
         .limit(page_params.page_size)
     ).all()
