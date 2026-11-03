@@ -1,6 +1,7 @@
 """Fondasi model: aturan penamaan constraint dan mixin timestamp."""
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from sqlalchemy import DateTime
 from sqlmodel import Field, SQLModel
@@ -27,12 +28,12 @@ class TimestampMixin(SQLModel):
 
     created_at: datetime = Field(
         default_factory=utcnow,
-        sa_type=DateTime(timezone=True),
+        sa_type=cast(Any, DateTime(timezone=True)),
         nullable=False,
     )
     updated_at: datetime = Field(
         default_factory=utcnow,
-        sa_type=DateTime(timezone=True),
+        sa_type=cast(Any, DateTime(timezone=True)),
         sa_column_kwargs={"onupdate": utcnow},
         nullable=False,
     )
