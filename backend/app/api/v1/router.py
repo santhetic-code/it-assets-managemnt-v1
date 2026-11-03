@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import assets, auth, finance, ip_vm, master, power
+from app.api.v1 import assets, auth, finance, ip_vm, maintenance, master, power
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -52,5 +52,12 @@ api_router.include_router(
     finance.router,
     prefix="/recurring-bills",
     tags=["finance"],
+    include_in_schema=False,
+)
+api_router.include_router(maintenance.router, prefix="/maintenance", tags=["maintenance"])
+api_router.include_router(
+    maintenance.router,
+    prefix="/maintenances",
+    tags=["maintenance"],
     include_in_schema=False,
 )
