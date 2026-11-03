@@ -205,16 +205,16 @@ def list_ip_allocations(
             stmt = stmt.where(func.lower(IPAllocation.status) == st_clean)
 
     if only_vm is True:
-        stmt = stmt.where(IPAllocation.is_vm.is_(True))
+        stmt = stmt.where(col(IPAllocation.is_vm).is_(True))
     elif only_vm is False:
-        stmt = stmt.where(IPAllocation.is_vm.is_(False))
+        stmt = stmt.where(col(IPAllocation.is_vm).is_(False))
 
     if tipe and tipe.strip().lower() not in ("semua", "all", ""):
         t_clean = tipe.strip().lower()
         if t_clean == "vm":
-            stmt = stmt.where(IPAllocation.is_vm.is_(True))
+            stmt = stmt.where(col(IPAllocation.is_vm).is_(True))
         elif t_clean == "fisik":
-            stmt = stmt.where(IPAllocation.is_vm.is_(False))
+            stmt = stmt.where(col(IPAllocation.is_vm).is_(False))
         elif t_clean in ("vm tanpa host", "orphan", "orphan_vm"):
             orphan_only = True
         elif t_clean == "konflik":
