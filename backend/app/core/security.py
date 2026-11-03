@@ -1,14 +1,20 @@
-"""Utilitas keamanan: hash password (bcrypt) dan token JWT (PyJWT)."""
+"""Utilitas keamanan: hash password (bcrypt), token JWT (PyJWT), dan enkripsi Fernet."""
 
+import base64
+import binascii
+import hashlib
 from datetime import timedelta
 from typing import Any
 
 import bcrypt
 import jwt
+from cryptography.fernet import Fernet, InvalidToken
 from jwt import InvalidTokenError
 
 from app.core.config import get_settings
 from app.models.base import utcnow
+
+MASKED_SECRET_DISPLAY = "••••••••"
 
 
 def hash_password(plain_password: str) -> str:
@@ -67,3 +73,45 @@ def decode_access_token(token: str) -> dict[str, Any]:
         raise InvalidTokenError("Payload token tidak memiliki sub")
     return payload
 
+
+def _derive_fernet_key(raw_key: str) -> bytes:
+    """Mengambil kunci Fernet 32-byte base64, atau menurunkan via SHA-256 untuk mode dev."""
+    cleaned = raw_key.strip().encode("utf-8")
+    try:
+        decoded = base64.urlsafe_b64decode(cleaned)
+        if len(decoded) == 32:
+            return cleaned
+    except (binascii.Error, ValueError):
+        pass
+    digest = hashlib.sha256(cleaned).digest()
+    return base64.urlsafe_b64encode(digest)
+
+
+def get_fernet() -> Fernet:
+    """Mengembalikan instance Fernet berdasarkan FERNET_MASTER_KEY aktif."""
+    settings = get_settings()
+    return Fernet(_derive_fernet_key(settings.fernet_master_key))
+
+
+def encrypt_secret(plain_secret: str) -> str:
+    """Mengenkripsi string rahasia menjadi token Fernet (ciphertext UTF-8)."""
+    if not plain_secret:
+        return ""
+    token = get_fernet().encrypt(plain_secret.encode("utf-8"))
+    return token.decode("utf-8")
+
+
+def decrypt_secret(cipher_secret: str) -> str:
+    """Mendekripsi token Fernet kembali menjadi string rahasia asli."""
+    if not cipher_secret:
+        return ""
+    try:
+        plain = get_fernet().decrypt(cipher_secret.encode("utf-8"))
+        return plain.decode("utf-8")
+    except InvalidToken as exc:
+        raise ValueError("Data kredensial gagal didekripsi dengan kunci aktif") from exc
+
+
+def mask_secret(value: str | None = None) -> str:
+    """Mengembalikan tampilan tersamar standar untuk respons non-reveal."""
+    return MASKED_SECRET_DISPLAY
