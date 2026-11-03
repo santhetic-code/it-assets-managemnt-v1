@@ -238,7 +238,7 @@ def list_ip_allocations(
 
     # Pengurutan wajib numerik berdasarkan ip_int ASC
     rows = session.exec(
-        stmt.order_by(IPAllocation.ip_int.asc(), IPAllocation.id.asc())
+        stmt.order_by(col(IPAllocation.ip_int).asc(), col(IPAllocation.id).asc())
         .offset(page_params.offset)
         .limit(page_params.page_size)
     ).all()

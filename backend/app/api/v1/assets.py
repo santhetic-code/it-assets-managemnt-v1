@@ -153,7 +153,7 @@ def list_assets(
     total = session.exec(count_stmt).one()
 
     rows = session.exec(
-        stmt.order_by(Asset.id_aset.asc())
+        stmt.order_by(col(Asset.id_aset).asc())
         .offset(page_params.offset)
         .limit(page_params.page_size)
     ).all()
