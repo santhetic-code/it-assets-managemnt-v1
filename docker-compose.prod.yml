@@ -1,0 +1,19 @@
+# Override konfigurasi Docker Compose untuk lingkungan Produksi On-Premise (B9)
+# Pemakaian:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+services:
+  backend:
+    restart: always
+    volumes:
+      - ./docs/data:/app/docs/data:ro
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m scripts.seed_users &&
+             python -m scripts.import_csv &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 2"
+
+  frontend:
+    restart: always
+    command: reflex run --env prod --frontend-port 3000 --backend-port 8000 --backend-host 0.0.0.0
+

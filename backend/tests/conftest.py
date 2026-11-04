@@ -4,6 +4,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.core.config import get_settings
+from app.core.rate_limit import reset_login_rate_limiter
 from app.deps import get_session
 from app.main import app
 
@@ -24,6 +25,7 @@ def _hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.delenv(key, raising=False)
     get_settings.cache_clear()
+    reset_login_rate_limiter()
 
 
 @pytest.fixture

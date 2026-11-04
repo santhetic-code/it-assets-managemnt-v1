@@ -2,11 +2,30 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import assets, auth, finance, ip_vm, maintenance, master, power
+from app.api.v1 import (
+    assets,
+    audit,
+    auth,
+    credentials,
+    dashboard,
+    finance,
+    ip_vm,
+    maintenance,
+    master,
+    power,
+    users,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(master.router, prefix="/master", tags=["master"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(
+    dashboard.router,
+    prefix="/overview",
+    tags=["dashboard"],
+    include_in_schema=False,
+)
 api_router.include_router(assets.router, prefix="/assets", tags=["assets"])
 api_router.include_router(ip_vm.router, prefix="/ip-allocations", tags=["ip-vm"])
 api_router.include_router(
@@ -59,5 +78,32 @@ api_router.include_router(
     maintenance.router,
     prefix="/maintenances",
     tags=["maintenance"],
+    include_in_schema=False,
+)
+api_router.include_router(credentials.router, prefix="/credentials", tags=["credentials"])
+api_router.include_router(
+    credentials.router,
+    prefix="/credential-manager",
+    tags=["credentials"],
+    include_in_schema=False,
+)
+api_router.include_router(audit.router, prefix="/audit-logs", tags=["audit"])
+api_router.include_router(
+    audit.router,
+    prefix="/audit",
+    tags=["audit"],
+    include_in_schema=False,
+)
+api_router.include_router(
+    audit.router,
+    prefix="/audits",
+    tags=["audit"],
+    include_in_schema=False,
+)
+api_router.include_router(users.router, prefix="/users", tags=["users"])
+api_router.include_router(
+    users.router,
+    prefix="/accounts",
+    tags=["users"],
     include_in_schema=False,
 )
