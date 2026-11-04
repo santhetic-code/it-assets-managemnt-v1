@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
+from app.core.csv_importer import import_all_csv_data
 from app.core.security import hash_password, verify_password
 from app.deps import AdminUserDep, CurrentUserDep, PageParamsDep, SessionDep
 from app.models.base import utcnow
@@ -362,3 +363,13 @@ def delete_user(
     )
     session.commit()
     return {"status": "ok", "id": deleted_id, "username": deleted_username}
+
+
+@router.post("/import-csv", response_model=dict[str, Any])
+def import_csv_data_users_alias(
+    session: SessionDep,
+    current_admin: AdminUserDep,
+) -> dict[str, Any]:
+    """Alias endpoint impor data CSV operasional ke database (khusus Administrator)."""
+    return import_all_csv_data(session, username=current_admin.username)
+

@@ -1,8 +1,11 @@
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import health
 from app.api.v1.router import api_router
@@ -32,6 +35,32 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url=None if settings.is_production else "/openapi.json",
     )
+
+    # Middleware Keamanan Header HTTP
+    @application.middleware("http")
+    async def security_headers_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "same-origin"
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    # Global Exception Handler untuk unhandled exception
+    @application.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
+        if isinstance(exc, StarletteHTTPException):
+            return await http_exception_handler(request, exc)
+        logger.exception("Kesalahan server internal tidak tertangani: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Terjadi kesalahan internal pada server"},
+        )
+
     application.include_router(health.router)
     application.include_router(api_router)
     return application
