@@ -47,6 +47,15 @@ def resolve_data_dir(custom_path: Path | str | None = None) -> Path:
     return Path.cwd() / "docs" / "data"
 
 
+def _pick(row: dict[str, str], *keys: str, default: str = "") -> str:
+    """Mengambil nilai pertama yang tidak kosong dari beberapa variasi nama kolom CSV."""
+    for k in keys:
+        for row_k, row_v in row.items():
+            if row_k.strip().lower() == k.strip().lower() and str(row_v).strip():
+                return str(row_v).strip()
+    return default
+
+
 def _read_csv_rows(file_path: Path) -> list[dict[str, str]]:
     """Membaca baris CSV menjadi list dictionary dengan toleransi baris kosong & delimiter."""
     if not file_path.exists():
@@ -66,8 +75,51 @@ def _read_csv_rows(file_path: Path) -> list[dict[str, str]]:
     if header_idx == -1:
         return []
 
-    content = "".join(raw_lines[header_idx:])
     first_line = raw_lines[header_idx]
+
+    # Khusus file ip_list_xml.csv (struktur multi-tabel: SERVER, ADDON, OPERASIONAL)
+    if "SERVER" in first_line and "ADDON" in first_line and "OPERASIONAL" in first_line:
+        reader = list(csv.reader(io.StringIO("".join(raw_lines[header_idx:]))))
+        extracted: list[dict[str, str]] = []
+        for row in reader[2:]:
+            # 1. Server
+            if len(row) > 1 and row[1].strip():
+                server_name = row[0].strip()
+                extracted.append({
+                    "ip": row[1].strip(),
+                    "nama_perangkat": server_name if server_name else "Server",
+                    "tipe": "Fisik",
+                    "keterangan": "Server Fisik",
+                    "pengguna": "IT Server",
+                    "lokasi": "Head Office (Office Blok 14)",
+                })
+            # 2. Addon / VM
+            if len(row) > 5 and row[5].strip():
+                addon_host = row[3].strip()
+                extracted.append({
+                    "ip": row[5].strip(),
+                    "nama_perangkat": f"Addon {addon_host}".strip() if addon_host else "Addon",
+                    "tipe": "VM",
+                    "host_name": addon_host,
+                    "keterangan": row[4].strip().replace("\n", ", "),
+                    "pengguna": "IT System",
+                    "lokasi": "Head Office (Office Blok 14)",
+                })
+            # 3. Operasional
+            if len(row) > 8 and row[8].strip():
+                user_name = row[7].strip()
+                extracted.append({
+                    "ip": row[8].strip(),
+                    "nama_perangkat": f"PC {user_name}".strip() if user_name else "PC User",
+                    "tipe": "Fisik",
+                    "pengguna": user_name,
+                    "keterangan": "PC Operasional",
+                    "lokasi": "Head Office (Office Blok 14)",
+                })
+        return extracted
+
+    # Untuk file CSV tabel biasa:
+    content = "".join(raw_lines[header_idx:])
     delimiter = ";" if first_line.count(";") > first_line.count(",") else ","
 
     reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
@@ -146,16 +198,29 @@ def _parse_date(val: Any) -> date | None:
     return None
 
 
-def _normalize_loc(val: str | None) -> str:
-    """Menyesuaikan nama lokasi dengan standar LOCATIONS perusahaan."""
-    cleaned = (val or "").strip()
+def _normalize_loc(raw: str | None = None) -> str:
+    """Menormalisasi nama lokasi CSV dengan prioritas pencocokan dari yang paling spesifik."""
+    cleaned = (raw or "").strip()
     if not cleaned:
         return "Head Office (Office Blok 14)"
     for loc in LOCATIONS:
         if loc.lower() == cleaned.lower():
             return loc
-    if cleaned.lower() in LOCATION_ALIASES:
-        return LOCATION_ALIASES[cleaned.lower()]
+
+    low = cleaned.lower()
+    ordered_rules: list[tuple[tuple[str, ...], str]] = [
+        (("437", "office blok 12", "kantor blok 12"), "Office 437 (Office Blok 12)"),
+        (("mess", "mess blok 12"), "Mess (Mess Blok 12)"),
+        (("konter", "rinjani", "ruko rinjani"), "Konter (Ruko Rinjani)"),
+        (("white house", "wh", "blok 13", "office blok 13"), "White House (Office Blok 13)"),
+        (("head office", "ho", "blok 14", "office blok 14"), "Head Office (Office Blok 14)"),
+    ]
+    for keywords, target_location in ordered_rules:
+        if any(k in low for k in keywords):
+            return target_location
+
+    if low in LOCATION_ALIASES:
+        return LOCATION_ALIASES[low]
     return "Head Office (Office Blok 14)"
 
 
@@ -291,116 +356,113 @@ def import_watt_server_csv(session: Session, file_path: Path) -> int:
 
 
 def import_ip_list_csv(session: Session, file_path: Path) -> int:
-    """Mengimpor entri IP dari ip_list_xml.csv (Server, Addon/VM, Operasional) secara idempoten."""
-    if not file_path.exists():
-        logger.warning("File IP list tidak ditemukan: %s", file_path)
-        return 0
+    """Impor ip_list_xml.csv ke tabel ip_allocations & tautkan otomatis ke Asset bila cocok."""
+    rows = _read_csv_rows(file_path)
+    all_assets = list(session.exec(select(Asset)).all())
+    assets_by_name = {a.nama_aset.strip().lower(): a for a in all_assets}
+    server_assets = [a for a in all_assets if a.kategori.lower() == "server"]
 
-    with file_path.open("r", encoding="utf-8-sig", errors="replace") as f:
-        reader = list(csv.reader(f))
+    imported = 0
+    for r in rows:
+        raw_ip = _pick(r, "ip_address", "ip", "alamat_ip", "address")
+        if not raw_ip:
+            continue
+        try:
+            canonical_ip, ip_int = parse_and_validate_ipv4(raw_ip)
+        except ValueError:
+            continue
 
-    if len(reader) < 3:
-        return 0
+        nama = _pick(
+            r,
+            "nama_perangkat",
+            "perangkat",
+            "hostname",
+            "nama_vm",
+            "nama",
+            "user",
+            "pengguna",
+            "keterangan",
+            default=f"Device-{canonical_ip}",
+        )
+        tipe_raw = _pick(r, "tipe", "kategori", "jenis", default="Fisik")
+        host_raw = _pick(r, "host_name", "host", "induk", "server_host")
+        is_vm = (
+            "vm" in tipe_raw.lower()
+            or "virtual" in tipe_raw.lower()
+            or bool(host_raw)
+        )
 
-    imported_count = 0
-    # Baris data dimulai dari indeks 2 (baris ke-3)
-    for row in reader[2:]:
-        # 1. Kolom 0-1: SERVER
-        if len(row) > 1:
-            name_server = row[0].strip()
-            ip_server = row[1].strip()
-            if ip_server:
-                try:
-                    canon_ip, ip_int = parse_and_validate_ipv4(ip_server)
-                    existing = session.exec(
-                        select(IPAllocation).where(col(IPAllocation.ip_address) == canon_ip)
-                    ).first()
-                    if existing is None:
-                        session.add(
-                            IPAllocation(
-                                ip_address=canon_ip,
-                                ip_int=ip_int,
-                                subnet="255.255.255.0",
-                                gateway="192.168.1.1",
-                                nama_perangkat=f"Server {name_server}".strip(),
-                                hostname=name_server.lower().replace(" ", "-"),
-                                tipe="Fisik",
-                                status="Aktif",
-                                lokasi="Head Office (Office Blok 14)",
-                                pengguna="IT Server",
-                                keterangan="Diimpor dari daftar IP Server",
-                            )
-                        )
-                        imported_count += 1
-                except ValueError:
-                    pass
+        # Coba cocokkan perangkat fisik atau host VM ke tabel assets
+        linked_asset_id: str | None = None
+        linked_host_id: str | None = None
 
-        # 2. Kolom 3-5: ADDON / VM
-        if len(row) > 5:
-            addon_host = row[3].strip()
-            addon_desc = row[4].strip()
-            addon_ip = row[5].strip()
-            if addon_ip:
-                try:
-                    canon_ip, ip_int = parse_and_validate_ipv4(addon_ip)
-                    existing = session.exec(
-                        select(IPAllocation).where(col(IPAllocation.ip_address) == canon_ip)
-                    ).first()
-                    if existing is None:
-                        session.add(
-                            IPAllocation(
-                                ip_address=canon_ip,
-                                ip_int=ip_int,
-                                subnet="255.255.255.0",
-                                gateway="192.168.1.1",
-                                nama_perangkat=f"Addon {addon_host}".strip(),
-                                hostname=addon_host.lower().replace(" ", "-"),
-                                tipe="Virtual",
-                                status="Aktif",
-                                lokasi="Head Office (Office Blok 14)",
-                                is_vm=True,
-                                host_name=addon_host,
-                                keterangan=addon_desc.replace("\n", ", "),
-                                pengguna="IT System",
-                            )
-                        )
-                        imported_count += 1
-                except ValueError:
-                    pass
+        matched_asset = assets_by_name.get(nama.strip().lower())
+        if matched_asset is None:
+            matched_asset = next(
+                (
+                    a
+                    for a in all_assets
+                    if a.nama_aset.lower() in nama.lower()
+                    or nama.lower() in a.nama_aset.lower()
+                ),
+                None,
+            )
 
-        # 3. Kolom 7-8: OPERASIONAL / USER
-        if len(row) > 8:
-            user_name = row[7].strip()
-            user_ip = row[8].strip()
-            if user_ip:
-                try:
-                    canon_ip, ip_int = parse_and_validate_ipv4(user_ip)
-                    existing = session.exec(
-                        select(IPAllocation).where(col(IPAllocation.ip_address) == canon_ip)
-                    ).first()
-                    if existing is None:
-                        session.add(
-                            IPAllocation(
-                                ip_address=canon_ip,
-                                ip_int=ip_int,
-                                subnet="255.255.255.0",
-                                gateway="192.168.1.1",
-                                nama_perangkat=f"PC {user_name}".strip(),
-                                hostname=user_name.lower().replace(" ", "-"),
-                                tipe="Fisik",
-                                status="Aktif",
-                                lokasi="Head Office (Office Blok 14)",
-                                pengguna=user_name,
-                                keterangan="Diimpor dari alokasi IP Operasional Staf",
-                            )
-                        )
-                        imported_count += 1
-                except ValueError:
-                    pass
+        if not is_vm and matched_asset is not None:
+            linked_asset_id = matched_asset.id_aset
+            if not matched_asset.ip_address:
+                matched_asset.ip_address = canonical_ip
+                session.add(matched_asset)
+        elif is_vm:
+            if host_raw:
+                matched_host = assets_by_name.get(host_raw.strip().lower()) or next(
+                    (
+                        s
+                        for s in server_assets
+                        if s.nama_aset.lower() in host_raw.lower()
+                        or host_raw.lower() in s.nama_aset.lower()
+                    ),
+                    None,
+                )
+                if matched_host is not None:
+                    linked_host_id = matched_host.id_aset
+                    host_raw = matched_host.nama_aset
+            else:
+                host_raw = "Server Host Utama"
 
-    if imported_count > 0:
+        lokasi = _normalize_loc(_pick(r, "lokasi", "cabang", "site", "ruangan"))
+        ket = _pick(r, "keterangan", "catatan", "deskripsi", "fungsi")
+        pengguna = _pick(r, "pengguna", "user", "pic", "penanggung_jawab")
+
+        existing = session.exec(
+            select(IPAllocation).where(col(IPAllocation.ip_address) == canonical_ip)
+        ).first()
+        if existing is None:
+            row = IPAllocation(
+                ip_address=canonical_ip,
+                ip_int=ip_int,
+                subnet=_pick(r, "subnet", "netmask", default="255.255.255.0")[:45],
+                gateway=_pick(r, "gateway", "gw")[:45],
+                nama_perangkat=nama[:150],
+                hostname=nama[:150],
+                tipe="VM" if is_vm else (tipe_raw[:30] or "Fisik"),
+                status="Aktif",
+                lokasi=lokasi,
+                id_aset=linked_asset_id,
+                is_vm=is_vm,
+                host_name=host_raw[:150] if is_vm else "",
+                id_aset_host=linked_host_id,
+                os=_pick(r, "os", "sistem_operasi")[:80],
+                pengguna=pengguna[:100],
+                keterangan=ket[:500],
+            )
+            session.add(row)
+            session.flush()
+            imported += 1
+
+    if imported > 0:
         session.commit()
-    return imported_count
+    return imported
 
 
 def _classify_purchase_category(produk: str) -> str:
@@ -538,4 +600,3 @@ def import_all_csv_data(
             "total_imported": total_imported,
         },
     }
-

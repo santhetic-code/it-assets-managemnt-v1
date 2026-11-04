@@ -6,9 +6,9 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
-from app.core.csv_importer import import_all_csv_data, resolve_data_dir
+from app.core.csv_importer import _normalize_loc, import_all_csv_data, resolve_data_dir
 from app.core.rate_limit import reset_login_rate_limiter
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password
 from app.models.asset import Asset
 from app.models.audit import AuditLog
 from app.models.finance import Purchase
@@ -184,4 +184,51 @@ def test_generated_production_secrets_pass_strict_validation() -> None:
     # DB Password minimal 16 karakter
     db_pass = secrets_dict["POSTGRES_PASSWORD"]
     assert len(db_pass) >= 16
+
+
+def _auth_headers(session: Session, username: str, role: UserRole) -> dict[str, str]:
+    user = User(
+        username=username,
+        full_name=f"User {username}",
+        password_hash=hash_password("password123"),
+        role=role.value,
+        is_active=True,
+    )
+    session.add(user)
+    session.commit()
+    token = create_access_token(subject=user.username, role=user.role)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_location_disambiguation_and_full_contract_after_csv_import(
+    client: TestClient,
+    session: Session,
+) -> None:
+    # 1. Pastikan Blok 12 untuk Office 437 dan Mess tidak tertukar
+    assert _normalize_loc("Office 437") == "Office 437 (Office Blok 12)"
+    assert _normalize_loc("Office Blok 12") == "Office 437 (Office Blok 12)"
+    assert _normalize_loc("Mess Blok 12") == "Mess (Mess Blok 12)"
+    assert _normalize_loc("Ruko Rinjani") == "Konter (Ruko Rinjani)"
+    assert _normalize_loc("White House") == "White House (Office Blok 13)"
+    assert _normalize_loc("Head Office") == "Head Office (Office Blok 14)"
+
+    # 2. Jalankan impor CSV dan pastikan semua endpoint utama merespons kontrak frontend
+    admin_h = _auth_headers(session, "admin_e2e", UserRole.ADMINISTRATOR)
+    client.post("/api/v1/master/import-csv", headers=admin_h)
+
+    for path in (
+        "/api/v1/assets",
+        "/api/v1/watt-server",
+        "/api/v1/ip-allocations",
+        "/api/v1/purchases",
+        "/api/v1/audit-logs",
+    ):
+        res = client.get(path, headers=admin_h)
+        assert res.status_code == 200
+        payload = res.json()
+        assert "items" in payload
+        assert "total" in payload
+        assert "tab_counts" in payload
+        assert "summary" in payload
+
 
