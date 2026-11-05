@@ -2,6 +2,7 @@
 State Generik Inventaris Aset ITAM Pro (Tahap 6c-1).
 Menangani halaman `/assets` (Semua Aset) dan `/assets/c/[slug]` (View Kategori)
 berdasarkan konfigurasi di `services/category_config.py`.
+Dioptimalkan dengan @rx.var(cache=True) & O(1) short-circuit lookup.
 """
 import json
 import math
@@ -69,7 +70,7 @@ class AssetState(rx.State):
 
     column_prefs_json: str = rx.LocalStorage("{}", name="itam_asset_col_prefs")
 
-    @rx.var
+    @rx.var(cache=True)
     def hidden_columns(self) -> list[str]:
         """Daftar key kolom yang disembunyikan untuk view saat ini (disimpan di LocalStorage)."""
         try:
@@ -148,38 +149,38 @@ class AssetState(rx.State):
 
     # --- COMPUTED VARS: KONTEKS HALAMAN & HEADER ---
 
-    @rx.var
+    @rx.var(cache=True)
     def page_title(self) -> str:
         cfg = get_config_by_slug(self.current_slug)
         if cfg:
             return cfg["name"]
         return "Semua Aset"
 
-    @rx.var
+    @rx.var(cache=True)
     def page_subtitle(self) -> str:
         cfg = get_config_by_slug(self.current_slug)
         if cfg and cfg.get("subtitle"):
             return cfg["subtitle"]
         return "Kelola seluruh unit fisik perangkat keras IT dalam satu basis data terpadu."
 
-    @rx.var
+    @rx.var(cache=True)
     def add_button_label(self) -> str:
         cfg = get_config_by_slug(self.current_slug)
         if cfg and cfg.get("add_button_label"):
             return cfg["add_button_label"]
         return "+ Tambah Aset"
 
-    @rx.var
+    @rx.var(cache=True)
     def breadcrumb_title(self) -> str:
         cfg = get_config_by_slug(self.current_slug)
         return cfg["name"] if cfg else "Semua Aset"
 
-    @rx.var
+    @rx.var(cache=True)
     def has_tabs(self) -> bool:
         cfg = get_config_by_slug(self.current_slug)
         return bool(cfg and cfg.get("tab_field"))
 
-    @rx.var
+    @rx.var(cache=True)
     def current_tabs(self) -> list[dict[str, Any]]:
         cfg = get_config_by_slug(self.current_slug)
         if not cfg or not cfg.get("tab_field"):
@@ -197,49 +198,49 @@ class AssetState(rx.State):
 
     # --- COMPUTED VARS: MASTER OPTIONS ---
 
-    @rx.var
+    @rx.var(cache=True)
     def master_kategori_options(self) -> list[str]:
         if self.form_category_locked and self.current_slug == "pc":
             return ["PC", "Server"]
         return list(MASTER_KATEGORI)
 
-    @rx.var
+    @rx.var(cache=True)
     def master_kepemilikan_options(self) -> list[str]:
         return list(MASTER_KEPEMILIKAN)
 
-    @rx.var
+    @rx.var(cache=True)
     def master_lokasi_options(self) -> list[str]:
         return list(MASTER_LOKASI)
 
-    @rx.var
+    @rx.var(cache=True)
     def master_kondisi_options(self) -> list[str]:
         return list(MASTER_KONDISI)
 
-    @rx.var
+    @rx.var(cache=True)
     def master_status_options(self) -> list[str]:
         return list(MASTER_STATUS)
 
-    @rx.var
+    @rx.var(cache=True)
     def master_jenis_pc_options(self) -> list[str]:
         return list(MASTER_JENIS_PC)
 
-    @rx.var
+    @rx.var(cache=True)
     def master_merk_options(self) -> list[str]:
         return self.custom_merk_options
 
-    @rx.var
+    @rx.var(cache=True)
     def master_ukuran_options(self) -> list[str]:
         return list(MASTER_UKURAN_MONITOR)
 
-    @rx.var
+    @rx.var(cache=True)
     def master_resolusi_options(self) -> list[str]:
         return self.custom_resolusi_options
 
-    @rx.var
+    @rx.var(cache=True)
     def master_konektivitas_options(self) -> list[str]:
         return list(MASTER_KONEKTIVITAS_MONITOR)
 
-    @rx.var
+    @rx.var(cache=True)
     def os_filter_options(self) -> list[str]:
         return [
             "Windows 11 Pro",
@@ -248,55 +249,56 @@ class AssetState(rx.State):
             "Ubuntu Server 24.04 LTS",
         ]
 
-    @rx.var
+    @rx.var(cache=True)
     def ram_filter_options(self) -> list[str]:
         return ["8 GB DDR4", "16 GB DDR4", "32 GB DDR4", "64 GB ECC DDR4"]
 
     # --- COMPUTED VARS: FILTER ATTRIBUT & TABEL ---
 
-    @rx.var
+    @rx.var(cache=True)
     def filter_os_value(self) -> str:
         return self.attr_filters.get("os", "")
 
-    @rx.var
+    @rx.var(cache=True)
     def filter_ram_value(self) -> str:
         return self.attr_filters.get("ram", "")
 
-    @rx.var
+    @rx.var(cache=True)
     def filter_merk_value(self) -> str:
         return self.attr_filters.get("merk", "")
 
-    @rx.var
+    @rx.var(cache=True)
     def filter_ukuran_value(self) -> str:
         return self.attr_filters.get("ukuran_layar", "")
 
-    @rx.var
+    @rx.var(cache=True)
     def filter_resolusi_value(self) -> str:
         return self.attr_filters.get("resolusi_layar", "")
 
-    @rx.var
+    @rx.var(cache=True)
     def filter_konektivitas_value(self) -> str:
         return self.attr_filters.get("konektivitas", "")
 
-    @rx.var
+    @rx.var(cache=True)
     def result_count_label(self) -> str:
         return f"{self.total} unit"
 
-    @rx.var
+    @rx.var(cache=True)
     def all_current_selected(self) -> bool:
-        if not self.items:
+        if not self.items or not self.selected_ids:
             return False
-        return all(item.get("id_aset") in self.selected_ids for item in self.items)
+        selected_set = set(self.selected_ids)
+        return all(item.get("id_aset") in selected_set for item in self.items)
 
-    @rx.var
+    @rx.var(cache=True)
     def total_pages(self) -> int:
         return max(1, math.ceil(self.total / self.page_size))
 
-    @rx.var
+    @rx.var(cache=True)
     def current_page_str(self) -> str:
         return str(self.page)
 
-    @rx.var
+    @rx.var(cache=True)
     def page_tokens(self) -> list[str]:
         tp = self.total_pages
         cp = self.page
@@ -312,7 +314,7 @@ class AssetState(rx.State):
         tokens.append(str(tp))
         return tokens
 
-    @rx.var
+    @rx.var(cache=True)
     def pagination_summary(self) -> str:
         if self.total == 0:
             return "Menampilkan 0 dari 0"
@@ -320,47 +322,50 @@ class AssetState(rx.State):
         end = min(self.total, self.page * self.page_size)
         return f"Menampilkan {start}-{end} dari {self.total}"
 
-    @rx.var
+    @rx.var(cache=True)
     def empty_state_title(self) -> str:
         return f"Tidak ada data pada {self.page_title}"
 
-    @rx.var
+    @rx.var(cache=True)
     def empty_state_subtitle(self) -> str:
         return "Coba ubah kata kunci pencarian atau atur ulang kriteria filter Anda."
 
-    @rx.var
+    @rx.var(cache=True)
     def empty_state_action_label(self) -> str:
         return "Reset filter"
 
     # --- COMPUTED VARS: DETAIL DRAWER ---
 
     def _get_active_item(self) -> dict[str, Any]:
+        if not self.active_asset_id or not self.items:
+            return {}
+        target = self.active_asset_id
         for item in self.items:
-            if item.get("id_aset") == self.active_asset_id:
+            if item.get("id_aset") == target:
                 return item
         return {}
 
-    @rx.var
+    @rx.var(cache=True)
     def active_code(self) -> str:
         return str(self._get_active_item().get("id_aset", ""))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_title(self) -> str:
         return str(self._get_active_item().get("nama_aset", ""))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_category(self) -> str:
         return str(self._get_active_item().get("kategori", ""))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_condition(self) -> str:
         return str(self._get_active_item().get("kondisi", "Baru"))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_status(self) -> str:
         return str(self._get_active_item().get("status", "Digunakan"))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_asset_data_items(self) -> list[dict[str, str]]:
         """Grup 1 pada Drawer: Data aset (inti)."""
         item = self._get_active_item()
@@ -381,7 +386,7 @@ class AssetState(rx.State):
             {"label": "Catatan", "value": str(item.get("catatan", "—"))},
         ]
 
-    @rx.var
+    @rx.var(cache=True)
     def active_spec_items(self) -> list[dict[str, str]]:
         """Grup 2 pada Drawer: Spesifikasi (dibangun dinamis dari category_config)."""
         item = self._get_active_item()
@@ -406,21 +411,23 @@ class AssetState(rx.State):
             rows.append({"label": f_def["label"], "value": val_str})
         return rows
 
-    @rx.var
+    @rx.var(cache=True)
     def active_chips_items(self) -> list[str]:
         """Daftar chip untuk field multiselect (mis. Konektivitas Monitor)."""
         item = self._get_active_item()
+        if not item:
+            return []
         attrs: dict[str, Any] = item.get("attributes") or {}
         kon = attrs.get("konektivitas")
         if isinstance(kon, list):
             return [str(x) for x in kon]
         return []
 
-    @rx.var
+    @rx.var(cache=True)
     def active_has_chips(self) -> bool:
         return len(self.active_chips_items) > 0
 
-    @rx.var
+    @rx.var(cache=True)
     def active_maintenance_logs(self) -> list[dict[str, Any]]:
         item = self._get_active_item()
         if not item:
@@ -430,7 +437,7 @@ class AssetState(rx.State):
 
         return [log for log in MOCK_MAINTENANCE_LOGS if log.get("objek_asset_id") == code]
 
-    @rx.var
+    @rx.var(cache=True)
     def active_history_info(self) -> list[dict[str, str]]:
         item = self._get_active_item()
         if not item:
@@ -450,22 +457,22 @@ class AssetState(rx.State):
 
     # --- COMPUTED VARS: DYNAMIC FORM ---
 
-    @rx.var
+    @rx.var(cache=True)
     def form_active_category_slug(self) -> str:
         cfg = get_config_for_category_name(self.form_kategori)
         return cfg["slug"] if cfg else ""
 
-    @rx.var
+    @rx.var(cache=True)
     def form_has_spec_section(self) -> bool:
         cfg = get_config_for_category_name(self.form_kategori)
         return bool(cfg and len(cfg["fields"]) > 0)
 
-    @rx.var
+    @rx.var(cache=True)
     def form_spec_fields(self) -> list[CategoryFieldDef]:
         cfg = get_config_for_category_name(self.form_kategori)
         return cfg["fields"] if cfg else []
 
-    @rx.var
+    @rx.var(cache=True)
     def form_is_digunakan(self) -> bool:
         return self.form_status == "Digunakan"
 
@@ -540,7 +547,7 @@ class AssetState(rx.State):
         self.items = res.get("items", [])
         self.total = int(res.get("total", 0))
         self.tab_counts = res.get("tab_counts", {})
-        if "category_counts" in res:
+        if "category_counts" in res and res["category_counts"] != self.sidebar_counts:
             self.sidebar_counts = res["category_counts"]
         self.is_loading = False
 
@@ -548,6 +555,8 @@ class AssetState(rx.State):
 
     @rx.event
     async def set_tab(self, tab_key: str) -> None:
+        if self.active_tab == tab_key:
+            return
         self.active_tab = tab_key
         self.page = 1
         self.selected_ids = []
@@ -555,42 +564,56 @@ class AssetState(rx.State):
 
     @rx.event
     async def set_search_query(self, val: str) -> None:
+        if self.search_query == val:
+            return
         self.search_query = val
         self.page = 1
         await self.fetch_assets()
 
     @rx.event
     async def set_kategori_filter(self, val: str) -> None:
+        if self.kategori_filter == val:
+            return
         self.kategori_filter = val
         self.page = 1
         await self.fetch_assets()
 
     @rx.event
     async def set_kepemilikan_filter(self, val: str) -> None:
+        if self.kepemilikan_filter == val:
+            return
         self.kepemilikan_filter = val
         self.page = 1
         await self.fetch_assets()
 
     @rx.event
     async def set_lokasi_filter(self, val: str) -> None:
+        if self.lokasi_filter == val:
+            return
         self.lokasi_filter = val
         self.page = 1
         await self.fetch_assets()
 
     @rx.event
     async def set_kondisi_filter(self, val: str) -> None:
+        if self.kondisi_filter == val:
+            return
         self.kondisi_filter = val
         self.page = 1
         await self.fetch_assets()
 
     @rx.event
     async def set_status_filter(self, val: str) -> None:
+        if self.status_filter == val:
+            return
         self.status_filter = val
         self.page = 1
         await self.fetch_assets()
 
     @rx.event
     async def set_attr_filter(self, key: str, val: str) -> None:
+        if self.attr_filters.get(key) == val:
+            return
         updated = dict(self.attr_filters)
         updated[key] = val
         self.attr_filters = updated
@@ -634,7 +657,7 @@ class AssetState(rx.State):
     async def select_page(self, token: str) -> None:
         if token.isdigit():
             target = int(token)
-            if 1 <= target <= self.total_pages:
+            if 1 <= target <= self.total_pages and target != self.page:
                 self.page = target
                 await self.fetch_assets()
 
@@ -667,11 +690,13 @@ class AssetState(rx.State):
 
     @rx.event
     def close_drawer(self) -> None:
-        self.drawer_open = False
+        if self.drawer_open:
+            self.drawer_open = False
 
     @rx.event
     def set_drawer_tab(self, tab_key: str) -> None:
-        self.drawer_tab = tab_key
+        if self.drawer_tab != tab_key:
+            self.drawer_tab = tab_key
 
     # --- EVENT HANDLERS: DYNAMIC FORM MODAL ---
 
@@ -807,7 +832,8 @@ class AssetState(rx.State):
 
     @rx.event
     def close_form_modal(self) -> None:
-        self.form_modal_open = False
+        if self.form_modal_open:
+            self.form_modal_open = False
         self.form_error = ""
         self.form_sn_warning = ""
 
@@ -1017,7 +1043,8 @@ class AssetState(rx.State):
 
     @rx.event
     def cancel_delete(self) -> None:
-        self.delete_dialog_open = False
+        if self.delete_dialog_open:
+            self.delete_dialog_open = False
         self.asset_to_delete = ""
         self.asset_to_delete_label = ""
 

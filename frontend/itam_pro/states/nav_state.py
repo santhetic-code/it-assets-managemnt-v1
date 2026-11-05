@@ -19,7 +19,7 @@ class NavState(rx.State):
     breadcrumb_page: str = "Dashboard"
     global_search_query: str = ""
 
-    @rx.var
+    @rx.var(cache=True)
     def active_path(self) -> str:
         """Kembalikan path URL aktual tanpa query string atau trailing slash."""
         raw = get_current_raw_path(self.router).strip()
@@ -35,8 +35,9 @@ class NavState(rx.State):
 
     @rx.event
     def close_mobile_drawer(self) -> None:
-        self.mobile_drawer_open = False
-        self.mobile_sidebar_open = False
+        if self.mobile_drawer_open or self.mobile_sidebar_open:
+            self.mobile_drawer_open = False
+            self.mobile_sidebar_open = False
 
     @rx.event
     def toggle_mobile_sidebar(self) -> None:
@@ -48,13 +49,17 @@ class NavState(rx.State):
 
     @rx.event
     def set_global_search_query(self, value: str) -> None:
-        self.global_search_query = value
+        if self.global_search_query != value:
+            self.global_search_query = value
 
     @rx.event
     def set_page_context(self, group: str, page: str) -> None:
-        self.breadcrumb_group = group
-        self.breadcrumb_page = page
-        self.active_menu = page
+        if self.breadcrumb_group != group:
+            self.breadcrumb_group = group
+        if self.breadcrumb_page != page:
+            self.breadcrumb_page = page
+        if self.active_menu != page:
+            self.active_menu = page
         self.close_mobile_drawer()
 
     @rx.event

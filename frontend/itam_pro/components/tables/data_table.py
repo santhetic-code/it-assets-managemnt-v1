@@ -1,7 +1,6 @@
 """
 Komponen Data Table Generik ITAM Pro (Tahap 6d).
-Mendukung line-clamp 2 baris + tooltip, visibilitas kolom dinamis (Atur kolom),
-lebar minimum anti-overlap, serta seluruh warna dari token Color.
+Dioptimalkan dengan pre-compiled static rx.Style untuk rendering baris dan sel yang cepat.
 """
 from typing import Any, Literal, Required, TypedDict
 
@@ -49,16 +48,84 @@ class ColumnDef(TypedDict, total=False):
     date_tone_key: str
 
 
-_TWO_LINE_CLAMP_STYLE: dict[str, Any] = {
-    "display": "-webkit-box",
-    "-webkit-line-clamp": "2",
-    "-webkit-box-orient": "vertical",
-    "overflow": "hidden",
-    "text_overflow": "ellipsis",
-    "white_space": "normal",
-    "word_break": "break-word",
-    "line_height": "1.35",
-}
+_TWO_LINE_CLAMP_STYLE = rx.Style(
+    {
+        "display": "-webkit-box",
+        "-webkit-line-clamp": "2",
+        "-webkit-box-orient": "vertical",
+        "overflow": "hidden",
+        "text_overflow": "ellipsis",
+        "white_space": "normal",
+        "word_break": "break-word",
+        "line_height": "1.35",
+    }
+)
+
+_SUB_LABEL_STYLE = rx.Style(
+    {
+        "line_height": "1.15",
+        "white_space": "nowrap",
+        "overflow": "hidden",
+        "text_overflow": "ellipsis",
+        "max_width": "100%",
+    }
+)
+
+_MONO_NOWRAP_STYLE = rx.Style(
+    {
+        "font_family": (
+            "ui-monospace, SFMono-Regular, Menlo, "
+            "Monaco, Consolas, monospace"
+        ),
+        "white_space": "nowrap",
+    }
+)
+
+_SORT_BTN_STYLE = rx.Style(
+    {
+        "background": "transparent",
+        "border": "none",
+        "padding": "0",
+        "font_family": FONT_FAMILY,
+        "cursor": "pointer",
+        "display": "inline-flex",
+        "align_items": "center",
+    }
+)
+
+_ACTION_MENU_BTN_STYLE = rx.Style(
+    {
+        "width": "32px",
+        "height": "32px",
+        "background": "transparent",
+        "border": "none",
+        "border_radius": Radius.BADGE_KBD,
+        "color": Color.MUTED,
+        "font_size": FontSize.LOGO,
+        "font_weight": FontWeight.EXTRABOLD,
+        "cursor": "pointer",
+        "display": "inline-flex",
+        "align_items": "center",
+        "justify_content": "center",
+    }
+)
+
+_ACTION_MENU_BTN_HOVER = rx.Style(
+    {
+        "background_color": Color.BORDER,
+        "color": Color.TEXT,
+    }
+)
+
+_CHECKBOX_INPUT_STYLE = rx.Style(
+    {
+        "width": Size.TABLE_CHECKBOX,
+        "height": Size.TABLE_CHECKBOX,
+        "accent_color": Color.ACCENT,
+        "cursor": "pointer",
+        "margin": "0",
+    }
+)
 
 
 def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -> rx.Component:
@@ -79,15 +146,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
                 font_size=FontSize.SM,
                 font_weight=FontWeight.BOLD,
                 color=rx.cond(row["is_conflict"], Color.DANGER_FG, Color.ACCENT),
-                style=rx.Style(
-                    {
-                        "font_family": (
-                            "ui-monospace, SFMono-Regular, Menlo, "
-                            "Monaco, Consolas, monospace"
-                        ),
-                        "white_space": "nowrap",
-                    }
-                ),
+                style=_MONO_NOWRAP_STYLE,
             ),
             rx.cond(
                 row["is_conflict"],
@@ -107,7 +166,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
                 font_size=FontSize.SM,
                 font_weight=FontWeight.BOLD,
                 color=Color.TEXT,
-                style=rx.Style(_TWO_LINE_CLAMP_STYLE),
+                style=_TWO_LINE_CLAMP_STYLE,
             ),
             rx.text(
                 row[sub_k],
@@ -119,15 +178,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
                     Color.WARNING_FG,
                     Color.MUTED,
                 ),
-                style=rx.Style(
-                    {
-                        "line_height": "1.15",
-                        "white_space": "nowrap",
-                        "overflow": "hidden",
-                        "text_overflow": "ellipsis",
-                        "max_width": "100%",
-                    }
-                ),
+                style=_SUB_LABEL_STYLE,
             ),
             spacing="1",
             align="start",
@@ -144,7 +195,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
             font_size=FontSize.SM,
             font_weight=FontWeight.BOLD,
             color=Color.ACCENT,
-            style=rx.Style(_TWO_LINE_CLAMP_STYLE),
+            style=_TWO_LINE_CLAMP_STYLE,
         )
 
     if rtype == "bold":
@@ -154,7 +205,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
             font_size=FontSize.SM,
             font_weight=FontWeight.BOLD,
             color=Color.TEXT,
-            style=rx.Style(_TWO_LINE_CLAMP_STYLE),
+            style=_TWO_LINE_CLAMP_STYLE,
         )
 
     if rtype == "chips":
@@ -204,7 +255,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
         font_size=FontSize.SM,
         font_weight=FontWeight.BOLD if is_sticky else FontWeight.MEDIUM,
         color=rx.cond(row[key] == "—", Color.MUTED, Color.TEXT),
-        style=rx.Style(_TWO_LINE_CLAMP_STYLE),
+        style=_TWO_LINE_CLAMP_STYLE,
     )
 
 
@@ -285,17 +336,7 @@ def _header_cell(
                 ),
                 type="button",
                 on_click=on_sort(s_key),
-                style=rx.Style(
-                    {
-                        "background": "transparent",
-                        "border": "none",
-                        "padding": "0",
-                        "font_family": FONT_FAMILY,
-                        "cursor": "pointer",
-                        "display": "inline-flex",
-                        "align_items": "center",
-                    }
-                ),
+                style=_SORT_BTN_STYLE,
             ),
             style=rx.Style(header_style),
         )
@@ -332,28 +373,8 @@ def _row_action_menu(
                 type="button",
                 aria_label="Menu aksi baris",
                 on_click=rx.stop_propagation,
-                style=rx.Style(
-                    {
-                        "width": "32px",
-                        "height": "32px",
-                        "background": "transparent",
-                        "border": "none",
-                        "border_radius": Radius.BADGE_KBD,
-                        "color": Color.MUTED,
-                        "font_size": FontSize.LOGO,
-                        "font_weight": FontWeight.EXTRABOLD,
-                        "cursor": "pointer",
-                        "display": "inline-flex",
-                        "align_items": "center",
-                        "justify_content": "center",
-                    }
-                ),
-                _hover=rx.Style(
-                    {
-                        "background_color": Color.BORDER,
-                        "color": Color.TEXT,
-                    }
-                ),
+                style=_ACTION_MENU_BTN_STYLE,
+                _hover=_ACTION_MENU_BTN_HOVER,
             ),
         ),
         rx.menu.content(
@@ -364,6 +385,13 @@ def _row_action_menu(
 
 
 def _skeleton_row(col_count: int) -> rx.Component:
+    td_style = rx.Style(
+        {
+            "height": Size.TABLE_ROW_H,
+            "padding": "0 16px",
+            "border_bottom": f"1px solid {Color.DIVIDER}",
+        }
+    )
     return rx.el.tr(
         rx.el.td(
             rx.box(
@@ -376,13 +404,7 @@ def _skeleton_row(col_count: int) -> rx.Component:
                     }
                 )
             ),
-            style=rx.Style(
-                {
-                    "height": Size.TABLE_ROW_H,
-                    "padding": "0 16px",
-                    "border_bottom": f"1px solid {Color.DIVIDER}",
-                }
-            ),
+            style=td_style,
         ),
         *[
             rx.el.td(
@@ -396,13 +418,7 @@ def _skeleton_row(col_count: int) -> rx.Component:
                         }
                     )
                 ),
-                style=rx.Style(
-                    {
-                        "height": Size.TABLE_ROW_H,
-                        "padding": "0 16px",
-                        "border_bottom": f"1px solid {Color.DIVIDER}",
-                    }
-                ),
+                style=td_style,
             )
             for _ in range(col_count)
         ],
@@ -417,13 +433,7 @@ def _skeleton_row(col_count: int) -> rx.Component:
                     }
                 )
             ),
-            style=rx.Style(
-                {
-                    "height": Size.TABLE_ROW_H,
-                    "padding": "0 16px",
-                    "border_bottom": f"1px solid {Color.DIVIDER}",
-                }
-            ),
+            style=td_style,
         ),
     )
 
@@ -523,6 +533,17 @@ def reusable_data_table(
     dup_handler = on_duplicate_row if on_duplicate_row is not None else on_edit_row
     empty_handler = on_empty_action if on_empty_action is not None else on_reset_filter
 
+    action_td_style = rx.Style(
+        {
+            "width": "52px",
+            "min_width": "52px",
+            "height": Size.TABLE_ROW_H,
+            "padding": "0 12px",
+            "text_align": "right",
+            "border_bottom": f"1px solid {Color.DIVIDER}",
+        }
+    )
+
     def _render_data_cell(
         row: dict[str, Any],
         col: ColumnDef | dict[str, Any],
@@ -592,15 +613,7 @@ def reusable_data_table(
                     checked=selected_ids.contains(row_id) if selected_ids is not None else False,
                     on_click=rx.stop_propagation,
                     aria_label="Pilih baris",
-                    style=rx.Style(
-                        {
-                            "width": Size.TABLE_CHECKBOX,
-                            "height": Size.TABLE_CHECKBOX,
-                            "accent_color": Color.ACCENT,
-                            "cursor": "pointer",
-                            "margin": "0",
-                        }
-                    ),
+                    style=_CHECKBOX_INPUT_STYLE,
                     **cb_td_props,
                 ),
                 on_click=rx.stop_propagation,
@@ -633,16 +646,7 @@ def reusable_data_table(
                     duplicate_label=duplicate_action_label,
                 ),
                 on_click=rx.stop_propagation,
-                style=rx.Style(
-                    {
-                        "width": "52px",
-                        "min_width": "52px",
-                        "height": Size.TABLE_ROW_H,
-                        "padding": "0 12px",
-                        "text_align": "right",
-                        "border_bottom": f"1px solid {Color.DIVIDER}",
-                    }
-                ),
+                style=action_td_style,
             )
             if show_actions
             else rx.fragment()
@@ -688,15 +692,7 @@ def reusable_data_table(
                 type="checkbox",
                 checked=all_selected if all_selected is not None else False,
                 aria_label="Pilih semua baris",
-                style=rx.Style(
-                    {
-                        "width": Size.TABLE_CHECKBOX,
-                        "height": Size.TABLE_CHECKBOX,
-                        "accent_color": Color.ACCENT,
-                        "cursor": "pointer",
-                        "margin": "0",
-                    }
-                ),
+                style=_CHECKBOX_INPUT_STYLE,
                 **cb_th_props,
             ),
             style=rx.Style(

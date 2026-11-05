@@ -33,24 +33,24 @@ class AuthState(rx.State):
     access_token: str = ""
     current_user: dict[str, Any] = {}
 
-    @rx.var
+    @rx.var(cache=True)
     def is_form_state(self) -> bool:
         """Bernilai True jika sudah pernah melihat welcome atau tombol Masuk diklik."""
         return self.form_opened or self.seen_welcome == "true"
 
-    @rx.var
+    @rx.var(cache=True)
     def user_display_name(self) -> str:
         """Nama lengkap pengguna untuk ditampilkan di Topbar."""
         name = self.current_user.get("full_name")
         return str(name) if name else "Admin IT"
 
-    @rx.var
+    @rx.var(cache=True)
     def user_role_label(self) -> str:
         """Nama role pengguna untuk ditampilkan di Topbar."""
         role = self.current_user.get("role")
         return str(role) if role else "Administrator"
 
-    @rx.var
+    @rx.var(cache=True)
     def user_initials(self) -> str:
         """Inisial 2 huruf dari nama lengkap pengguna untuk Avatar bulat."""
         parts = [p for p in self.user_display_name.strip().split() if p]
@@ -65,6 +65,8 @@ class AuthState(rx.State):
         """Guard halaman terproteksi: arahkan ke /login jika belum autentikasi."""
         if not self.is_authenticated:
             return rx.redirect("/login")
+        if self.access_token and api_client.token != self.access_token:
+            api_client.set_token(self.access_token)
 
     @rx.event
     def redirect_from_root(self) -> Any:
@@ -91,7 +93,7 @@ class AuthState(rx.State):
         self.form_opened = True
         self.seen_welcome = "true"
         yield
-        await asyncio.sleep(0.35)
+        await asyncio.sleep(0.05)
         yield rx.set_focus("login-username-input")
 
     @rx.event

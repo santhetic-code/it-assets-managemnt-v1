@@ -7,7 +7,7 @@ import reflex as rx
 from itam_pro.states.nav_state import NavState
 from itam_pro.styles import Color, Shadow, Size
 
-from .sidebar import sidebar
+from .sidebar import sidebar, sidebar_content
 from .topbar import topbar
 
 
@@ -30,7 +30,7 @@ def _mobile_sidebar_drawer() -> rx.Component:
             ),
             # Panel Sidebar di kiri
             rx.box(
-                sidebar(),
+                sidebar_content(is_mobile=True),
                 style=rx.Style(
                     {
                         "position": "fixed",

@@ -1,6 +1,6 @@
 """
 Komponen Sidebar Navigasi Utama ITAM Pro (248px).
-Menggunakan ikon cube ('box') dan subjudul 'IT Assets Management' selaras halaman Login.
+Dioptimalkan dengan rx.link (SPA Client-Side Routing) untuk perpindahan halaman instan.
 """
 from typing import Any
 
@@ -17,11 +17,15 @@ def _nav_link_item(
     href: str,
     icon_tag: str,
     badge_count: Any | None = None,
+    is_mobile: bool = False,
 ) -> rx.Component:
-    """Render satu baris menu sidebar dengan pencocokan rute eksak."""
+    """Render satu baris menu sidebar dengan navigasi SPA (rx.link)."""
     is_active = NavState.active_path == href
+    link_props: dict[str, Any] = {}
+    if is_mobile:
+        link_props["on_click"] = NavState.close_mobile_drawer
 
-    return rx.el.a(
+    return rx.link(
         rx.hstack(
             rx.hstack(
                 rx.icon(
@@ -62,7 +66,7 @@ def _nav_link_item(
             align="center",
         ),
         href=href,
-        on_click=NavState.close_mobile_drawer,
+        underline="none",
         style=rx.Style(
             {
                 "width": "100%",
@@ -72,7 +76,7 @@ def _nav_link_item(
                 "background_color": rx.cond(is_active, Color.ACCENT_BRIGHT, "transparent"),
                 "display": "block",
                 "font_family": FONT_FAMILY,
-                "transition": "background-color 0.15s ease",
+                "transition": "background-color 0.12s ease",
             }
         ),
         _hover=rx.Style(
@@ -82,6 +86,7 @@ def _nav_link_item(
                 ),
             }
         ),
+        **link_props,
     )
 
 
@@ -102,7 +107,7 @@ def _sidebar_group(title: str, *items: rx.Component) -> rx.Component:
     )
 
 
-def sidebar_content() -> rx.Component:
+def sidebar_content(is_mobile: bool = False) -> rx.Component:
     """Isi navigasi sidebar 7 grup menu."""
     icon_map = {
         "pc": "monitor-speaker",
@@ -149,7 +154,9 @@ def sidebar_content() -> rx.Component:
         rx.vstack(
             _sidebar_group(
                 "Overview",
-                _nav_link_item("Dashboard", "/dashboard", "layout-dashboard"),
+                _nav_link_item(
+                    "Dashboard", "/dashboard", "layout-dashboard", is_mobile=is_mobile
+                ),
             ),
             _sidebar_group(
                 "Inventory",
@@ -158,6 +165,7 @@ def sidebar_content() -> rx.Component:
                     "/assets",
                     "boxes",
                     badge_count=AssetState.sidebar_counts["all"],
+                    is_mobile=is_mobile,
                 ),
                 *[
                     _nav_link_item(
@@ -165,31 +173,55 @@ def sidebar_content() -> rx.Component:
                         f"/assets/c/{cfg['slug']}",
                         icon_map.get(cfg["slug"], "box"),
                         badge_count=AssetState.sidebar_counts[cfg["slug"]],
+                        is_mobile=is_mobile,
                     )
                     for cfg in pinned_categories
                 ],
             ),
             _sidebar_group(
                 "Infrastructure",
-                _nav_link_item("IP & Server (VM)", "/infrastructure/ip", "network"),
-                _nav_link_item("Rekap Watt Server", "/watt-server", "zap"),
+                _nav_link_item(
+                    "IP & Server (VM)", "/infrastructure/ip", "network", is_mobile=is_mobile
+                ),
+                _nav_link_item(
+                    "Rekap Watt Server", "/watt-server", "zap", is_mobile=is_mobile
+                ),
             ),
             _sidebar_group(
                 "Operations",
-                _nav_link_item("Jadwal Maintenance", "/operations/maintenance", "wrench"),
+                _nav_link_item(
+                    "Jadwal Maintenance",
+                    "/operations/maintenance",
+                    "wrench",
+                    is_mobile=is_mobile,
+                ),
             ),
             _sidebar_group(
                 "Finance",
-                _nav_link_item("Pembelian & Invoice", "/finance/purchases", "shopping-cart"),
+                _nav_link_item(
+                    "Pembelian & Invoice",
+                    "/finance/purchases",
+                    "shopping-cart",
+                    is_mobile=is_mobile,
+                ),
             ),
             _sidebar_group(
                 "Security",
-                _nav_link_item("Credential Manager", "/security/credentials", "key-round"),
-                _nav_link_item("Audit Log", "/audit-log", "scroll-text"),
+                _nav_link_item(
+                    "Credential Manager",
+                    "/security/credentials",
+                    "key-round",
+                    is_mobile=is_mobile,
+                ),
+                _nav_link_item(
+                    "Audit Log", "/audit-log", "scroll-text", is_mobile=is_mobile
+                ),
             ),
             _sidebar_group(
                 "Admin",
-                _nav_link_item("Pengaturan Akun", "/account-settings", "settings"),
+                _nav_link_item(
+                    "Pengaturan Akun", "/account-settings", "settings", is_mobile=is_mobile
+                ),
             ),
             spacing="5",
             width="100%",
@@ -213,12 +245,12 @@ def sidebar_content() -> rx.Component:
 
 def sidebar() -> rx.Component:
     """Komponen sidebar desktop utama (dipanggil oleh base_layout.py)."""
-    return sidebar_content()
+    return sidebar_content(is_mobile=False)
 
 
 def app_sidebar() -> rx.Component:
     """Alias kompatibilitas untuk sidebar."""
-    return sidebar_content()
+    return sidebar_content(is_mobile=False)
 
 
 def mobile_sidebar_drawer() -> rx.Component:
@@ -238,7 +270,7 @@ def mobile_sidebar_drawer() -> rx.Component:
                 ),
             ),
             rx.box(
-                sidebar_content(),
+                sidebar_content(is_mobile=True),
                 style=rx.Style(
                     {
                         "position": "fixed",
