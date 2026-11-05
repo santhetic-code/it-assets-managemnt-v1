@@ -1,8 +1,9 @@
 """
 State Manajemen Finansial (Pembelian, Invoice, Tagihan Berulang) ITAM Pro (Tahap 9).
-Dioptimalkan dengan @rx.var(cache=True) dan filter guards.
+Dioptimalkan dengan @rx.var(cache=True), filter guards, dan parser nominal Rupiah yang aman.
 """
 import math
+import re
 from datetime import date
 from typing import Any
 
@@ -13,6 +14,25 @@ from itam_pro.services.router_utils import get_current_params
 
 VALID_TABS = ("pembelian", "invoice", "tagihan")
 TAB_LABELS = {"pembelian": "pembelian", "invoice": "invoice", "tagihan": "tagihan"}
+
+
+def _parse_int_safe(val: Any) -> int:
+    """Ekstrak nilai integer dengan aman dari int, float, atau string format Rupiah."""
+    if isinstance(val, bool) or val is None:
+        return 0
+    if isinstance(val, (int, float)):
+        return round(val)
+    if isinstance(val, str):
+        text = val.strip()
+        if not text:
+            return 0
+        # Jika string memuat keterangan tambahan seperti 'Rp 17.609.700 (Synology DS225+ incl)',
+        # ambil bagian nominal di sebelah kiri tanda kurung '(' terlebih dahulu.
+        nominal_part = text.split("(", 1)[0]
+        digits = re.sub(r"[^\d]", "", nominal_part)
+        if digits:
+            return int(digits)
+    return 0
 
 
 class FinanceState(rx.State):
@@ -132,21 +152,21 @@ class FinanceState(rx.State):
 
     @rx.var(cache=True)
     def total_belanja_display(self) -> str:
-        val = int(self.summary.get("total_belanja", 0))
+        val = _parse_int_safe(self.summary.get("total_belanja", 0))
         return f"Rp {val:,}".replace(",", ".")
 
     @rx.var(cache=True)
     def belanja_terbesar_display(self) -> str:
-        val = int(self.summary.get("belanja_terbesar", 0))
+        val = _parse_int_safe(self.summary.get("belanja_terbesar", 0))
         return f"Rp {val:,}".replace(",", ".")
 
     @rx.var(cache=True)
     def belum_dicatat_count(self) -> int:
-        return int(self.summary.get("belum_dicatat", 0))
+        return _parse_int_safe(self.summary.get("belum_dicatat", 0))
 
     @rx.var(cache=True)
     def bills_perlu_dibayar_display(self) -> str:
-        val = int(self.bills_summary.get("perlu_dibayar_30d", 0))
+        val = _parse_int_safe(self.bills_summary.get("perlu_dibayar_30d", 0))
         return f"Rp{val:,}".replace(",", ".")
 
     # --- FETCH ---
@@ -176,24 +196,44 @@ class FinanceState(rx.State):
         filters = {"search": self.search_query, "aset_status": self.status_filter}
         res = await api_client.get_purchases(filters, self.page, self.page_size)
         self.purchases = res.get("items", [])
-        self.total_items = int(res.get("total", 0))
-        self.summary = res.get("summary", {})
+        self.total_items = _parse_int_safe(res.get("total", 0))
+        raw_summary = res.get("summary") or {}
+        self.summary = {
+            **raw_summary,
+            "total_belanja": _parse_int_safe(raw_summary.get("total_belanja", 0)),
+            "belanja_terbesar": _parse_int_safe(raw_summary.get("belanja_terbesar", 0)),
+            "belum_dicatat": _parse_int_safe(raw_summary.get("belum_dicatat", 0)),
+        }
 
     @rx.event
     async def fetch_invoices(self) -> None:
         filters = {"search": self.search_query, "tautan": self.invoice_link_filter}
         res = await api_client.get_invoices(filters, self.page, self.page_size)
         self.invoices = res.get("items", [])
-        self.total_items = int(res.get("total", 0))
-        self.invoices_summary = res.get("summary", {})
+        self.total_items = _parse_int_safe(res.get("total", 0))
+        raw_summary = res.get("summary") or {}
+        self.invoices_summary = {
+            **raw_summary,
+            "total_invoice": _parse_int_safe(raw_summary.get("total_invoice", 0)),
+            "sudah_ditautkan": _parse_int_safe(raw_summary.get("sudah_ditautkan", 0)),
+            "belum_ditautkan": _parse_int_safe(raw_summary.get("belum_ditautkan", 0)),
+            "tanpa_bukti": _parse_int_safe(raw_summary.get("tanpa_bukti", 0)),
+        }
 
     @rx.event
     async def fetch_bills(self) -> None:
         filters = {"search": self.search_query, "status": self.bill_status_filter}
         res = await api_client.get_bills(filters, self.page, self.page_size)
         self.bills = res.get("items", [])
-        self.total_items = int(res.get("total", 0))
-        self.bills_summary = res.get("summary", {})
+        self.total_items = _parse_int_safe(res.get("total", 0))
+        raw_summary = res.get("summary") or {}
+        self.bills_summary = {
+            **raw_summary,
+            "terlambat": _parse_int_safe(raw_summary.get("terlambat", 0)),
+            "segera": _parse_int_safe(raw_summary.get("segera", 0)),
+            "tagihan_aktif": _parse_int_safe(raw_summary.get("tagihan_aktif", 0)),
+            "perlu_dibayar_30d": _parse_int_safe(raw_summary.get("perlu_dibayar_30d", 0)),
+        }
 
     # --- TAB & FILTER ---
 
@@ -298,7 +338,8 @@ class FinanceState(rx.State):
                 self.pay_bill_title = (
                     f"{b.get('nama', '')} · jatuh tempo {b.get('jatuh_tempo', '')}"
                 )
-                self.pay_nominal = str(b.get("nominal", ""))
+                raw_nom = b.get("nominal", "")
+                self.pay_nominal = str(_parse_int_safe(raw_nom)) if raw_nom else ""
                 break
         else:
             return
@@ -323,11 +364,11 @@ class FinanceState(rx.State):
 
     @rx.event
     async def submit_pay_bill(self) -> None:
-        nominal_txt = self.pay_nominal.strip()
-        if not self.pay_date or not nominal_txt.isdigit() or int(nominal_txt) <= 0:
+        nominal_val = _parse_int_safe(self.pay_nominal)
+        if not self.pay_date or nominal_val <= 0:
             self.pay_error = "Tanggal bayar dan nominal (angka > 0) wajib diisi."
             return
-        await api_client.pay_bill(self.pay_bill_id, self.pay_date, int(nominal_txt))
+        await api_client.pay_bill(self.pay_bill_id, self.pay_date, nominal_val)
         self.is_pay_modal_open = False
         self.pay_error = ""
         await self.fetch_bills()
