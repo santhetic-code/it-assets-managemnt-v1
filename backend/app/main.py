@@ -1,5 +1,5 @@
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     db_url = settings.sqlalchemy_url.render_as_string(hide_password=True)
     logger.info("ITAM Pro API siap (env=%s, db=%s)", settings.app_env, db_url)
