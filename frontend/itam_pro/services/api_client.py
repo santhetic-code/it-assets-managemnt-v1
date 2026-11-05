@@ -1,6 +1,7 @@
 """
 Klien API terpusat untuk State Reflex.
 Mendukung mode USE_MOCK=true (Frontend-first) dan USE_MOCK=false (FastAPI Backend).
+Dioptimalkan dengan Persistent HTTP Connection Pooling & tanpa artificial delay.
 """
 import asyncio
 import os
@@ -64,6 +65,32 @@ class APIClient:
         self.base_url = BACKEND_URL
         self.timeout = 10.0
         self.token: str | None = None
+        self._client: httpx.AsyncClient | None = None
+        self._client_loop: asyncio.AbstractEventLoop | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Gunakan kembali koneksi HTTP (keep-alive pool) pada event loop yang aktif."""
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if (
+            self._client is None
+            or self._client.is_closed
+            or self._client_loop is not current_loop
+        ):
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout,
+                limits=httpx.Limits(
+                    max_keepalive_connections=25,
+                    max_connections=100,
+                    keepalive_expiry=30.0,
+                ),
+            )
+            self._client_loop = current_loop
+        return self._client
 
     def set_token(self, token: str | None) -> None:
         """Simpan token sesi JWT untuk otentikasi otomatis request berikutnya."""
@@ -86,28 +113,28 @@ class APIClient:
         if effective_token:
             headers["Authorization"] = f"Bearer {effective_token}"
 
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            response = await client.request(
-                method=method,
-                url=endpoint,
-                headers=headers,
-                params=params,
-                json=json_data,
-            )
+        client = self._get_client()
+        response = await client.request(
+            method=method,
+            url=endpoint,
+            headers=headers,
+            params=params,
+            json=json_data,
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail_msg = ""
             try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                detail_msg = ""
-                try:
-                    err_json = response.json()
-                    if isinstance(err_json, dict) and "detail" in err_json:
-                        detail_msg = str(err_json["detail"])
-                except Exception:
-                    pass
-                if detail_msg:
-                    raise Exception(detail_msg) from exc
-                raise exc
-            return response.json()
+                err_json = response.json()
+                if isinstance(err_json, dict) and "detail" in err_json:
+                    detail_msg = str(err_json["detail"])
+            except Exception:
+                pass
+            if detail_msg:
+                raise Exception(detail_msg) from exc
+            raise exc
+        return response.json()
 
     async def login(
         self,
@@ -117,7 +144,6 @@ class APIClient:
     ) -> dict[str, Any]:
         """Autentikasi pengguna ke Mock Service atau Backend FastAPI."""
         if USE_MOCK:
-            await asyncio.sleep(0.6)
             result = verify_mock_login(username, password)
             if not result:
                 raise AuthenticationError("Username atau password salah")
@@ -160,7 +186,6 @@ class APIClient:
     ) -> dict[str, Any]:
         """Ambil daftar aset dengan filter & paginasi untuk Semua Aset atau /assets/c/[slug]."""
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return query_mock_assets(filters=filters, page=page, page_size=page_size)
 
         clean_filters = dict(filters)
@@ -191,7 +216,6 @@ class APIClient:
     ) -> list[dict[str, Any]]:
         """Tambah 1 atau N unit aset fisik baru beserta attributes-nya."""
         if USE_MOCK:
-            await asyncio.sleep(0.12)
             return create_mock_assets(payload=payload, count=duplicate_count)
 
         if duplicate_count > 1:
@@ -221,7 +245,6 @@ class APIClient:
     ) -> dict[str, Any] | None:
         """Perbarui satu aset beserta attributes-nya."""
         if USE_MOCK:
-            await asyncio.sleep(0.12)
             return update_mock_asset(asset_id=asset_id, payload=payload)
 
         response = await self.request(
@@ -239,7 +262,6 @@ class APIClient:
     ) -> bool:
         """Hapus satu aset."""
         if USE_MOCK:
-            await asyncio.sleep(0.1)
             return delete_mock_asset(asset_id=asset_id)
 
         await self.request(
@@ -271,7 +293,6 @@ class APIClient:
     ) -> dict[str, Any]:
         """Ambil daftar entri IP & Server (VM) dengan filter, sort numerik, & KPI."""
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return query_mock_ip_entries(
                 grup=grup,
                 filters=filters,
@@ -300,7 +321,6 @@ class APIClient:
     ) -> dict[str, Any]:
         """Tambah satu entri IP baru."""
         if USE_MOCK:
-            await asyncio.sleep(0.1)
             return create_mock_ip_entry(payload=payload)
 
         response = await self.request(
@@ -319,7 +339,6 @@ class APIClient:
     ) -> dict[str, Any] | None:
         """Perbarui satu entri IP."""
         if USE_MOCK:
-            await asyncio.sleep(0.1)
             return update_mock_ip_entry(entry_id=entry_id, payload=payload)
 
         response = await self.request(
@@ -337,7 +356,6 @@ class APIClient:
     ) -> bool:
         """Hapus satu entri IP."""
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return delete_mock_ip_entry(entry_id=entry_id)
 
         await self.request(
@@ -367,7 +385,6 @@ class APIClient:
         page_size: int = 10,
     ) -> dict[str, Any]:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return query_purchases(filters, page, page_size)
         params: dict[str, Any] = {
             "tab": "pembelian",
@@ -384,7 +401,6 @@ class APIClient:
         payload: dict[str, str],
     ) -> bool:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             action_jadikan_aset(
                 id_pembelian,
                 payload["kategori"],
@@ -406,7 +422,6 @@ class APIClient:
         page_size: int = 10,
     ) -> dict[str, Any]:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return query_invoices(filters, page, page_size)
         params: dict[str, Any] = {
             "tab": "invoice",
@@ -424,7 +439,6 @@ class APIClient:
         page_size: int = 10,
     ) -> dict[str, Any]:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return query_bills(filters, page, page_size)
         params: dict[str, Any] = {
             "tab": "tagihan berulang",
@@ -437,7 +451,6 @@ class APIClient:
 
     async def pay_bill(self, bill_id: str, tgl_bayar: str, nominal: int) -> bool:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             action_pay_bill(bill_id, tgl_bayar, nominal)
             return True
         await self.request(
@@ -454,7 +467,6 @@ class APIClient:
         page_size: int = 10,
     ) -> dict[str, Any]:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return query_maintenance_plans(filters, page, page_size)
         params: dict[str, Any] = {
             "tab": "jadwal",
@@ -472,7 +484,6 @@ class APIClient:
         page_size: int = 10,
     ) -> dict[str, Any]:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return query_maintenance_logs(filters, page, page_size)
         params: dict[str, Any] = {
             "tab": "riwayat",
@@ -492,7 +503,6 @@ class APIClient:
         pic: str,
     ) -> bool:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             action_tandai_selesai(plan_id, tgl_selesai, hasil, catatan, pic)
             return True
         await self.request(
@@ -518,7 +528,6 @@ class APIClient:
         pic: str,
     ) -> bool:
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             action_buat_jadwal_massal(kategori, kegiatan, jenis, frekuensi, tgl_mulai, pic)
             return True
         await self.request(
@@ -546,8 +555,6 @@ class APIClient:
     ) -> dict[str, Any]:
         """Ambil daftar kredensial berdasarkan permissions token."""
         if USE_MOCK:
-            await asyncio.sleep(0.08)
-            # Simulasi baca hak akses dari token mock
             permissions = {
                 "website": "edit",
                 "detail_pc": "edit",
@@ -579,7 +586,6 @@ class APIClient:
     ) -> dict[str, Any]:
         """Buka rahasia kredensial (dengan audit trail)."""
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return await reveal_mock_credential(crd_id, field_key, actor)
         res = await self.request("POST", f"/api/v1/credentials/{crd_id}/reveal")
         if isinstance(res, dict):
@@ -598,7 +604,6 @@ class APIClient:
     ) -> dict[str, Any]:
         """Ambil daftar Rekap Watt Server beserta ringkasan ESTIMASI."""
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return query_server_power(filters=filters, page=page, page_size=page_size)
         params: dict[str, Any] = {
             "page": page,
@@ -615,7 +620,6 @@ class APIClient:
     ) -> dict[str, Any]:
         """Tambah atau perbarui entri Rekap Watt Server secara manual."""
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return save_server_power_entry(payload=payload, asset_id=asset_id)
         if asset_id and asset_id.strip():
             res = await self.request(
@@ -630,7 +634,6 @@ class APIClient:
     async def delete_server_power(self, asset_id: str) -> bool:
         """Hapus satu entri server dari Rekap Watt Server."""
         if USE_MOCK:
-            await asyncio.sleep(0.08)
             return remove_server_power_entry(asset_id=asset_id)
         await self.request("DELETE", f"/api/v1/watt-server/{asset_id.strip()}")
         return True

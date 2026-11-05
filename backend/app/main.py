@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -35,6 +36,9 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url=None if settings.is_production else "/openapi.json",
     )
+
+    # Kompresi payload JSON besar agar transfer data lebih cepat
+    application.add_middleware(GZipMiddleware, minimum_size=500)
 
     # Middleware Keamanan Header HTTP
     @application.middleware("http")

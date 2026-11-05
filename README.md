@@ -60,7 +60,7 @@ uvicorn backend.app.main:app --host 0.0.0.0 --port 8001 --reload
 
 # 4. Masuk ke folder frontend dan jalankan Reflex
 cd frontend
-reflex run --loglevel debug
+reflex run --loglevel warning
 ```
 
 ### Opsi 2: Menjalankan Menggunakan Docker Compose (Pengembangan)
