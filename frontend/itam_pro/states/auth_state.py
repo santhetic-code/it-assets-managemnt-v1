@@ -8,7 +8,11 @@ from typing import Any
 
 import reflex as rx
 
-from itam_pro.services.api_client import AuthenticationError, api_client
+from itam_pro.services.api_client import (
+    AuthenticationError,
+    ServiceUnavailableError,
+    api_client,
+)
 
 GENERIC_AUTH_ERROR = "Username atau password salah"
 
@@ -157,6 +161,9 @@ class AuthState(rx.State):
             self.password = ""
             self.is_loading = False
             yield rx.redirect("/dashboard")
+        except ServiceUnavailableError as exc:
+            self.error_message = str(exc)
+            self.is_loading = False
         except AuthenticationError:
             self.error_message = GENERIC_AUTH_ERROR
             self.is_loading = False

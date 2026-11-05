@@ -60,6 +60,10 @@ class AuthenticationError(Exception):
     """Exception khusus ketika autentikasi gagal."""
 
 
+class ServiceUnavailableError(Exception):
+    """Exception ketika backend tidak dapat dihubungi (bukan salah kredensial)."""
+
+
 class APIClient:
     def __init__(self) -> None:
         self.base_url = BACKEND_URL
@@ -163,7 +167,10 @@ class APIClient:
         except httpx.HTTPStatusError as exc:
             raise AuthenticationError("Username atau password salah") from exc
         except httpx.RequestError as exc:
-            raise AuthenticationError("Gagal terhubung ke layanan autentikasi") from exc
+            raise ServiceUnavailableError(
+                "Server backend tidak dapat dihubungi. "
+                "Pastikan layanan backend & database berjalan."
+            ) from exc
 
     async def get_dashboard_summary(self, token: str | None = None) -> dict[str, Any]:
         """Ambil ringkasan data Dashboard dari Mock Service atau Backend FastAPI."""
