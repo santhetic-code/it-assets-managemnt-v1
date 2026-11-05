@@ -1,7 +1,6 @@
 """
 State Modul Infrastructure -> IP & Server (VM) (Tahap 8).
-Mengelola 5 kartu KPI, banner konflik IP, tab grup, filter subnet /24,
-pengurutan numerik IPv4, detail drawer (termasuk daftar VM di host), dan modal form.
+Dioptimalkan dengan @rx.var(cache=True), O(1) short-circuit drawer lookup, dan filter guards.
 """
 import math
 from typing import Any
@@ -77,41 +76,42 @@ class IPState(rx.State):
 
     # --- COMPUTED VARS ---
 
-    @rx.var
+    @rx.var(cache=True)
     def jenis_options(self) -> list[str]:
         return ["Fisik", "VM"]
 
-    @rx.var
+    @rx.var(cache=True)
     def grup_options(self) -> list[str]:
         return ["Operasional", "Addon (VM)"]
 
-    @rx.var
+    @rx.var(cache=True)
     def status_options(self) -> list[str]:
         return ["Aktif", "Nonaktif"]
 
-    @rx.var
+    @rx.var(cache=True)
     def has_conflict_banner(self) -> bool:
         return self.kpi_bentrok > 0 and self.conflict_banner_text != ""
 
-    @rx.var
+    @rx.var(cache=True)
     def result_count_label(self) -> str:
         return f"{self.total} entri"
 
-    @rx.var
+    @rx.var(cache=True)
     def all_current_selected(self) -> bool:
-        if not self.items:
+        if not self.items or not self.selected_ids:
             return False
-        return all(item.get("id") in self.selected_ids for item in self.items)
+        selected_set = set(self.selected_ids)
+        return all(item.get("id") in selected_set for item in self.items)
 
-    @rx.var
+    @rx.var(cache=True)
     def total_pages(self) -> int:
         return max(1, math.ceil(self.total / self.page_size))
 
-    @rx.var
+    @rx.var(cache=True)
     def current_page_str(self) -> str:
         return str(self.page)
 
-    @rx.var
+    @rx.var(cache=True)
     def page_tokens(self) -> list[str]:
         tp = self.total_pages
         cp = self.page
@@ -127,7 +127,7 @@ class IPState(rx.State):
         tokens.append(str(tp))
         return tokens
 
-    @rx.var
+    @rx.var(cache=True)
     def pagination_summary(self) -> str:
         if self.total == 0:
             return "Menampilkan 0 dari 0"
@@ -138,31 +138,34 @@ class IPState(rx.State):
     # --- COMPUTED VARS: DETAIL DRAWER ---
 
     def _get_active_entry(self) -> dict[str, Any]:
+        if not self.active_entry_id or not self.items:
+            return {}
+        target = self.active_entry_id
         for item in self.items:
-            if item.get("id") == self.active_entry_id:
+            if item.get("id") == target:
                 return item
         return {}
 
-    @rx.var
+    @rx.var(cache=True)
     def active_ip_code(self) -> str:
         return str(self._get_active_entry().get("ip_address", ""))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_nama_title(self) -> str:
         return str(self._get_active_entry().get("nama", ""))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_jenis_badge(self) -> str:
         return str(self._get_active_entry().get("jenis", "VM"))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_status_badge(self) -> str:
         item = self._get_active_entry()
         if item.get("is_conflict"):
             return "Bentrok"
         return str(item.get("status", "Aktif"))
 
-    @rx.var
+    @rx.var(cache=True)
     def active_general_items(self) -> list[dict[str, str]]:
         """Grup 1 Drawer: Data Entri IP & Server."""
         item = self._get_active_entry()
@@ -181,7 +184,7 @@ class IPState(rx.State):
             {"label": "Keterangan", "value": str(item.get("keterangan", "—"))},
         ]
 
-    @rx.var
+    @rx.var(cache=True)
     def active_relation_items(self) -> list[dict[str, str]]:
         """Grup 2 Drawer: Relasi Aset Fisik atau Daftar VM yang berjalan di Host ini."""
         item = self._get_active_entry()
@@ -218,7 +221,7 @@ class IPState(rx.State):
             },
         ]
 
-    @rx.var
+    @rx.var(cache=True)
     def active_history_items(self) -> list[dict[str, str]]:
         item = self._get_active_entry()
         if not item:
@@ -274,6 +277,8 @@ class IPState(rx.State):
 
     @rx.event
     async def set_grup_tab(self, tab_key: str) -> None:
+        if self.active_grup_tab == tab_key:
+            return
         self.active_grup_tab = tab_key
         self.page = 1
         self.selected_ids = []
@@ -281,30 +286,40 @@ class IPState(rx.State):
 
     @rx.event
     async def set_search_query(self, val: str) -> None:
+        if self.search_query == val:
+            return
         self.search_query = val
         self.page = 1
         await self.fetch_ip_entries()
 
     @rx.event
     async def set_jenis_filter(self, val: str) -> None:
+        if self.jenis_filter == val:
+            return
         self.jenis_filter = val
         self.page = 1
         await self.fetch_ip_entries()
 
     @rx.event
     async def set_host_filter(self, val: str) -> None:
+        if self.host_filter == val:
+            return
         self.host_filter = val
         self.page = 1
         await self.fetch_ip_entries()
 
     @rx.event
     async def set_subnet_filter(self, val: str) -> None:
+        if self.subnet_filter == val:
+            return
         self.subnet_filter = val
         self.page = 1
         await self.fetch_ip_entries()
 
     @rx.event
     async def set_status_filter(self, val: str) -> None:
+        if self.status_filter == val:
+            return
         self.status_filter = val
         self.page = 1
         await self.fetch_ip_entries()
@@ -355,7 +370,7 @@ class IPState(rx.State):
     async def select_page(self, token: str) -> None:
         if token.isdigit():
             target = int(token)
-            if 1 <= target <= self.total_pages:
+            if 1 <= target <= self.total_pages and target != self.page:
                 self.page = target
                 await self.fetch_ip_entries()
 
@@ -388,11 +403,13 @@ class IPState(rx.State):
 
     @rx.event
     def close_drawer(self) -> None:
-        self.drawer_open = False
+        if self.drawer_open:
+            self.drawer_open = False
 
     @rx.event
     def set_drawer_tab(self, tab_key: str) -> None:
-        self.drawer_tab = tab_key
+        if self.drawer_tab != tab_key:
+            self.drawer_tab = tab_key
 
     # --- EVENT HANDLERS: FORM TAMBAH / EDIT / DUPLIKAT ---
 
@@ -456,7 +473,8 @@ class IPState(rx.State):
 
     @rx.event
     def close_form_modal(self) -> None:
-        self.form_modal_open = False
+        if self.form_modal_open:
+            self.form_modal_open = False
         self.form_error = ""
 
     @rx.event
@@ -582,7 +600,8 @@ class IPState(rx.State):
 
     @rx.event
     def cancel_delete(self) -> None:
-        self.delete_dialog_open = False
+        if self.delete_dialog_open:
+            self.delete_dialog_open = False
         self.entry_to_delete = ""
         self.entry_to_delete_label = ""
 

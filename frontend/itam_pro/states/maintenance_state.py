@@ -1,6 +1,6 @@
 """
 State Manajemen Jadwal Maintenance ITAM Pro (Tahap 10).
-Mengatur data jadwal rencana, riwayat/log maintenance, metrik KPI, dan aksi eksekusi.
+Dioptimalkan untuk mencegah double-fetch saat pergantian tab dan pencarian.
 """
 from datetime import date
 from typing import Any
@@ -19,6 +19,7 @@ class MaintenanceState(rx.State):
     active_tab: str = "daftar"
     plans: list[dict[str, Any]] = []
     logs: list[dict[str, Any]] = []
+    _skip_next_load_fetch: bool = False
 
     summary: dict[str, Any] = {
         "terlambat": 0,
@@ -57,6 +58,12 @@ class MaintenanceState(rx.State):
         tab = str(params.get("tab", "daftar")).strip().lower()
         if tab not in VALID_TABS:
             tab = "daftar"
+
+        if self._skip_next_load_fetch and tab == self.active_tab:
+            self._skip_next_load_fetch = False
+            return
+
+        self._skip_next_load_fetch = False
         self.active_tab = tab
         await self._fetch_current_tab()
 
@@ -79,15 +86,20 @@ class MaintenanceState(rx.State):
     async def set_tab(self, tab: str) -> rx.event.EventSpec:
         self.active_tab = tab
         await self._fetch_current_tab()
+        self._skip_next_load_fetch = True
         return rx.redirect(f"/operations/maintenance?tab={tab}")
 
     @rx.event
     async def set_search_query(self, query: str) -> None:
+        if self.search_query == query:
+            return
         self.search_query = query
         await self._fetch_current_tab()
 
     @rx.event
     async def set_history_search(self, query: str) -> None:
+        if self.history_search_query == query:
+            return
         self.history_search_query = query
         await self._fetch_current_tab()
 
@@ -105,7 +117,8 @@ class MaintenanceState(rx.State):
 
     @rx.event
     def close_tandai_selesai(self) -> None:
-        self.is_selesai_open = False
+        if self.is_selesai_open:
+            self.is_selesai_open = False
 
     @rx.event
     def set_selesai_tgl(self, val: str) -> None:
@@ -152,7 +165,8 @@ class MaintenanceState(rx.State):
 
     @rx.event
     def close_massal(self) -> None:
-        self.is_massal_open = False
+        if self.is_massal_open:
+            self.is_massal_open = False
 
     @rx.event
     def set_massal_kategori(self, val: str) -> None:

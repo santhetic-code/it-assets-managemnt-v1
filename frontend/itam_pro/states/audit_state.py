@@ -1,4 +1,6 @@
-"""State Controller untuk Halaman Audit Log (/audit-log)."""
+"""State Controller untuk Halaman Audit Log (/audit-log).
+Dioptimalkan dengan @rx.var(cache=True) dan filter guards.
+"""
 from typing import Any
 
 import reflex as rx
@@ -18,23 +20,23 @@ class AuditState(rx.State):
     search_query: str = ""
     module_filter: str = ""
 
-    @rx.var
+    @rx.var(cache=True)
     def module_options(self) -> list[str]:
         return ["credential", "asset", "finance", "maintenance", "user"]
 
-    @rx.var
+    @rx.var(cache=True)
     def total_pages(self) -> int:
         return max(1, (self.total_items + self.page_size - 1) // self.page_size)
 
-    @rx.var
+    @rx.var(cache=True)
     def current_page_str(self) -> str:
         return str(self.page)
 
-    @rx.var
+    @rx.var(cache=True)
     def page_tokens(self) -> list[str]:
         return [str(i) for i in range(1, self.total_pages + 1)]
 
-    @rx.var
+    @rx.var(cache=True)
     def pagination_summary(self) -> str:
         if self.total_items == 0:
             return "Menampilkan 0 dari 0 catatan"
@@ -42,7 +44,7 @@ class AuditState(rx.State):
         end = min(self.total_items, self.page * self.page_size)
         return f"Menampilkan {start}-{end} dari {self.total_items} catatan"
 
-    @rx.var
+    @rx.var(cache=True)
     def result_count_label(self) -> str:
         return f"{self.total_items} catatan"
 
@@ -87,6 +89,8 @@ class AuditState(rx.State):
 
     @rx.event
     def set_search_query(self, val: str) -> Any:
+        if self.search_query == val:
+            return None
         self.search_query = val
         self.page = 1
         if USE_MOCK:
@@ -96,6 +100,8 @@ class AuditState(rx.State):
 
     @rx.event
     def set_module_filter(self, val: str) -> Any:
+        if self.module_filter == val:
+            return None
         self.module_filter = val
         self.page = 1
         if USE_MOCK:
@@ -136,13 +142,14 @@ class AuditState(rx.State):
     @rx.event
     def select_page(self, token: str) -> Any:
         if token.isdigit():
-            self.page = int(token)
-            if USE_MOCK:
-                self._sync_mock_logs()
-                return None
-            return AuditState.fetch_logs
+            target = int(token)
+            if target != self.page:
+                self.page = target
+                if USE_MOCK:
+                    self._sync_mock_logs()
+                    return None
+                return AuditState.fetch_logs
         return None
 
 
 __all__ = ["AuditState"]
-

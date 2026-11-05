@@ -1,5 +1,6 @@
 """
 State Manajemen Finansial (Pembelian, Invoice, Tagihan Berulang) ITAM Pro (Tahap 9).
+Dioptimalkan dengan @rx.var(cache=True) dan filter guards.
 """
 import math
 from datetime import date
@@ -90,17 +91,17 @@ class FinanceState(rx.State):
 
     # --- COMPUTED PROPERTIES ---
 
-    @rx.var
+    @rx.var(cache=True)
     def total_pages(self) -> int:
         if self.page_size <= 0:
             return 1
         return max(1, math.ceil(self.total_items / self.page_size))
 
-    @rx.var
+    @rx.var(cache=True)
     def current_page_str(self) -> str:
         return str(self.page)
 
-    @rx.var
+    @rx.var(cache=True)
     def page_tokens(self) -> list[str]:
         tp = self.total_pages
         if tp <= 7:
@@ -116,7 +117,7 @@ class FinanceState(rx.State):
         tokens.append(str(tp))
         return tokens
 
-    @rx.var
+    @rx.var(cache=True)
     def summary_text(self) -> str:
         label = TAB_LABELS.get(self.active_tab, "data")
         if self.total_items == 0:
@@ -125,25 +126,25 @@ class FinanceState(rx.State):
         end = min(self.total_items, self.page * self.page_size)
         return f"Menampilkan {start}-{end} dari {self.total_items} {label}"
 
-    @rx.var
+    @rx.var(cache=True)
     def result_count_label(self) -> str:
         return f"{self.total_items} {TAB_LABELS.get(self.active_tab, 'data')}"
 
-    @rx.var
+    @rx.var(cache=True)
     def total_belanja_display(self) -> str:
         val = int(self.summary.get("total_belanja", 0))
         return f"Rp {val:,}".replace(",", ".")
 
-    @rx.var
+    @rx.var(cache=True)
     def belanja_terbesar_display(self) -> str:
         val = int(self.summary.get("belanja_terbesar", 0))
         return f"Rp {val:,}".replace(",", ".")
 
-    @rx.var
+    @rx.var(cache=True)
     def belum_dicatat_count(self) -> int:
         return int(self.summary.get("belum_dicatat", 0))
 
-    @rx.var
+    @rx.var(cache=True)
     def bills_perlu_dibayar_display(self) -> str:
         val = int(self.bills_summary.get("perlu_dibayar_30d", 0))
         return f"Rp{val:,}".replace(",", ".")
@@ -198,6 +199,8 @@ class FinanceState(rx.State):
 
     @rx.event
     def set_tab(self, tab: str):
+        if self.active_tab == tab and self.page == 1 and not self.search_query:
+            return rx.redirect(f"/finance/purchases?tab={tab}")
         self.active_tab = tab
         self.search_query = ""
         self.page = 1
@@ -205,24 +208,32 @@ class FinanceState(rx.State):
 
     @rx.event
     async def set_search_query(self, val: str) -> None:
+        if self.search_query == val:
+            return
         self.search_query = val
         self.page = 1
         await self._refetch()
 
     @rx.event
     async def set_status_filter(self, val: str) -> None:
+        if self.status_filter == val:
+            return
         self.status_filter = val
         self.page = 1
         await self.fetch_purchases()
 
     @rx.event
     async def set_invoice_link_filter(self, val: str) -> None:
+        if self.invoice_link_filter == val:
+            return
         self.invoice_link_filter = val
         self.page = 1
         await self.fetch_invoices()
 
     @rx.event
     async def set_bill_status_filter(self, val: str) -> None:
+        if self.bill_status_filter == val:
+            return
         self.bill_status_filter = val
         self.page = 1
         await self.fetch_bills()
@@ -253,7 +264,8 @@ class FinanceState(rx.State):
 
     @rx.event
     def close_asset_modal(self) -> None:
-        self.is_asset_modal_open = False
+        if self.is_asset_modal_open:
+            self.is_asset_modal_open = False
         self.selected_purchase_id = ""
         self.selected_purchase_title = ""
 
@@ -296,7 +308,8 @@ class FinanceState(rx.State):
 
     @rx.event
     def close_pay_modal(self) -> None:
-        self.is_pay_modal_open = False
+        if self.is_pay_modal_open:
+            self.is_pay_modal_open = False
         self.pay_bill_id = ""
         self.pay_error = ""
 
@@ -337,7 +350,7 @@ class FinanceState(rx.State):
     async def select_page(self, token: str) -> None:
         if token.isdigit():
             target = int(token)
-            if 1 <= target <= self.total_pages:
+            if 1 <= target <= self.total_pages and target != self.page:
                 self.page = target
                 await self._refetch()
 

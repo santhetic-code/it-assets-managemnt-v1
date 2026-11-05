@@ -1,5 +1,6 @@
 """
 State Management untuk Halaman Infrastructure -> Rekap Watt Server (/watt-server).
+Dioptimalkan dengan @rx.var(cache=True) dan filter guards.
 """
 from typing import Any
 
@@ -82,11 +83,11 @@ class PowerState(rx.State):
     delete_target_id: str = ""
     delete_target_label: str = ""
 
-    @rx.var
+    @rx.var(cache=True)
     def cpu_brand_options(self) -> list[str]:
         return ["Intel", "AMD"]
 
-    @rx.var
+    @rx.var(cache=True)
     def beban_options(self) -> list[str]:
         return [
             "Rendah (< 170 W)",
@@ -94,25 +95,25 @@ class PowerState(rx.State):
             "Tinggi (> 220 W)",
         ]
 
-    @rx.var
+    @rx.var(cache=True)
     def result_count_label(self) -> str:
         return f"{self.total_items} server"
 
-    @rx.var
+    @rx.var(cache=True)
     def total_pages(self) -> int:
         if self.total_items <= 0:
             return 1
         return max(1, (self.total_items + self.page_size - 1) // self.page_size)
 
-    @rx.var
+    @rx.var(cache=True)
     def current_page_str(self) -> str:
         return str(self.page)
 
-    @rx.var
+    @rx.var(cache=True)
     def page_tokens(self) -> list[str]:
         return [str(i) for i in range(1, self.total_pages + 1)]
 
-    @rx.var
+    @rx.var(cache=True)
     def pagination_summary(self) -> str:
         if self.total_items == 0:
             return "Menampilkan 0 dari 0 server"
@@ -176,21 +177,29 @@ class PowerState(rx.State):
         self.is_loading = False
 
     async def set_tab(self, tab: str) -> None:
+        if self.active_tab == tab:
+            return
         self.active_tab = tab
         self.page = 1
         await self.fetch_power_data()
 
     async def set_search_query(self, val: str) -> None:
+        if self.search_query == val:
+            return
         self.search_query = val
         self.page = 1
         await self.fetch_power_data()
 
     async def set_cpu_brand_filter(self, val: str) -> None:
+        if self.cpu_brand_filter == val:
+            return
         self.cpu_brand_filter = val
         self.page = 1
         await self.fetch_power_data()
 
     async def set_beban_filter(self, val: str) -> None:
+        if self.beban_filter == val:
+            return
         self.beban_filter = val
         self.page = 1
         await self.fetch_power_data()
@@ -220,7 +229,8 @@ class PowerState(rx.State):
             self.hidden_columns = [*self.hidden_columns, col_key]
 
     def reset_columns(self) -> None:
-        self.hidden_columns = []
+        if self.hidden_columns:
+            self.hidden_columns = []
 
     async def prev_page(self) -> None:
         if self.page > 1:
@@ -235,7 +245,7 @@ class PowerState(rx.State):
     async def select_page(self, token: str) -> None:
         if token.isdigit():
             target = int(token)
-            if 1 <= target <= self.total_pages:
+            if 1 <= target <= self.total_pages and target != self.page:
                 self.page = target
                 await self.fetch_power_data()
 
@@ -277,10 +287,12 @@ class PowerState(rx.State):
         self.drawer_open = True
 
     def close_drawer(self) -> None:
-        self.drawer_open = False
+        if self.drawer_open:
+            self.drawer_open = False
 
     def set_drawer_tab(self, tab: str) -> None:
-        self.drawer_tab = tab
+        if self.drawer_tab != tab:
+            self.drawer_tab = tab
 
     # --- Modal Tambah / Edit Manual ---
     def open_add_modal(self) -> None:
@@ -333,7 +345,8 @@ class PowerState(rx.State):
         self.form_nama_aset = f"{target['nama_aset']} COPY"
 
     def close_form_modal(self) -> None:
-        self.form_modal_open = False
+        if self.form_modal_open:
+            self.form_modal_open = False
         self.form_error = ""
 
     def set_form_nama_aset(self, val: str) -> None:
@@ -419,7 +432,8 @@ class PowerState(rx.State):
         self.delete_dialog_open = True
 
     def cancel_delete(self) -> None:
-        self.delete_dialog_open = False
+        if self.delete_dialog_open:
+            self.delete_dialog_open = False
         self.delete_target_id = ""
 
     async def execute_delete_entry(self) -> None:

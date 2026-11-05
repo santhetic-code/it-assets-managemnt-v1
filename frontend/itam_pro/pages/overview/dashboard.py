@@ -1,8 +1,11 @@
 """
+
 Halaman Overview -> Dashboard (/dashboard).
-Tahap 3: Kartu KPI, Pembelian per Bulan, Aset per Kategori, Beban UPS,
-Perlu Perhatian, dan Aktivitas Terbaru.
+
+Dioptimalkan dengan pre-compiled static rx.Style untuk rendering komponen grafik & grid.
+
 """
+
 import reflex as rx
 
 from itam_pro.components.layout import base_layout
@@ -23,9 +26,101 @@ from itam_pro.states.dashboard_state import (
 )
 from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size, Space
 
+_HEADER_WRAP_STYLE = rx.Style(
+    {
+        "width": "100%",
+        "display": "flex",
+        "align_items": "center",
+        "justify_content": "space-between",
+        "flex_wrap": "wrap",
+        "gap": Space.S4,
+    }
+)
+
+
+_KPI_GRID_STYLE = rx.Style(
+    {
+        "width": "100%",
+        "display": "grid",
+        "grid_template_columns": "repeat(5, minmax(0, 1fr))",
+        "gap": Space.S4,
+        "@media (max-width: 899px)": {
+            "grid_template_columns": "repeat(2, minmax(0, 1fr))",
+        },
+        "@media (max-width: 559px)": {
+            "grid_template_columns": "1fr",
+        },
+    }
+)
+
+
+_CHARTS_GRID_STYLE = rx.Style(
+    {
+        "width": "100%",
+        "display": "grid",
+        "grid_template_columns": "2fr 1fr",
+        "gap": Space.S4,
+        "@media (max-width: 899px)": {
+            "grid_template_columns": "1fr",
+        },
+    }
+)
+
+
+_BOTTOM_GRID_STYLE = rx.Style(
+    {
+        "width": "100%",
+        "display": "grid",
+        "grid_template_columns": "repeat(3, minmax(0, 1fr))",
+        "gap": Space.S4,
+        "@media (max-width: 899px)": {
+            "grid_template_columns": "1fr",
+        },
+    }
+)
+
+
+_DONUT_OVERLAY_STYLE = rx.Style(
+    {
+        "position": "absolute",
+        "inset": "0",
+        "pointer_events": "none",
+    }
+)
+
+
+_DONUT_CONTAINER_STYLE = rx.Style(
+    {
+        "position": "relative",
+        "width": "165px",
+        "height": "170px",
+        "flex_shrink": "0",
+        "cursor": "pointer",
+    }
+)
+
+
+_CATEGORY_WRAPPER_STYLE = rx.Style(
+    {
+        "display": "flex",
+        "align_items": "center",
+        "gap": Space.S5,
+        "width": "100%",
+        "margin_top": "auto",
+        "margin_bottom": "auto",
+        "@media (max-width: 479px)": {
+            "flex_direction": "column",
+        },
+    }
+)
+
+
+_STRONG_TARGET_STYLE = rx.Style({"font_weight": FontWeight.BOLD, "color": Color.TEXT})
+
 
 def _dashboard_header() -> rx.Component:
     """1) Header: Judul, subjudul di kiri; tombol Export Laporan & + Tambah Aset di kanan."""
+
     return rx.box(
         rx.vstack(
             rx.heading(
@@ -57,42 +152,22 @@ def _dashboard_header() -> rx.Component:
             spacing="3",
             align="center",
         ),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "display": "flex",
-                "align_items": "center",
-                "justify_content": "space-between",
-                "flex_wrap": "wrap",
-                "gap": Space.S4,
-            }
-        ),
+        style=_HEADER_WRAP_STYLE,
     )
 
 
 def _kpi_row() -> rx.Component:
     """2) Baris KPI: 5 kolom, gap 16px (2 kolom di <900px, 1 kolom di <560px)."""
+
     return rx.box(
         rx.foreach(DashboardState.kpi_cards, stat_card),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "display": "grid",
-                "grid_template_columns": "repeat(5, minmax(0, 1fr))",
-                "gap": Space.S4,
-                "@media (max-width: 899px)": {
-                    "grid_template_columns": "repeat(2, minmax(0, 1fr))",
-                },
-                "@media (max-width: 559px)": {
-                    "grid_template_columns": "1fr",
-                },
-            }
-        ),
+        style=_KPI_GRID_STYLE,
     )
 
 
 def _monthly_purchases_card() -> rx.Component:
     """Kartu grafik batang 'Pembelian per Bulan' (rx.recharts bar chart)."""
+
     return app_card(
         rx.box(
             rx.recharts.responsive_container(
@@ -146,6 +221,7 @@ def _monthly_purchases_card() -> rx.Component:
 
 def _category_legend_row(item: CategoryAssetItem) -> rx.Component:
     """Baris legenda untuk donut chart Aset per Kategori."""
+
     return rx.link(
         rx.hstack(
             rx.hstack(
@@ -188,6 +264,7 @@ def _category_legend_row(item: CategoryAssetItem) -> rx.Component:
             },
         ),
         href=item["href"],
+        underline="none",
         text_decoration="none",
         width="100%",
     )
@@ -195,6 +272,7 @@ def _category_legend_row(item: CategoryAssetItem) -> rx.Component:
 
 def _assets_by_category_card() -> rx.Component:
     """Kartu donut chart 'Aset per Kategori' beserta angka total di tengah & legenda."""
+
     return app_card(
         rx.box(
             # Donut Chart dengan label total di tengah
@@ -237,25 +315,12 @@ def _assets_by_category_card() -> rx.Component:
                         spacing="0",
                         align="center",
                         justify="center",
-                        style=rx.Style(
-                            {
-                                "position": "absolute",
-                                "inset": "0",
-                                "pointer_events": "none",
-                            }
-                        ),
+                        style=_DONUT_OVERLAY_STYLE,
                     ),
-                    style=rx.Style(
-                        {
-                            "position": "relative",
-                            "width": "165px",
-                            "height": "170px",
-                            "flex_shrink": "0",
-                            "cursor": "pointer",
-                        }
-                    ),
+                    style=_DONUT_CONTAINER_STYLE,
                 ),
                 href="/assets",
+                underline="none",
                 text_decoration="none",
             ),
             # Legenda Kategori + Jumlah
@@ -264,19 +329,7 @@ def _assets_by_category_card() -> rx.Component:
                 spacing="3",
                 width="100%",
             ),
-            style=rx.Style(
-                {
-                    "display": "flex",
-                    "align_items": "center",
-                    "gap": Space.S5,
-                    "width": "100%",
-                    "margin_top": "auto",
-                    "margin_bottom": "auto",
-                    "@media (max-width: 479px)": {
-                        "flex_direction": "column",
-                    },
-                }
-            ),
+            style=_CATEGORY_WRAPPER_STYLE,
         ),
         title="Aset per Kategori",
         action_label="Inventory",
@@ -286,25 +339,17 @@ def _assets_by_category_card() -> rx.Component:
 
 def _charts_row() -> rx.Component:
     """3) Baris 2: Grid 2fr 1fr (1 kolom di <900px)."""
+
     return rx.box(
         _monthly_purchases_card(),
         _assets_by_category_card(),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "display": "grid",
-                "grid_template_columns": "2fr 1fr",
-                "gap": Space.S4,
-                "@media (max-width: 899px)": {
-                    "grid_template_columns": "1fr",
-                },
-            }
-        ),
+        style=_CHARTS_GRID_STYLE,
     )
 
 
 def _ups_load_row(item: UPSLoadItem) -> rx.Component:
     """Render satu baris progress bar Beban UPS."""
+
     return metric_progress_bar(
         label=item["label"],
         percent=item["percent"],
@@ -314,6 +359,7 @@ def _ups_load_row(item: UPSLoadItem) -> rx.Component:
 
 def _ups_loads_card() -> rx.Component:
     """Kolom 1 Baris 3: Kartu 'Beban UPS'."""
+
     return app_card(
         rx.vstack(
             rx.foreach(DashboardState.ups_loads, _ups_load_row),
@@ -328,6 +374,7 @@ def _ups_loads_card() -> rx.Component:
 
 def _attention_row(item: AttentionItem, index: int) -> rx.Component:
     """Render satu baris item 'Perlu Perhatian' dengan badge status."""
+
     return rx.hstack(
         rx.vstack(
             rx.text(
@@ -369,6 +416,7 @@ def _attention_row(item: AttentionItem, index: int) -> rx.Component:
 
 def _attention_card() -> rx.Component:
     """Kolom 2 Baris 3: Kartu 'Perlu Perhatian'."""
+
     return app_card(
         rx.vstack(
             rx.foreach(DashboardState.attention_items, _attention_row),
@@ -383,12 +431,13 @@ def _attention_card() -> rx.Component:
 
 def _activity_row(item: ActivityItem, index: int) -> rx.Component:
     """Render satu baris 'Aktivitas Terbaru' dengan waktu relatif di kanan."""
+
     return rx.hstack(
         rx.text(
             item["actor_and_action"],
             rx.el.strong(
                 item["target"],
-                style=rx.Style({"font_weight": FontWeight.BOLD, "color": Color.TEXT}),
+                style=_STRONG_TARGET_STYLE,
             ),
             font_size=FontSize.SM,
             font_weight=FontWeight.REGULAR,
@@ -422,6 +471,7 @@ def _activity_row(item: ActivityItem, index: int) -> rx.Component:
 
 def _recent_activities_card() -> rx.Component:
     """Kolom 3 Baris 3: Kartu 'Aktivitas Terbaru'."""
+
     return app_card(
         rx.vstack(
             rx.foreach(DashboardState.recent_activities, _activity_row),
@@ -436,26 +486,18 @@ def _recent_activities_card() -> rx.Component:
 
 def _bottom_three_columns_row() -> rx.Component:
     """4) Baris 3: 3 kolom sama lebar (1 kolom di <900px)."""
+
     return rx.box(
         _ups_loads_card(),
         _attention_card(),
         _recent_activities_card(),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "display": "grid",
-                "grid_template_columns": "repeat(3, minmax(0, 1fr))",
-                "gap": Space.S4,
-                "@media (max-width: 899px)": {
-                    "grid_template_columns": "1fr",
-                },
-            }
-        ),
+        style=_BOTTOM_GRID_STYLE,
     )
 
 
 def dashboard_page() -> rx.Component:
     """Halaman utama /dashboard yang dibungkus dengan base_layout."""
+
     content = rx.vstack(
         _dashboard_header(),
         _kpi_row(),
@@ -466,6 +508,7 @@ def dashboard_page() -> rx.Component:
         align="start",
         width="100%",
     )
+
     return base_layout(
         content=content,
         breadcrumb=("Overview", "Dashboard"),

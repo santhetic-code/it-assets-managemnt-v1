@@ -1,13 +1,36 @@
 """
+
 Komponen Kartu KPI (Stat Card) Reusable ITAM Pro.
-Label 13px muted, angka 32px weight 800, keterangan 12.5px, chip ikon 36px di kanan atas.
+
+Dioptimalkan dengan pre-compiled static rx.Style untuk rendering kartu KPI yang cepat.
+
 """
+
 import inspect
 from typing import Any
 
 import reflex as rx
 
 from itam_pro.styles import Color, FontSize, FontWeight, Radius, Size, Space
+
+_STAT_CARD_STYLE = rx.Style(
+    {
+        "width": "100%",
+        "background_color": Color.SURFACE,
+        "border": f"1px solid {Color.BORDER}",
+        "border_radius": Radius.CARD,
+        "padding": Space.S5,
+        "display": "flex",
+        "flex_direction": "column",
+        "justify_content": "space-between",
+        "transition": "all 0.15s ease",
+        "_hover": {
+            "border_color": Color.ACCENT,
+            "transform": "translateY(-1px)",
+            "box_shadow": "0 2px 8px rgba(0, 0, 0, 0.05)",
+        },
+    }
+)
 
 
 def stat_card(
@@ -22,28 +45,45 @@ def stat_card(
     href: str = "",
 ) -> rx.Component:
     """Render satu kartu KPI dari objek dictionary/Var state atau argumen posisional."""
+
     effective_note = note or description
+
     card_href = href
+
     if value is None and not isinstance(item_or_label, str):
         label = item_or_label["label"]
+
         val = item_or_label["value"]
+
         ic = item_or_label["icon"]
+
         chip_tone_val = item_or_label["chip_tone"]
+
         note_val = item_or_label["note"]
+
         note_tone_val = item_or_label["note_tone"]
+
         if isinstance(item_or_label, dict):
             card_href = item_or_label.get("href", href)
+
         else:
             try:
                 card_href = item_or_label["href"]
+
             except Exception:
                 card_href = href
+
     else:
         label = item_or_label
+
         val = value
+
         ic = icon
+
         chip_tone_val = tone
+
         note_val = effective_note
+
         note_tone_val = note_tone
 
     chip_fg = rx.match(
@@ -54,6 +94,7 @@ def stat_card(
         ("purple", Color.PURPLE_FG),
         Color.INFO_FG,
     )
+
     chip_bg = rx.match(
         chip_tone_val,
         ("success", Color.SUCCESS_BG),
@@ -62,6 +103,7 @@ def stat_card(
         ("purple", Color.PURPLE_BG),
         Color.INFO_BG,
     )
+
     note_color = rx.match(
         note_tone_val,
         ("success", Color.SUCCESS_FG),
@@ -120,24 +162,7 @@ def stat_card(
             ),
             rx.fragment(),
         ),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "background_color": Color.SURFACE,
-                "border": f"1px solid {Color.BORDER}",
-                "border_radius": Radius.CARD,
-                "padding": Space.S5,
-                "display": "flex",
-                "flex_direction": "column",
-                "justify_content": "space-between",
-                "transition": "all 0.15s ease",
-                "_hover": {
-                    "border_color": Color.ACCENT,
-                    "transform": "translateY(-1px)",
-                    "box_shadow": "0 2px 8px rgba(0, 0, 0, 0.05)",
-                },
-            }
-        ),
+        style=_STAT_CARD_STYLE,
     )
 
     return rx.cond(
@@ -145,6 +170,7 @@ def stat_card(
         rx.link(
             card_box,
             href=card_href,
+            underline="none",
             text_decoration="none",
             width="100%",
         ),
@@ -153,12 +179,12 @@ def stat_card(
 
 
 # Sesuaikan signature agar dikenali rx.foreach(items, stat_card) sebagai 1 parameter render_fn
+
 setattr(
     stat_card,
     "__signature__",
-    inspect.Signature(
-        [inspect.Parameter("item", inspect.Parameter.POSITIONAL_OR_KEYWORD)]
-    ),
+    inspect.Signature([inspect.Parameter("item", inspect.Parameter.POSITIONAL_OR_KEYWORD)]),
 )
+
 
 __all__ = ["stat_card"]

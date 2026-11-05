@@ -1,6 +1,6 @@
 """
 State Controller untuk Modul Credential Manager ITAM Pro (Tahap 12).
-Mendukung filter tab dinamis, pencarian, detail drawer, dan timer reveal 30 detik.
+Dioptimalkan dengan @rx.var(cache=True) dan filter guards.
 """
 import asyncio
 from typing import Any
@@ -43,19 +43,19 @@ class CredentialState(rx.State):
     reveal_pin: str = ""
     revealed_password: str = ""
 
-    @rx.var
+    @rx.var(cache=True)
     def total_pages(self) -> int:
         return max(1, (self.total_items + self.page_size - 1) // self.page_size)
 
-    @rx.var
+    @rx.var(cache=True)
     def current_page_str(self) -> str:
         return str(self.page)
 
-    @rx.var
+    @rx.var(cache=True)
     def page_tokens(self) -> list[str]:
         return [str(i) for i in range(1, self.total_pages + 1)]
 
-    @rx.var
+    @rx.var(cache=True)
     def summary(self) -> dict[str, Any]:
         """Ringkasan metrik untuk KPI cards."""
         return {
@@ -66,8 +66,10 @@ class CredentialState(rx.State):
     @rx.event
     def select_page(self, page_str: str):
         try:
-            self.page = int(page_str)
-            return self.fetch_data()
+            target = int(page_str)
+            if target != self.page:
+                self.page = target
+                return self.fetch_data()
         except ValueError:
             pass
 
@@ -104,6 +106,8 @@ class CredentialState(rx.State):
     @rx.event
     def set_search(self, query: str):
         """Pencarian teks kredensial."""
+        if self.search_query == query:
+            return
         self.search_query = query
         self.page = 1
         return self.fetch_data()
@@ -118,17 +122,25 @@ class CredentialState(rx.State):
     @rx.event
     def close_detail(self):
         """Tutup drawer/modal detail."""
-        self.is_detail_open = False
+        if self.is_detail_open:
+            self.is_detail_open = False
         self.hide_revealed()
 
     @rx.event
     def hide_revealed(self):
         """Sembunyikan secret yang sedang dibuka."""
-        self.revealed_value = ""
-        self.revealed_field = ""
-        self.revealed_crd_id = ""
-        self.reveal_countdown = 0
-        self.revealed_password = ""
+        if (
+            self.revealed_value
+            or self.revealed_field
+            or self.revealed_crd_id
+            or self.reveal_countdown
+            or self.revealed_password
+        ):
+            self.revealed_value = ""
+            self.revealed_field = ""
+            self.revealed_crd_id = ""
+            self.reveal_countdown = 0
+            self.revealed_password = ""
 
     @rx.event(background=True)
     async def fetch_and_reveal(self, crd_id: str, field_key: str):
@@ -177,7 +189,8 @@ class CredentialState(rx.State):
 
     @rx.event
     def close_reveal_modal(self):
-        self.is_reveal_modal_open = False
+        if self.is_reveal_modal_open:
+            self.is_reveal_modal_open = False
         self.revealed_password = ""
         self.hide_revealed()
 
