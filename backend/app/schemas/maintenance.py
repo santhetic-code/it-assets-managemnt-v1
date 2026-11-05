@@ -187,9 +187,14 @@ class MaintenanceUpdate(BaseModel):
 class MaintenanceCompleteRequest(BaseModel):
     """Payload saat menandai jadwal maintenance sebagai Selesai."""
 
+    model_config = ConfigDict(extra="allow")
+
     tanggal_selesai: date | None = None
     tindakan: str | None = None
+    hasil: str | None = None
     teknisi: str | None = None
+    pic: str | None = None
+    dikerjakan_oleh: str | None = None
     biaya: int | None = Field(default=None, ge=0)
     kondisi_setelah: str = Field(default="Baik")
     status_aset_setelah: str = Field(default="Aktif")
@@ -209,6 +214,8 @@ class MaintenanceCompleteRequest(BaseModel):
 class BulkMaintenanceRequest(BaseModel):
     """Payload pembuatan Jadwal Massal (berdasarkan id_assets atau filter kategori/lokasi)."""
 
+    model_config = ConfigDict(extra="allow")
+
     id_assets: list[str] | None = Field(default=None)
     asset_ids: list[str] | None = Field(default=None)
     kategori: str | None = Field(default=None)
@@ -216,13 +223,18 @@ class BulkMaintenanceRequest(BaseModel):
     only_active_assets: bool = Field(default=True)
 
     jenis_maintenance: str = Field(default="Preventif", max_length=50)
+    jenis: str | None = Field(default=None, max_length=50)
     prioritas: str = Field(default="Normal", max_length=30)
     judul: str = Field(default="", max_length=150)
+    kegiatan: str | None = Field(default=None, max_length=150)
     deskripsi: str = Field(default="Pemeliharaan berkala terjadwal", max_length=500)
     teknisi: str = Field(default="Tim IT Support", max_length=100)
+    pic: str | None = Field(default=None, max_length=100)
     tanggal_jadwal: date | None = Field(default=None)
+    tgl_mulai: date | None = Field(default=None)
     is_recurring: bool = Field(default=False)
     siklus: str = Field(default="Sekali", max_length=30)
+    frekuensi: str | None = Field(default=None, max_length=30)
     catatan: str = Field(default="", max_length=500)
 
     @model_validator(mode="after")
@@ -246,8 +258,22 @@ class BulkMaintenanceRequest(BaseModel):
                 "id_assets, kategori, atau lokasi"
             )
 
+        if self.jenis and self.jenis_maintenance == "Preventif":
+            matched_t = next(
+                (t for t in VALID_MAINTENANCE_TYPES if t.lower() == self.jenis.strip().lower()),
+                None,
+            )
+            if matched_t:
+                self.jenis_maintenance = matched_t
+
+        if self.pic and self.teknisi == "Tim IT Support":
+            self.teknisi = self.pic.strip()
+
         if self.tanggal_jadwal is None:
-            self.tanggal_jadwal = date.today()
+            self.tanggal_jadwal = self.tgl_mulai or date.today()
+
+        if self.frekuensi and self.siklus == "Sekali":
+            self.siklus = self.frekuensi.strip()
 
         if self.siklus not in VALID_BILLING_CYCLES:
             raise ValueError(f"Siklus jadwal '{self.siklus}' tidak valid")
@@ -258,7 +284,11 @@ class BulkMaintenanceRequest(BaseModel):
             self.siklus = "Bulanan"
 
         if not self.judul:
-            self.judul = self.deskripsi or f"Maintenance {self.jenis_maintenance}"
+            self.judul = (
+                (self.kegiatan or "").strip()
+                or self.deskripsi
+                or f"Maintenance {self.jenis_maintenance}"
+            )
 
         return self
 
@@ -271,6 +301,7 @@ class MaintenancePublic(BaseModel):
     id_maintenance: str
     id_aset: str
     nama_aset: str
+    objek_display: str = ""
     kategori: str
     lokasi: str
 
@@ -278,20 +309,27 @@ class MaintenancePublic(BaseModel):
     jenis: str
     prioritas: str
     judul: str
+    kegiatan: str = ""
     deskripsi: str
     tindakan: str
+    terakhir_hasil: str = "—"
+    hasil: str = "Normal"
 
     teknisi: str
+    pic: str = "Ridho"
+    dikerjakan_oleh: str = "Ridho"
     penanggung_jawab: str
     vendor_servis: str
     biaya: int
 
     tanggal_jadwal: str
+    jadwal_berikutnya: str = ""
     tanggal: str
     tanggal_selesai: str | None
 
     status: str
     status_efektif: str
+    status_variant: str = "info"
     is_overdue: bool
     is_history: bool
     hari_menuju_jadwal: int
@@ -299,6 +337,7 @@ class MaintenancePublic(BaseModel):
     kondisi_setelah: str
     is_recurring: bool
     siklus: str
+    frekuensi: str = "Bulanan"
     catatan: str
     keterangan: str
 
@@ -312,8 +351,24 @@ class MaintenancePublic(BaseModel):
         days_diff = (row.tanggal_jadwal - ref_today).days
         is_history = row.status.lower() in ("selesai", "dibatalkan")
         is_overdue = (not is_history) and days_diff < 0
-        effective_status = "Terlambat" if is_overdue else row.status
+        is_soon = (not is_history) and (0 <= days_diff <= 7)
+        if is_overdue:
+            effective_status = "Terlambat"
+            st_variant = "danger"
+        elif is_soon:
+            effective_status = "Segera"
+            st_variant = "warning"
+        elif is_history:
+            effective_status = row.status
+            st_variant = "success" if row.status.lower() == "selesai" else "neutral"
+        else:
+            effective_status = row.status
+            st_variant = "info"
+
         tgl_str = row.tanggal_jadwal.isoformat()
+        kegiatan_str = row.judul or row.deskripsi or f"Maintenance {row.jenis_maintenance}"
+        pic_str = row.teknisi or "Ridho"
+        hasil_str = "Normal" if row.kondisi_setelah in ("Baik", "Baru") else "Perlu Tindak Lanjut"
 
         return cls(
             id=row.id or 0,
@@ -321,31 +376,40 @@ class MaintenancePublic(BaseModel):
             id_maintenance=row.kode_maintenance,
             id_aset=row.id_aset,
             nama_aset=row.nama_aset,
+            objek_display=f"{row.id_aset} · {row.nama_aset}",
             kategori=row.kategori,
             lokasi=row.lokasi,
             jenis_maintenance=row.jenis_maintenance,
             jenis=row.jenis_maintenance,
             prioritas=row.prioritas,
-            judul=row.judul or row.deskripsi,
+            judul=kegiatan_str,
+            kegiatan=kegiatan_str,
             deskripsi=row.deskripsi,
             tindakan=row.tindakan or "-",
-            teknisi=row.teknisi or "-",
-            penanggung_jawab=row.teknisi or "-",
+            terakhir_hasil=row.tindakan or "Normal",
+            hasil=hasil_str,
+            teknisi=pic_str,
+            pic=pic_str,
+            dikerjakan_oleh=pic_str,
+            penanggung_jawab=pic_str,
             vendor_servis=row.vendor_servis or "-",
             biaya=row.biaya,
             tanggal_jadwal=tgl_str,
+            jadwal_berikutnya=tgl_str,
             tanggal=tgl_str,
             tanggal_selesai=(
-                row.tanggal_selesai.isoformat() if row.tanggal_selesai else None
+                row.tanggal_selesai.isoformat() if row.tanggal_selesai else tgl_str
             ),
             status=row.status,
             status_efektif=effective_status,
+            status_variant=st_variant,
             is_overdue=is_overdue,
             is_history=is_history,
             hari_menuju_jadwal=days_diff,
             kondisi_setelah=row.kondisi_setelah,
             is_recurring=row.is_recurring,
             siklus=row.siklus,
+            frekuensi=row.siklus,
             catatan=row.catatan,
             keterangan=row.catatan,
         )

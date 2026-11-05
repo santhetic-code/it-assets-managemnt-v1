@@ -6,7 +6,9 @@ from typing import Any, TypedDict
 
 import reflex as rx
 
+from itam_pro.config import USE_MOCK
 from itam_pro.services.api_client import api_client
+from itam_pro.states.asset_state import AssetState
 from itam_pro.styles import Color
 
 
@@ -170,6 +172,21 @@ class DashboardState(rx.State):
         ]
 
         raw_categories = data.get("assets_by_category", [])
+        if not USE_MOCK and raw_categories:
+            try:
+                asset_st = await self.get_state(AssetState)
+                cat_map = {
+                    str(c.get("category_key", "")).lower(): int(c.get("count", 0))
+                    for c in raw_categories
+                }
+                asset_st.sidebar_counts = {
+                    "all": total_assets,
+                    "pc": cat_map.get("pc", 0),
+                    "monitor": cat_map.get("monitor", 0),
+                    "ups": cat_map.get("ups", 0),
+                }
+            except Exception:
+                pass
         self.category_assets = [
             {
                 "name": str(cat["name"]),

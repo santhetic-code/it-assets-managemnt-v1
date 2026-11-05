@@ -18,9 +18,12 @@ from typing import Any
 from sqlmodel import Session, col, select
 
 from app.core.master_data import LOCATION_ALIASES, LOCATIONS
+from app.core.security import encrypt_secret
 from app.models.asset import Asset
+from app.models.credential import Credential
 from app.models.finance import Purchase
 from app.models.ip_allocation import IPAllocation
+from app.models.maintenance import Maintenance
 from app.schemas.audit import record_audit_log
 from app.schemas.ip_allocation import parse_and_validate_ipv4
 
@@ -85,25 +88,37 @@ def _read_csv_rows(file_path: Path) -> list[dict[str, str]]:
             # 1. Server
             if len(row) > 1 and row[1].strip():
                 server_name = row[0].strip()
+                os_srv = (
+                    "Proxmox VE 8.2"
+                    if "VM" in server_name.upper()
+                    else "Windows Server 2022"
+                )
                 extracted.append({
                     "ip": row[1].strip(),
                     "nama_perangkat": server_name if server_name else "Server",
                     "tipe": "Fisik",
-                    "keterangan": "Server Fisik",
+                    "grup": "Operasional",
+                    "os": os_srv,
+                    "keterangan": f"Server Produksi ({server_name})",
                     "pengguna": "IT Server",
                     "lokasi": "Head Office (Office Blok 14)",
+                    "source_block": "SERVER",
                 })
             # 2. Addon / VM
             if len(row) > 5 and row[5].strip():
                 addon_host = row[3].strip()
+                rincian = row[4].strip().replace("\n", ", ")
                 extracted.append({
                     "ip": row[5].strip(),
-                    "nama_perangkat": f"Addon {addon_host}".strip() if addon_host else "Addon",
+                    "nama_perangkat": f"ADDON {addon_host}".strip() if addon_host else "Addon",
                     "tipe": "VM",
+                    "grup": "Addon (VM)",
+                    "os": "Windows 10 Pro",
                     "host_name": addon_host,
-                    "keterangan": row[4].strip().replace("\n", ", "),
+                    "keterangan": rincian or f"Worker Addon {addon_host}",
                     "pengguna": "IT System",
                     "lokasi": "Head Office (Office Blok 14)",
+                    "source_block": "ADDON",
                 })
             # 3. Operasional
             if len(row) > 8 and row[8].strip():
@@ -112,9 +127,12 @@ def _read_csv_rows(file_path: Path) -> list[dict[str, str]]:
                     "ip": row[8].strip(),
                     "nama_perangkat": f"PC {user_name}".strip() if user_name else "PC User",
                     "tipe": "Fisik",
+                    "grup": "Operasional",
+                    "os": "Windows 11 Pro",
                     "pengguna": user_name,
-                    "keterangan": "PC Operasional",
+                    "keterangan": f"Workstation Operasional ({user_name})",
                     "lokasi": "Head Office (Office Blok 14)",
+                    "source_block": "OPERASIONAL",
                 })
         return extracted
 
@@ -248,17 +266,22 @@ def import_ups_csv(session: Session, file_path: Path) -> int:
         id_server = row.get("ID SERVER", "").strip()
         keterangan = row.get("KETERANGAN", "").strip()
 
-        status_aset = "Aktif" if status_ops == "DIGUNAKAN" else (
-            "Cadangan" if status_ops == "BACKUP" else "Aktif"
+        is_digunakan = status_ops == "DIGUNAKAN"
+        status_aset = "Digunakan" if is_digunakan else (
+            "Backup" if status_ops == "BACKUP" else "Digunakan"
         )
         beban = id_server if id_server and id_server != "BACKUP" else ""
         jumlah_aki = 2 if "DUAL" in kategori_aki.upper() else (
             1 if "SATU" in kategori_aki.upper() else 0
         )
         nama_aset = (
-            f"UPS {merk} {kapasitas_val}VA"
-            if merk and kapasitas_val
-            else f"UPS {merk or id_aset}"
+            f"UPS {merk} {kapasitas_val}VA ({kategori_aki})"
+            if merk and kapasitas_val and kategori_aki
+            else (
+                f"UPS {merk} {kapasitas_val}VA"
+                if merk and kapasitas_val
+                else f"UPS {merk or id_aset}"
+            )
         )
 
         asset = Asset(
@@ -269,15 +292,21 @@ def import_ups_csv(session: Session, file_path: Path) -> int:
             model=kategori_aki,
             lokasi="Head Office (Office Blok 14)",
             detail_lokasi="Server Room",
-            penanggung_jawab="IT Infrastructure",
+            penanggung_jawab=beban or "Cadangan Gudang IT",
             status=status_aset,
-            kondisi="Baik",
+            kondisi="Baru",
+            tanggal_masuk=date(2025, 6, 15),
             kapasitas_va=kapasitas_val,
             kapasitas_watt=int(kapasitas_val * 0.6) if kapasitas_val else 0,
             baterai=kategori_aki,
             jumlah_baterai=jumlah_aki,
             beban_perangkat=beban,
             catatan=f"Status: {keterangan}. Terhubung: {id_server}".strip(),
+            extra_specs={
+                "kepemilikan": "XML",
+                "tanggal_masuk_gudang": "2025-06-15",
+                "tanggal_keluar_gudang": "2025-06-16" if is_digunakan else "",
+            },
         )
         session.add(asset)
         imported_count += 1
@@ -325,6 +354,19 @@ def import_watt_server_csv(session: Session, file_path: Path) -> int:
         psu_min = _parse_int(row.get("PSU MINIMUM (W)", "0"))
         psu_rek = _parse_int(row.get("PSU REKOMENDASI (W)", "0"))
 
+        is_backup = "BACKUP" in id_server_raw.upper()
+        os_val = (
+            "Proxmox VE 8.2"
+            if "VM" in id_server_raw.upper()
+            else "Windows Server 2022"
+        )
+        status_srv = "Backup" if is_backup else "Digunakan"
+        pemakai = (
+            "Cadangan Server Room"
+            if is_backup
+            else f"Server Produksi ({id_server_raw})"
+        )
+
         asset = Asset(
             id_aset=new_id_aset,
             nama_aset=id_server_raw,
@@ -333,17 +375,36 @@ def import_watt_server_csv(session: Session, file_path: Path) -> int:
             model="Rackmount / Desktop Server",
             lokasi="Head Office (Office Blok 14)",
             detail_lokasi="Server Room",
-            penanggung_jawab="IT Infrastructure",
-            status="Aktif",
-            kondisi="Baik",
+            penanggung_jawab=pemakai,
+            status=status_srv,
+            kondisi="Baru",
+            tanggal_masuk=date(2025, 1, 10),
             processor=cpu,
+            motherboard="Server Mainboard",
             gpu=gpu,
             ram=ram,
             storage=storage,
+            os=os_val,
             watt=watt,
             extra_specs={
+                "jenis": "Backup" if is_backup else "Server",
+                "os": os_val,
+                "cpu": cpu,
+                "vga": gpu,
+                "ram": ram,
+                "hdd_ssd": storage,
+                "mainboard": "Server Mainboard",
+                "monitor": "—",
+                "keyboard": "—",
+                "mouse": "—",
+                "tdp_total_w": str(watt),
+                "psu_min_w": str(psu_min),
+                "psu_rekomendasi_w": str(psu_rek),
                 "psu_minimum_watt": psu_min,
                 "psu_rekomendasi_watt": psu_rek,
+                "kepemilikan": "XML",
+                "tanggal_masuk_gudang": "2025-01-10",
+                "tanggal_keluar_gudang": "" if is_backup else "2025-01-12",
             },
             catatan=f"Spesifikasi daya: TDP {watt}W (Min PSU {psu_min}W, Rekomendasi {psu_rek}W)",
         )
@@ -355,12 +416,79 @@ def import_watt_server_csv(session: Session, file_path: Path) -> int:
     return imported_count
 
 
+def _match_server_asset(raw_name: str, server_assets: list[Asset]) -> Asset | None:
+    """Mencocokkan nama server / host dari ip_list_xml.csv ke baris Asset kategori Server."""
+    cleaned = raw_name.strip().upper()
+    if not cleaned:
+        return None
+
+    # Normalisasi singkatan umum di ip_list_xml.csv ke nama di rekap_watt_server.csv
+    normalized = (
+        cleaned.replace("OTOMAX ", "OTO ")
+        .replace("MESIN SYSTEM VOUCHER", "MESIN VOUCHER")
+        .replace("BACKUP SERVER ", "BACKUP ")
+    )
+    for srv in server_assets:
+        srv_up = srv.nama_aset.strip().upper()
+        if (
+            srv_up == cleaned
+            or srv_up == f"SERVER {cleaned}"
+            or srv_up == f"SERVER {normalized}"
+            or normalized in srv_up
+        ):
+            return srv
+
+    # Pencocokan langsung nama grup/brand di kolom SERVER ADDON ip_list_xml.csv
+    direct_host_map = {
+        "XML MOBILE": "SERVER VM SDP",
+        "ALL SERVER RETAIL": "SERVER OTO RETAIL",
+        "PULSA HOKI": "SERVER OTO PH",
+        "XMLTRONIK H2H": "SERVER OTO H2H",
+        "OTOTEPE": "SERVER OTO OTOTEPE",
+        "ALL SERVER": "SERVER INDUK SERVER 2",
+        "MODUL TRANSAKSI": "SERVER OTO SAMU",
+    }
+    if cleaned in direct_host_map:
+        target_direct = direct_host_map[cleaned]
+        for srv in server_assets:
+            if srv.nama_aset.strip().upper() == target_direct:
+                return srv
+
+    # Pencocokan prefix untuk ADDON (misal 'SDP 1' -> 'SERVER VM SDP', 'H2H 1' -> 'SERVER OTO H2H')
+    prefix_token = cleaned.split()[0] if cleaned.split() else ""
+    addon_map = {
+        "SDP": "SERVER VM SDP",
+        "H2H": "SERVER OTO H2H",
+        "SAMU": "SERVER OTO SAMU",
+        "PH": "SERVER OTO PH",
+        "RETAIL": "SERVER OTO RETAIL",
+        "GERAI": "SERVER OTO GERAI",
+        "OTOTEPE": "SERVER OTO OTOTEPE",
+    }
+    target_srv_name = addon_map.get(prefix_token)
+    if target_srv_name:
+        for srv in server_assets:
+            if srv.nama_aset.strip().upper() == target_srv_name:
+                return srv
+    return None
+
+
 def import_ip_list_csv(session: Session, file_path: Path) -> int:
     """Impor ip_list_xml.csv ke tabel ip_allocations & tautkan otomatis ke Asset bila cocok."""
     rows = _read_csv_rows(file_path)
     all_assets = list(session.exec(select(Asset)).all())
     assets_by_name = {a.nama_aset.strip().lower(): a for a in all_assets}
     server_assets = [a for a in all_assets if a.kategori.lower() == "server"]
+
+    # Hitung nomor urut PC tertinggi untuk membuat aset PC Operasional dari ip_list_xml.csv
+    existing_pcs = session.exec(
+        select(Asset.id_aset).where(col(Asset.id_aset).like("PC-%"))
+    ).all()
+    max_pc_num = 0
+    for pc_id in existing_pcs:
+        m = re.match(r"^PC-(\d+)$", pc_id)
+        if m:
+            max_pc_num = max(max_pc_num, int(m.group(1)))
 
     imported = 0
     for r in rows:
@@ -386,19 +514,71 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
         )
         tipe_raw = _pick(r, "tipe", "kategori", "jenis", default="Fisik")
         host_raw = _pick(r, "host_name", "host", "induk", "server_host")
+        source_block = r.get("source_block", "")
         is_vm = (
             "vm" in tipe_raw.lower()
             or "virtual" in tipe_raw.lower()
             or bool(host_raw)
         )
 
+        lokasi = _normalize_loc(_pick(r, "lokasi", "cabang", "site", "ruangan"))
+        ket = _pick(r, "keterangan", "catatan", "deskripsi", "fungsi")
+        pengguna = _pick(r, "pengguna", "user", "pic", "penanggung_jawab")
+        os_val = _pick(r, "os", "sistem_operasi")
+
+        # Bila berasal dari blok OPERASIONAL dan belum ada aset PC-nya, buat aset PC Operasional
+        if source_block == "OPERASIONAL" and nama.strip().lower() not in assets_by_name:
+            max_pc_num += 1
+            new_pc_id = f"PC-{max_pc_num:03d}"
+            pc_asset = Asset(
+                id_aset=new_pc_id,
+                nama_aset=nama.strip(),
+                kategori="PC",
+                merek="Rakitan PC",
+                model="Workstation Operasional",
+                lokasi=lokasi,
+                detail_lokasi="Ruang Operasional",
+                penanggung_jawab=pengguna or nama.replace("PC ", "").strip(),
+                status="Digunakan",
+                kondisi="Baru",
+                tanggal_masuk=date(2025, 3, 10),
+                processor="Intel Core i5-12400",
+                motherboard="ASUS Prime H610M",
+                ram="16GB DDR4",
+                storage="SSD NVMe 512GB",
+                gpu="Intel UHD Graphics 730",
+                os=os_val or "Windows 11 Pro",
+                watt=0,
+                ip_address=canonical_ip,
+                catatan=f"Workstation operasional ({pengguna}) - IP {canonical_ip}",
+                extra_specs={
+                    "jenis": "Operasional",
+                    "os": os_val or "Windows 11 Pro",
+                    "cpu": "Intel Core i5-12400",
+                    "vga": "Intel UHD Graphics 730",
+                    "ram": "16GB DDR4",
+                    "hdd_ssd": "SSD NVMe 512GB",
+                    "mainboard": "ASUS Prime H610M",
+                    "monitor": "24\" FHD",
+                    "keyboard": "Logitech K120",
+                    "mouse": "Logitech B100",
+                    "kepemilikan": "XML",
+                    "tanggal_masuk_gudang": "2025-03-10",
+                    "tanggal_keluar_gudang": "2025-03-12",
+                },
+            )
+            session.add(pc_asset)
+            session.flush()
+            all_assets.append(pc_asset)
+            assets_by_name[pc_asset.nama_aset.strip().lower()] = pc_asset
+
         # Coba cocokkan perangkat fisik atau host VM ke tabel assets
         linked_asset_id: str | None = None
         linked_host_id: str | None = None
 
         matched_asset = assets_by_name.get(nama.strip().lower())
-        if matched_asset is None:
-            matched_asset = next(
+        if matched_asset is None and not is_vm:
+            matched_asset = _match_server_asset(nama, server_assets) or next(
                 (
                     a
                     for a in all_assets
@@ -415,24 +595,24 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
                 session.add(matched_asset)
         elif is_vm:
             if host_raw:
-                matched_host = assets_by_name.get(host_raw.strip().lower()) or next(
-                    (
-                        s
-                        for s in server_assets
-                        if s.nama_aset.lower() in host_raw.lower()
-                        or host_raw.lower() in s.nama_aset.lower()
-                    ),
-                    None,
+                matched_host = (
+                    assets_by_name.get(host_raw.strip().lower())
+                    or _match_server_asset(host_raw, server_assets)
+                    or next(
+                        (
+                            s
+                            for s in server_assets
+                            if s.nama_aset.lower() in host_raw.lower()
+                            or host_raw.lower() in s.nama_aset.lower()
+                        ),
+                        None,
+                    )
                 )
                 if matched_host is not None:
                     linked_host_id = matched_host.id_aset
                     host_raw = matched_host.nama_aset
             else:
                 host_raw = "Server Host Utama"
-
-        lokasi = _normalize_loc(_pick(r, "lokasi", "cabang", "site", "ruangan"))
-        ket = _pick(r, "keterangan", "catatan", "deskripsi", "fungsi")
-        pengguna = _pick(r, "pengguna", "user", "pic", "penanggung_jawab")
 
         existing = session.exec(
             select(IPAllocation).where(col(IPAllocation.ip_address) == canonical_ip)
@@ -452,7 +632,7 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
                 is_vm=is_vm,
                 host_name=host_raw[:150] if is_vm else "",
                 id_aset_host=linked_host_id,
-                os=_pick(r, "os", "sistem_operasi")[:80],
+                os=os_val[:80],
                 pengguna=pengguna[:100],
                 keterangan=ket[:500],
             )
@@ -495,6 +675,15 @@ def import_purchases_csv(session: Session, file_path: Path) -> int:
     rows = _read_csv_rows(file_path)
     imported_count = 0
 
+    existing_mons = session.exec(
+        select(Asset.id_aset).where(col(Asset.id_aset).like("MON-%"))
+    ).all()
+    max_mon_num = 0
+    for mon_id in existing_mons:
+        m = re.match(r"^MON-(\d+)$", mon_id)
+        if m:
+            max_mon_num = max(max_mon_num, int(m.group(1)))
+
     for row in rows:
         no_str = row.get("NO", "").strip()
         if not no_str or not no_str.isdigit():
@@ -528,6 +717,60 @@ def import_purchases_csv(session: Session, file_path: Path) -> int:
         kategori = _classify_purchase_category(produk)
         metode = "Marketplace" if link_marketplace else "Transfer"
 
+        # Jika produk adalah Monitor di rekap_pembelian.csv, buat aset Monitor di tabel assets
+        linked_asset_code: str | None = None
+        if kategori == "Monitor":
+            is_samsung = "samsung" in produk.lower()
+            merk_mon = "Samsung" if is_samsung else ("LG" if "lg" in produk.lower() else "Lainnya")
+            tipe_mon = "S24D330" if is_samsung else "24MR400-B"
+            konektivitas = ["HDMI", "VGA"]
+            created_mon_codes: list[str] = []
+            for unit_idx in range(jumlah):
+                max_mon_num += 1
+                mon_code = f"MON-{max_mon_num:03d}"
+                created_mon_codes.append(mon_code)
+                is_backup_mon = unit_idx == (jumlah - 1) and jumlah > 1
+                st_mon = "Backup" if is_backup_mon else "Digunakan"
+                pemakai_mon = (
+                    "Cadangan Gudang IT"
+                    if is_backup_mon
+                    else (dibeli_oleh or "Operasional Office")
+                )
+                mon_asset = Asset(
+                    id_aset=mon_code,
+                    nama_aset=f"{merk_mon} {tipe_mon} 24\"",
+                    kategori="Monitor",
+                    merek=merk_mon,
+                    model=tipe_mon,
+                    lokasi="Head Office (Office Blok 14)",
+                    detail_lokasi="Ruang Operasional",
+                    penanggung_jawab=pemakai_mon,
+                    status=st_mon,
+                    kondisi="Baru",
+                    tanggal_masuk=tanggal_beli,
+                    ukuran_layar="24",
+                    resolusi="1920x1080 (FHD)",
+                    panel="IPS",
+                    port_display=", ".join(konektivitas),
+                    catatan=f"Dibeli dari {toko} ({kode_pembelian})",
+                    extra_specs={
+                        "merk": merk_mon,
+                        "tipe_model": tipe_mon,
+                        "ukuran_layar": "24",
+                        "resolusi_layar": "1920x1080 (FHD)",
+                        "konektivitas": konektivitas,
+                        "kepemilikan": "XML",
+                        "tanggal_masuk_gudang": tanggal_beli.isoformat(),
+                        "tanggal_keluar_gudang": (
+                            "" if is_backup_mon else tanggal_beli.isoformat()
+                        ),
+                    },
+                )
+                session.add(mon_asset)
+            session.flush()
+            if created_mon_codes:
+                linked_asset_code = created_mon_codes[0]
+
         purchase = Purchase(
             kode_pembelian=kode_pembelian,
             nomor_invoice=f"INV-PO-{no_val:03d}",
@@ -546,7 +789,9 @@ def import_purchases_csv(session: Session, file_path: Path) -> int:
             metode_pembayaran=metode,
             is_recurring=False,
             siklus_tagihan="Sekali",
+            id_aset=linked_asset_code,
             penanggung_jawab=dibeli_oleh,
+            keterangan=link_marketplace[:500],
         )
         session.add(purchase)
         imported_count += 1
@@ -554,6 +799,229 @@ def import_purchases_csv(session: Session, file_path: Path) -> int:
     if imported_count > 0:
         session.commit()
     return imported_count
+
+
+def _seed_initial_operational_records(session: Session) -> None:
+    """Mengisi data awal Jadwal Maintenance & Credential Manager secara idempoten bila kosong."""
+    if session.exec(select(Maintenance.id)).first() is None:
+        sample_maintenances = [
+            Maintenance(
+                kode_maintenance="MNT-001",
+                id_aset="UPS-001",
+                nama_aset="UPS PROLINK 1200VA (DUAL AKI)",
+                kategori="UPS",
+                lokasi="Head Office (Office Blok 14)",
+                jenis_maintenance="Penggantian Baterai",
+                prioritas="Tinggi",
+                judul="Cek voltase aki & kalibrasi beban UPS Server",
+                deskripsi="Cek voltase aki & kalibrasi beban UPS Server",
+                tindakan="Voltase stabil 13.6V, beban normal",
+                teknisi="Ridho",
+                tanggal_jadwal=date(2026, 4, 15),
+                status="Terjadwal",
+                kondisi_setelah="Baik",
+                is_recurring=True,
+                siklus="Triwulan",
+                catatan="Perlu pengecekan berkala 3 bulanan",
+            ),
+            Maintenance(
+                kode_maintenance="MNT-002",
+                id_aset="SRV-001",
+                nama_aset="SERVER OTO H2H",
+                kategori="Server",
+                lokasi="Head Office (Office Blok 14)",
+                jenis_maintenance="Pembersihan",
+                prioritas="Normal",
+                judul="Pembersihan debu heatsink & ganti thermal paste",
+                deskripsi="Pembersihan debu heatsink & ganti thermal paste",
+                tindakan="Suhu turun 8C, kipas normal",
+                teknisi="Surya",
+                tanggal_jadwal=date(2026, 4, 22),
+                status="Terjadwal",
+                kondisi_setelah="Baik",
+                is_recurring=True,
+                siklus="Bulanan",
+                catatan="Rutin bulanan server transaksi utama",
+            ),
+            Maintenance(
+                kode_maintenance="MNT-003",
+                id_aset="SRV-008",
+                nama_aset="SERVER VM SDP",
+                kategori="Server",
+                lokasi="Head Office (Office Blok 14)",
+                jenis_maintenance="Preventif",
+                prioritas="Tinggi",
+                judul="Snapshot & verifikasi integritas backup VM Proxmox",
+                deskripsi="Snapshot & verifikasi integritas backup VM Proxmox",
+                tindakan="Semua image VM terverifikasi normal",
+                teknisi="Ridho",
+                tanggal_jadwal=date(2026, 5, 5),
+                status="Terjadwal",
+                kondisi_setelah="Baik",
+                is_recurring=True,
+                siklus="Mingguan",
+                catatan="Jadwal rutin mingguan",
+            ),
+            Maintenance(
+                kode_maintenance="MNT-004",
+                id_aset="SRV-012",
+                nama_aset="SERVER BACKUP REAL TIME",
+                kategori="Server",
+                lokasi="Head Office (Office Blok 14)",
+                jenis_maintenance="Inspeksi",
+                prioritas="Normal",
+                judul="Uji failover sinkronisasi database real-time",
+                deskripsi="Uji failover sinkronisasi database real-time",
+                tindakan="Replikasi berjalan lancar tanpa lag",
+                teknisi="Surya",
+                tanggal_jadwal=date(2026, 3, 20),
+                tanggal_selesai=date(2026, 3, 20),
+                status="Selesai",
+                kondisi_setelah="Baik",
+                is_recurring=True,
+                siklus="Bulanan",
+                catatan="Replikasi berjalan lancar tanpa lag",
+            ),
+            Maintenance(
+                kode_maintenance="MNT-005",
+                id_aset="UPS-009",
+                nama_aset="UPS APC 1200VA (DUAL AKI)",
+                kategori="UPS",
+                lokasi="Head Office (Office Blok 14)",
+                jenis_maintenance="Penggantian Baterai",
+                prioritas="Tinggi",
+                judul="Penggantian 2 unit aki kering Yuasa 12V 7Ah",
+                deskripsi="Penggantian 2 unit aki kering Yuasa 12V 7Ah",
+                tindakan="Komponen diganti dengan aki baru",
+                teknisi="Ridho",
+                biaya=528000,
+                tanggal_jadwal=date(2026, 2, 14),
+                tanggal_selesai=date(2026, 2, 14),
+                status="Selesai",
+                kondisi_setelah="Baik",
+                is_recurring=False,
+                siklus="Sekali",
+                catatan="Aki lama drop, sudah diganti baru",
+            ),
+        ]
+        for m in sample_maintenances:
+            session.add(m)
+        session.commit()
+
+    if session.exec(select(Credential.id)).first() is None:
+        sample_credentials = [
+            (
+                "CRD-001",
+                "SERVER OTO H2H (SQL Server)",
+                "Database",
+                "192.168.1.6",
+                "1433",
+                "192.168.1.6:1433",
+                "sa",
+                "OtomaxSql#2026!Prod",
+                "Administrator",
+                ["Administrator"],
+                "Database utama transaksi Otomax H2H",
+            ),
+            (
+                "CRD-002",
+                "SERVER VM SDP (Proxmox VE)",
+                "Server",
+                "192.168.1.7",
+                "8006",
+                "https://192.168.1.7:8006",
+                "root@pam",
+                "PveCluster#Blok14!99",
+                "Administrator",
+                ["Administrator"],
+                "Hypervisor induk seluruh VM Addon SDP",
+            ),
+            (
+                "CRD-003",
+                "MikroTik Core Router Blok 14",
+                "MikroTik",
+                "192.168.1.1",
+                "8291",
+                "192.168.1.1:8291 (Winbox)",
+                "admin_net",
+                "MktRouter#Xml2026!",
+                "Administrator",
+                ["Administrator"],
+                "Gateway utama & manajemen bandwidth kantor",
+            ),
+            (
+                "CRD-004",
+                "Portal Supplier IRS & Ototepe",
+                "Aplikasi",
+                "192.168.1.48",
+                "443",
+                "https://panel.xmltronik.id/admin",
+                "admin@xmltronik.id",
+                "PanelWeb#XmlTronik88",
+                "Member",
+                ["Administrator", "Member"],
+                "Dashboard monitoring transaksi web & API",
+            ),
+            (
+                "CRD-005",
+                "Cloudflare DNS & Domain Manager",
+                "Domain / DNS",
+                "",
+                "443",
+                "https://dash.cloudflare.com",
+                "infra@xmltronik.id",
+                "CfDns#MasterKey2026!",
+                "Administrator",
+                ["Administrator"],
+                "Pengelolaan DNS publik & SSL sertifikat",
+            ),
+            (
+                "CRD-006",
+                "CCTV NVR Hikvision Kantor Blok 14",
+                "CCTV",
+                "192.168.1.250",
+                "80",
+                "http://192.168.1.250",
+                "operator_cctv",
+                "CctvMonitor#Blok14",
+                "Member",
+                ["Administrator", "Member"],
+                "Akses pantau kamera keamanan ruang server & kasir",
+            ),
+        ]
+        for (
+            code,
+            nama,
+            jenis,
+            ip_addr,
+            port,
+            url,
+            user,
+            plain_pw,
+            lvl,
+            roles,
+            note,
+        ) in sample_credentials:
+            session.add(
+                Credential(
+                    kode_kredensial=code,
+                    nama_layanan=nama,
+                    jenis_kredensial=jenis,
+                    lokasi="Head Office (Office Blok 14)",
+                    ip_address=ip_addr,
+                    port=port,
+                    url_akses=url,
+                    username=user,
+                    password_encrypted=encrypt_secret(plain_pw),
+                    secret_extra_encrypted="",
+                    level_akses=lvl,
+                    allowed_roles=roles,
+                    status="Aktif",
+                    terakhir_diubah_oleh="admin",
+                    catatan=note,
+                )
+            )
+        session.commit()
 
 
 def import_all_csv_data(
@@ -569,6 +1037,7 @@ def import_all_csv_data(
     server_count = import_watt_server_csv(session, folder / "rekap_watt_server.csv")
     ip_count = import_ip_list_csv(session, folder / "ip_list_xml.csv")
     purchase_count = import_purchases_csv(session, folder / "rekap_pembelian.csv")
+    _seed_initial_operational_records(session)
 
     total_imported = ups_count + server_count + ip_count + purchase_count
 

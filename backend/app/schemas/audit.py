@@ -97,16 +97,24 @@ class AuditLogPublic(BaseModel):
     waktu: str
     timestamp: str
     tanggal: str
+    time_display: str = ""
+    relative_time: str = "Baru saja"
 
     username: str
     pengguna: str
     nama_pengguna: str
+    actor: str = ""
     role: str
 
     aksi: str
+    action: str = ""
+    actor_and_action: str = ""
     modul: str
     kategori: str
+    module_badge: str = "SISTEM"
+    module_variant: str = "neutral"
     target_id: str
+    target: str = "-"
     entitas: str
     detail: str
     keterangan: str
@@ -120,6 +128,22 @@ class AuditLogPublic(BaseModel):
     def from_model(cls, row: AuditLog) -> "AuditLogPublic":
         iso_time = row.created_at.isoformat()
         date_only = row.created_at.date().isoformat()
+        time_display = row.created_at.strftime("%Y-%m-%d %H:%M")
+        actor_name = row.nama_pengguna or row.username or "System"
+        mod_upper = (row.modul or "SISTEM").strip().upper()
+        variant_map = {
+            "ASET": "info",
+            "IP & SERVER": "info",
+            "JARINGAN": "info",
+            "PEMBELIAN": "success",
+            "KEUANGAN": "success",
+            "MAINTENANCE": "warning",
+            "KREDENSIAL": "danger",
+            "KEAMANAN": "danger",
+            "AUTENTIKASI": "neutral",
+            "PENGGUNA": "neutral",
+        }
+        mod_variant = variant_map.get(mod_upper, "neutral")
         return cls(
             id=row.id or 0,
             kode_audit=row.kode_audit,
@@ -127,14 +151,22 @@ class AuditLogPublic(BaseModel):
             waktu=iso_time,
             timestamp=iso_time,
             tanggal=date_only,
+            time_display=time_display,
+            relative_time=time_display,
             username=row.username,
             pengguna=row.username,
-            nama_pengguna=row.nama_pengguna or row.username,
+            nama_pengguna=actor_name,
+            actor=actor_name,
             role=row.role,
             aksi=row.aksi,
+            action=row.aksi,
+            actor_and_action=f"{actor_name} · {row.aksi}",
             modul=row.modul,
             kategori=row.modul,
+            module_badge=mod_upper,
+            module_variant=mod_variant,
             target_id=row.target_id,
+            target=f"{row.target_id} ({row.detail})" if row.detail else row.target_id,
             entitas=row.target_id,
             detail=row.detail,
             keterangan=row.detail,

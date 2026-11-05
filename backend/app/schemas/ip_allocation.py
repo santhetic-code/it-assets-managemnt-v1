@@ -45,19 +45,24 @@ class IPAllocationCreate(BaseModel):
     gateway: str = Field(default="", max_length=45)
 
     nama_perangkat: str = Field(default="", max_length=150)
+    nama: str | None = Field(default=None, max_length=150)
     hostname: str = Field(default="", max_length=150)
     nama_vm: str | None = Field(default=None, max_length=150)
     tipe: str = Field(default="Fisik", max_length=30)
+    jenis: str | None = Field(default=None, max_length=30)
+    grup: str | None = Field(default=None, max_length=50)
     kategori: str | None = Field(default=None, max_length=30)
     status: str = Field(default="Aktif", max_length=30)
 
     lokasi: str = Field(default="Head Office (Office Blok 14)", max_length=100)
     id_aset: str | None = Field(default=None, max_length=30)
+    asset_id: str | None = Field(default=None, max_length=30)
 
     is_vm: bool | None = Field(default=None)
     host_name: str = Field(default="", max_length=150)
     host: str | None = Field(default=None, max_length=150)
     id_aset_host: str | None = Field(default=None, max_length=30)
+    host_asset_id: str | None = Field(default=None, max_length=30)
     allow_orphan_vm: bool = Field(default=False)
 
     os: str = Field(default="", max_length=80)
@@ -70,6 +75,7 @@ class IPAllocationCreate(BaseModel):
     pengguna: str = Field(default="", max_length=100)
     penanggung_jawab: str | None = Field(default=None, max_length=100)
     keterangan: str = Field(default="", max_length=500)
+    fungsi: str | None = Field(default=None, max_length=500)
     catatan: str | None = Field(default=None, max_length=500)
 
     @field_validator("ip_address")
@@ -86,7 +92,9 @@ class IPAllocationCreate(BaseModel):
     @model_validator(mode="after")
     def _normalize_and_validate_vm(self) -> "IPAllocationCreate":
         if not self.nama_perangkat:
-            if self.nama_vm:
+            if self.nama:
+                self.nama_perangkat = self.nama.strip()
+            elif self.nama_vm:
                 self.nama_perangkat = self.nama_vm.strip()
             elif self.hostname:
                 self.nama_perangkat = self.hostname.strip()
@@ -97,11 +105,15 @@ class IPAllocationCreate(BaseModel):
         if not self.hostname:
             self.hostname = self.nama_perangkat
 
-        if self.kategori and self.tipe == "Fisik":
+        if self.jenis and self.tipe == "Fisik":
+            self.tipe = self.jenis.strip()
+        elif self.kategori and self.tipe == "Fisik":
             self.tipe = self.kategori.strip()
 
         if self.is_vm is None:
-            self.is_vm = self.tipe.strip().upper() == "VM"
+            self.is_vm = self.tipe.strip().upper() == "VM" or (
+                bool(self.grup) and "vm" in self.grup.lower()
+            )
         elif self.is_vm:
             self.tipe = "VM"
 
@@ -109,17 +121,25 @@ class IPAllocationCreate(BaseModel):
             self.host_name = self.host.strip()
         self.host_name = self.host_name.strip()
 
+        if not self.id_aset_host and self.host_asset_id:
+            self.id_aset_host = self.host_asset_id
+
         if self.id_aset_host:
             cleaned_host_id = self.id_aset_host.strip().upper()
-            self.id_aset_host = cleaned_host_id if cleaned_host_id not in ("", "-") else None
+            self.id_aset_host = cleaned_host_id if cleaned_host_id not in ("", "-", "—") else None
+
+        if not self.id_aset and self.asset_id:
+            self.id_aset = self.asset_id
 
         if self.id_aset:
             cleaned_asset_id = self.id_aset.strip().upper()
-            self.id_aset = cleaned_asset_id if cleaned_asset_id not in ("", "-") else None
+            self.id_aset = cleaned_asset_id if cleaned_asset_id not in ("", "-", "—") else None
 
         if not self.pengguna and self.penanggung_jawab:
             self.pengguna = self.penanggung_jawab.strip()
-        if not self.keterangan and self.catatan:
+        if not self.keterangan and self.fungsi:
+            self.keterangan = self.fungsi.strip()
+        elif not self.keterangan and self.catatan:
             self.keterangan = self.catatan.strip()
 
         # Validasi status
@@ -152,16 +172,21 @@ class IPAllocationUpdate(BaseModel):
     subnet: str | None = None
     gateway: str | None = None
     nama_perangkat: str | None = None
+    nama: str | None = None
     hostname: str | None = None
     tipe: str | None = None
+    jenis: str | None = None
+    grup: str | None = None
     status: str | None = None
     lokasi: str | None = None
     id_aset: str | None = None
+    asset_id: str | None = None
 
     is_vm: bool | None = None
     host_name: str | None = None
     host: str | None = None
     id_aset_host: str | None = None
+    host_asset_id: str | None = None
 
     os: str | None = None
     vcpu: int | None = Field(default=None, ge=0)
@@ -171,6 +196,7 @@ class IPAllocationUpdate(BaseModel):
     mac_address: str | None = None
     pengguna: str | None = None
     keterangan: str | None = None
+    fungsi: str | None = None
 
     @field_validator("ip_address")
     @classmethod
@@ -179,6 +205,17 @@ class IPAllocationUpdate(BaseModel):
             return None
         canonical, _ = parse_and_validate_ipv4(v)
         return canonical
+
+
+def _compute_cidr_subnet(ip_address: str, raw_subnet: str) -> str:
+    """Mengembalikan format subnet CIDR /24 untuk UI frontend (misal 192.168.1.0/24)."""
+    cleaned = (raw_subnet or "").strip()
+    if "/" in cleaned:
+        return cleaned
+    parts = (ip_address or "").strip().split(".")
+    if len(parts) == 4:
+        return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+    return cleaned or "192.168.1.0/24"
 
 
 class IPAllocationPublic(BaseModel):
@@ -192,20 +229,28 @@ class IPAllocationPublic(BaseModel):
     subnet: str
     gateway: str
     nama_perangkat: str
+    nama: str = ""
     hostname: str
     nama_vm: str
     tipe: str
+    jenis: str = "Fisik"
+    grup: str = "Operasional"
     status: str
     lokasi: str
     id_aset: str | None
+    asset_id: str = ""
+    sub_label: str = ""
 
     is_vm: bool
     host_name: str
     host: str
     id_aset_host: str | None
+    host_asset_id: str = ""
+    host_label: str = "—"
     vm_tanpa_host: bool
     is_orphan_vm: bool
     konflik_ip: bool
+    is_conflict: bool = False
 
     os: str
     vcpu: int
@@ -215,6 +260,7 @@ class IPAllocationPublic(BaseModel):
     mac_address: str
     pengguna: str
     keterangan: str
+    fungsi: str = ""
 
     @classmethod
     def from_model(
@@ -225,27 +271,54 @@ class IPAllocationPublic(BaseModel):
         is_conflict: bool = False,
     ) -> "IPAllocationPublic":
         host_display = row.host_name or (row.id_aset_host or "-")
+        jenis_val = "VM" if row.is_vm else "Fisik"
+        grup_val = "Addon (VM)" if row.is_vm else "Operasional"
+        asset_id_str = (row.id_aset or "").strip()
+        host_asset_id_str = (row.id_aset_host or "").strip()
+        if row.is_vm:
+            sub_lbl = f"VM · Host: {host_asset_id_str or row.host_name or 'Tanpa Host'}"
+            if is_orphan:
+                host_lbl = "⚠️ Tanpa Host"
+            elif host_asset_id_str and row.host_name:
+                host_lbl = f"{host_asset_id_str} ({row.host_name})"
+            else:
+                host_lbl = host_asset_id_str or row.host_name or "—"
+        else:
+            sub_lbl = f"Aset: {asset_id_str}" if asset_id_str else "Fisik · Non-Aset"
+            host_lbl = "—"
+
+        fungsi_val = (row.keterangan or row.port_servis or "Operasional").strip()
+        subnet_cidr = _compute_cidr_subnet(row.ip_address, row.subnet)
+
         return cls(
             id=row.id or 0,
             ip_address=row.ip_address,
             ip_int=row.ip_int,
-            subnet=row.subnet,
+            subnet=subnet_cidr,
             gateway=row.gateway,
             nama_perangkat=row.nama_perangkat,
+            nama=row.nama_perangkat,
             hostname=row.hostname or row.nama_perangkat,
             nama_vm=row.nama_perangkat if row.is_vm else "",
             tipe=row.tipe,
+            jenis=jenis_val,
+            grup=grup_val,
             status="Konflik" if is_conflict else row.status,
             lokasi=row.lokasi,
             id_aset=row.id_aset,
+            asset_id=asset_id_str,
+            sub_label=sub_lbl,
             is_vm=row.is_vm,
             host_name=row.host_name,
             host=host_display,
             id_aset_host=row.id_aset_host,
+            host_asset_id=host_asset_id_str,
+            host_label=host_lbl,
             vm_tanpa_host=is_orphan,
             is_orphan_vm=is_orphan,
             konflik_ip=is_conflict,
-            os=row.os,
+            is_conflict=is_conflict,
+            os=row.os or "—",
             vcpu=row.vcpu,
             ram=row.ram,
             storage=row.storage,
@@ -253,6 +326,7 @@ class IPAllocationPublic(BaseModel):
             mac_address=row.mac_address,
             pengguna=row.pengguna,
             keterangan=row.keterangan,
+            fungsi=fungsi_val,
         )
 
 
@@ -265,4 +339,10 @@ class IPAllocationPageResponse(BaseModel):
     page_size: int
     tab_counts: dict[str, int]
     summary: dict[str, Any]
+    kpi: dict[str, int] = {}
+    conflict_banner: str = ""
+    subnet_options: list[str] = ["Semua"]
+    host_options: list[str] = ["Semua"]
+    server_asset_ids: list[str] = ["—"]
+    os_suggestions: list[str] = []
 

@@ -32,6 +32,23 @@ def calculate_load_status(load_percent: float) -> str:
     return "Overload"
 
 
+def _detect_cpu_brand(cpu: str) -> str:
+    low = (cpu or "").lower()
+    if "intel" in low or "xeon" in low or "core" in low:
+        return "Intel"
+    if "amd" in low or "ryzen" in low or "epyc" in low:
+        return "AMD"
+    return "Lainnya"
+
+
+def _classify_load_level(tdp_w: int) -> tuple[str, str, str]:
+    if tdp_w >= 450:
+        return "Tinggi", f"Tinggi ({tdp_w} W)", "danger"
+    if tdp_w >= 250:
+        return "Sedang", f"Sedang ({tdp_w} W)", "warning"
+    return "Rendah", f"Rendah ({tdp_w} W)", "success"
+
+
 class ServerPowerItem(BaseModel):
     """Representasi satu perangkat konsumen daya (turunan dari baris Asset)."""
 
@@ -39,6 +56,8 @@ class ServerPowerItem(BaseModel):
     id_aset: str
     nama_aset: str
     nama_server: str
+    sub_label: str = ""
+    grup_server: str = "Operasional"
     kategori: str
     merek: str
     model: str
@@ -51,14 +70,28 @@ class ServerPowerItem(BaseModel):
     kondisi: str
 
     processor: str
+    cpu: str = ""
+    cpu_brand: str = "Intel"
+    vga: str = "—"
     motherboard: str
     ram: str
     storage: str
+    hdd_ssd: str = "—"
     os: str
     spesifikasi_ringkas: str
 
     watt: int
     daya_watt: int
+    tdp_total_w: int = 0
+    psu_min_w: int = 0
+    psu_rekomendasi_w: int = 0
+    tdp_display: str = "0 W"
+    psu_min_display: str = "0 W"
+    psu_rek_display: str = "0 W"
+    kwh_display: str = "0 kWh/bln"
+    beban_level: str = "Rendah"
+    beban_badge: str = "Rendah (0 W)"
+    beban_variant: str = "success"
     kwh_per_hari: float
     kwh_per_bulan: float
     estimasi_biaya_bulan: int
@@ -78,6 +111,32 @@ class ServerPowerItem(BaseModel):
         kwh_month = round(kwh_day * DAYS_PER_MONTH, 2)
         cost_month = round(kwh_month * tarif_per_kwh)
 
+        extra = dict(asset.extra_specs or {})
+        tdp_w = int(asset.watt or extra.get("tdp_total_w") or 0)
+        psu_min = int(
+            extra.get("psu_min_w")
+            or extra.get("psu_minimum_watt")
+            or round(tdp_w * 1.25)
+        )
+        psu_rek = int(
+            extra.get("psu_rekomendasi_w")
+            or extra.get("psu_rekomendasi_watt")
+            or max(450, ((int(tdp_w * 1.6) + 49) // 50) * 50)
+        )
+        est_kwh_item = round((tdp_w * HOURS_PER_DAY * DAYS_PER_MONTH) / 1000.0, 1)
+
+        is_backup = (
+            "BACKUP" in (asset.nama_aset or "").upper()
+            or (asset.status or "").lower() in ("backup", "cadangan", "gudang")
+            or str(extra.get("jenis", "")).lower() == "backup"
+        )
+        grup_srv = "Backup" if is_backup else "Operasional"
+        cpu_str = asset.processor or str(extra.get("cpu") or "—")
+        vga_str = asset.gpu or str(extra.get("vga") or "—")
+        hdd_str = asset.storage or str(extra.get("hdd_ssd") or "—")
+        ram_str = asset.ram or str(extra.get("ram") or "—")
+        b_level, b_badge, b_variant = _classify_load_level(tdp_w)
+
         spec_parts = [p for p in (asset.processor, asset.ram, asset.storage) if p]
         spec_summary = " / ".join(spec_parts) if spec_parts else "-"
 
@@ -86,6 +145,8 @@ class ServerPowerItem(BaseModel):
             id_aset=asset.id_aset,
             nama_aset=asset.nama_aset,
             nama_server=asset.nama_aset,
+            sub_label=f"{asset.id_aset} · {grup_srv}",
+            grup_server=grup_srv,
             kategori=asset.kategori,
             merek=asset.merek,
             model=asset.model,
@@ -97,13 +158,27 @@ class ServerPowerItem(BaseModel):
             status=asset.status,
             kondisi=asset.kondisi,
             processor=asset.processor,
+            cpu=cpu_str,
+            cpu_brand=_detect_cpu_brand(cpu_str),
+            vga=vga_str,
             motherboard=asset.motherboard,
-            ram=asset.ram,
+            ram=ram_str,
             storage=asset.storage,
+            hdd_ssd=hdd_str,
             os=asset.os,
             spesifikasi_ringkas=spec_summary,
             watt=asset.watt,
             daya_watt=asset.watt,
+            tdp_total_w=tdp_w,
+            psu_min_w=psu_min,
+            psu_rekomendasi_w=psu_rek,
+            tdp_display=f"{tdp_w} W",
+            psu_min_display=f"{psu_min} W",
+            psu_rek_display=f"{psu_rek} W",
+            kwh_display=f"~{est_kwh_item} kWh/bln",
+            beban_level=b_level,
+            beban_badge=b_badge,
+            beban_variant=b_variant,
             kwh_per_hari=kwh_day,
             kwh_per_bulan=kwh_month,
             estimasi_biaya_bulan=cost_month,
@@ -171,8 +246,22 @@ class LocationPowerSummary(BaseModel):
 
 
 class PowerUpdatePayload(BaseModel):
-    """Payload untuk memperbarui atribut daya langsung ke tabel Asset."""
+    """Payload untuk memperbarui atau menambah atribut daya langsung ke tabel Asset."""
 
+    id_aset: str | None = Field(default=None, max_length=30)
+    nama_aset: str | None = Field(default=None, max_length=150)
+    cpu: str | None = Field(default=None, max_length=150)
+    processor: str | None = Field(default=None, max_length=150)
+    vga: str | None = Field(default=None, max_length=150)
+    gpu: str | None = Field(default=None, max_length=150)
+    ram: str | None = Field(default=None, max_length=100)
+    hdd_ssd: str | None = Field(default=None, max_length=150)
+    storage: str | None = Field(default=None, max_length=150)
+    lokasi: str | None = Field(default=None, max_length=100)
+    status: str | None = Field(default=None, max_length=50)
+    tdp_total_w: int | None = Field(default=None, ge=0)
+    psu_min_w: int | None = Field(default=None, ge=0)
+    psu_rekomendasi_w: int | None = Field(default=None, ge=0)
     watt: int | None = Field(default=None, ge=0)
     kapasitas_va: int | None = Field(default=None, ge=0)
     kapasitas_watt: int | None = Field(default=None, ge=0)

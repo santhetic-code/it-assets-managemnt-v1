@@ -47,6 +47,15 @@ def resolve_canonical_type(raw_type: str) -> str:
     cleaned = raw_type.strip()
     if not cleaned:
         raise ValueError("Jenis kredensial wajib diisi")
+    fe_aliases = {
+        "website": "Aplikasi",
+        "website & aplikasi": "Aplikasi",
+        "perangkat": "Server",
+        "akun": "Email",
+        "akun online": "Email",
+    }
+    if cleaned.lower() in fe_aliases:
+        return fe_aliases[cleaned.lower()]
     for canonical in CREDENTIAL_TYPE_PERMISSIONS:
         if canonical.lower() == cleaned.lower():
             return canonical
@@ -95,6 +104,15 @@ def _normalize_location(val: str) -> str:
     return cleaned
 
 
+def _map_to_frontend_jenis(jenis_kredensial: str) -> tuple[str, str]:
+    low = (jenis_kredensial or "").lower()
+    if low in ("aplikasi", "domain / dns", "cloud / vps"):
+        return "website", "Website & Aplikasi"
+    if low in ("email", "lainnya"):
+        return "akun", "Akun Online"
+    return "perangkat", "Perangkat"
+
+
 class CredentialCreate(BaseModel):
     """Payload penambahan kredensial baru."""
 
@@ -105,9 +123,12 @@ class CredentialCreate(BaseModel):
 
     nama_layanan: str = Field(default="", max_length=150)
     nama_perangkat: str | None = Field(default=None, max_length=150)
+    induk: str | None = Field(default=None, max_length=150)
     judul: str | None = Field(default=None, max_length=150)
 
     jenis_kredensial: str = Field(default="Server", max_length=50)
+    jenis_key: str | None = Field(default=None, max_length=50)
+    jenis_label: str | None = Field(default=None, max_length=50)
     kategori: str | None = Field(default=None, max_length=50)
     tipe: str | None = Field(default=None, max_length=50)
 
@@ -116,6 +137,7 @@ class CredentialCreate(BaseModel):
 
     ip_address: str = Field(default="", max_length=80)
     host: str | None = Field(default=None, max_length=80)
+    target: str | None = Field(default=None, max_length=255)
     port: str | int = Field(default="")
     url_akses: str = Field(default="", max_length=255)
 
@@ -125,6 +147,7 @@ class CredentialCreate(BaseModel):
     secret_extra: str = Field(default="", max_length=500)
 
     level_akses: str | None = Field(default=None, max_length=40)
+    peran: str | None = Field(default=None, max_length=40)
     allowed_roles: list[str] | None = Field(default=None)
 
     status: str = Field(default="Aktif", max_length=30)
@@ -142,7 +165,9 @@ class CredentialCreate(BaseModel):
             self.kode_kredensial = self.id_kredensial.strip()
 
         if not self.nama_layanan:
-            if self.nama_perangkat:
+            if self.induk:
+                self.nama_layanan = self.induk.strip()
+            elif self.nama_perangkat:
                 self.nama_layanan = self.nama_perangkat.strip()
             elif self.judul:
                 self.nama_layanan = self.judul.strip()
@@ -150,7 +175,13 @@ class CredentialCreate(BaseModel):
         if not self.nama_layanan:
             raise ValueError("Nama layanan/perangkat wajib diisi")
 
-        raw_type = self.kategori or self.tipe or self.jenis_kredensial
+        raw_type = (
+            self.kategori
+            or self.tipe
+            or self.jenis_key
+            or self.jenis_label
+            or self.jenis_kredensial
+        )
         self.jenis_kredensial = resolve_canonical_type(raw_type)
 
         if not self.password and self.secret:
@@ -158,7 +189,13 @@ class CredentialCreate(BaseModel):
         if not self.password or not self.password.strip():
             raise ValueError("Password atau secret kredensial wajib diisi")
 
-        if not self.ip_address and self.host:
+        if self.target and not self.ip_address and not self.url_akses:
+            t_clean = self.target.strip()
+            if "http" in t_clean.lower() or "/" in t_clean:
+                self.url_akses = t_clean
+            else:
+                self.ip_address = t_clean[:80]
+        elif not self.ip_address and self.host:
             self.ip_address = self.host.strip()
         self.port = str(self.port).strip() if self.port is not None else ""
 
@@ -167,17 +204,17 @@ class CredentialCreate(BaseModel):
 
         if self.id_aset:
             cleaned_asset = self.id_aset.strip().upper()
-            self.id_aset = cleaned_asset if cleaned_asset not in ("", "-") else None
+            self.id_aset = cleaned_asset if cleaned_asset not in ("", "-", "—") else None
 
         default_roles = default_roles_for_type(self.jenis_kredensial)
         if is_admin_only_type(self.jenis_kredensial):
             self.allowed_roles = [UserRole.ADMINISTRATOR.value]
-            self.level_akses = "Administrator"
+            self.level_akses = self.peran or "Administrator"
         else:
             if self.allowed_roles is None:
                 self.allowed_roles = default_roles
             if not self.level_akses:
-                self.level_akses = (
+                self.level_akses = self.peran or (
                     "Administrator"
                     if self.allowed_roles == [UserRole.ADMINISTRATOR.value]
                     else "Member"
@@ -193,11 +230,15 @@ class CredentialUpdate(BaseModel):
 
     nama_layanan: str | None = None
     nama_perangkat: str | None = None
+    induk: str | None = None
     jenis_kredensial: str | None = None
+    jenis_key: str | None = None
+    jenis_label: str | None = None
     kategori: str | None = None
     lokasi: str | None = None
     id_aset: str | None = None
     ip_address: str | None = None
+    target: str | None = None
     port: str | int | None = None
     url_akses: str | None = None
     username: str | None = None
@@ -205,6 +246,7 @@ class CredentialUpdate(BaseModel):
     secret: str | None = None
     secret_extra: str | None = None
     level_akses: str | None = None
+    peran: str | None = None
     allowed_roles: list[str] | None = None
     status: str | None = None
     catatan: str | None = None
@@ -218,7 +260,10 @@ class CredentialPublic(BaseModel):
     id_kredensial: str
     nama_layanan: str
     nama_perangkat: str
+    induk: str = ""
     jenis_kredensial: str
+    jenis_key: str = "perangkat"
+    jenis_label: str = "Perangkat"
     kategori: str
     tipe: str
     lokasi: str
@@ -226,22 +271,27 @@ class CredentialPublic(BaseModel):
 
     ip_address: str
     host: str
+    target: str = "—"
     port: str
     url_akses: str
 
     username: str
     password: str
     secret: str
+    secret_ada: bool = True
     is_masked: bool
     has_secret_extra: bool
 
     level_akses: str
+    peran: str = ""
     allowed_roles: list[str]
     can_reveal: bool
     is_admin_only: bool
 
     status: str
+    status_variant: str = "success"
     terakhir_diubah_oleh: str
+    terakhir_diganti: str = ""
     updated_at: str
     catatan: str
     keterangan: str
@@ -260,32 +310,47 @@ class CredentialPublic(BaseModel):
         adm_only = is_admin_only_type(row.jenis_kredensial) or (
             row.allowed_roles == [UserRole.ADMINISTRATOR.value]
         )
+        j_key, j_label = _map_to_frontend_jenis(row.jenis_kredensial)
+        target_str = (
+            row.url_akses
+            or (f"{row.ip_address}:{row.port}" if row.ip_address and row.port else row.ip_address)
+            or "—"
+        )
+        st_var = "success" if (row.status or "").lower() == "aktif" else "warning"
         return cls(
             id=row.id or 0,
             kode_kredensial=row.kode_kredensial,
             id_kredensial=row.kode_kredensial,
             nama_layanan=row.nama_layanan,
             nama_perangkat=row.nama_layanan,
+            induk=row.nama_layanan,
             jenis_kredensial=row.jenis_kredensial,
+            jenis_key=j_key,
+            jenis_label=j_label,
             kategori=row.jenis_kredensial,
             tipe=row.jenis_kredensial,
             lokasi=row.lokasi,
             id_aset=row.id_aset,
             ip_address=row.ip_address or "-",
             host=row.ip_address or "-",
+            target=target_str,
             port=row.port or "-",
             url_akses=row.url_akses,
             username=row.username,
             password=MASKED_SECRET_DISPLAY,
             secret=MASKED_SECRET_DISPLAY,
+            secret_ada=bool(row.password_encrypted),
             is_masked=True,
             has_secret_extra=bool(row.secret_extra_encrypted),
             level_akses=row.level_akses,
+            peran=row.level_akses,
             allowed_roles=row.allowed_roles,
             can_reveal=can_rev,
             is_admin_only=adm_only,
             status=row.status,
+            status_variant=st_var,
             terakhir_diubah_oleh=row.terakhir_diubah_oleh,
+            terakhir_diganti=row.updated_at.date().isoformat(),
             updated_at=row.updated_at.isoformat(),
             catatan=row.catatan,
             keterangan=row.catatan,
@@ -302,6 +367,7 @@ class CredentialRevealResponse(BaseModel):
     username: str
     password: str
     secret: str
+    value: str = ""
     secret_extra: str
     revealed_by: str
 

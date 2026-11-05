@@ -112,9 +112,19 @@ def _compute_credential_summary(
         "all": total_all,
         "Khusus Admin": admin_only_count,
         "Operasional": operational_count,
+        "Website & Aplikasi": 0,
+        "Perangkat": 0,
+        "Akun Online": 0,
     }
     for r in all_rows:
         tab_counts[r.jenis_kredensial] = tab_counts.get(r.jenis_kredensial, 0) + 1
+        j_low = (r.jenis_kredensial or "").lower()
+        if j_low in ("aplikasi", "domain / dns", "cloud / vps"):
+            tab_counts["Website & Aplikasi"] += 1
+        elif j_low in ("email", "lainnya"):
+            tab_counts["Akun Online"] += 1
+        else:
+            tab_counts["Perangkat"] += 1
 
     summary: dict[str, Any] = {
         "total": total_all,
@@ -148,10 +158,14 @@ def list_credentials(
     page_params: PageParamsDep,
     search: str | None = Query(default=None),
     q: str | None = Query(default=None),
+    tab: str | None = Query(default=None),
     jenis: str | None = Query(default=None),
     kategori: str | None = Query(default=None),
     lokasi: str | None = Query(default=None),
     level_akses: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    sort_by: str | None = Query(default=None),
+    sort_dir: str | None = Query(default="asc"),
 ) -> CredentialPageResponse:
     """Mengambil daftar kredensial berhalaman (password selalu disamarkan)."""
     all_rows = list(
@@ -175,21 +189,29 @@ def list_credentials(
             if keyword in i.kode_kredensial.lower()
             or keyword in i.nama_layanan.lower()
             or keyword in i.jenis_kredensial.lower()
+            or keyword in i.jenis_label.lower()
             or keyword in i.username.lower()
             or keyword in i.ip_address.lower()
+            or keyword in i.target.lower()
             or keyword in i.lokasi.lower()
             or keyword in i.catatan.lower()
         ]
 
-    type_filter = (jenis or kategori or "").strip().lower()
-    if type_filter and type_filter not in ("semua", "all"):
-        if type_filter in ("khusus admin", "admin"):
+    active_tab = (tab or jenis or kategori or "").strip().lower()
+    if active_tab and active_tab not in ("semua", "all"):
+        if active_tab in ("khusus admin", "admin"):
             filtered = [i for i in filtered if i.is_admin_only]
-        elif type_filter == "operasional":
+        elif active_tab == "operasional":
             filtered = [i for i in filtered if not i.is_admin_only]
+        elif active_tab in ("website & aplikasi", "website"):
+            filtered = [i for i in filtered if i.jenis_key == "website"]
+        elif active_tab == "perangkat":
+            filtered = [i for i in filtered if i.jenis_key == "perangkat"]
+        elif active_tab in ("akun online", "akun"):
+            filtered = [i for i in filtered if i.jenis_key == "akun"]
         else:
             filtered = [
-                i for i in filtered if i.jenis_kredensial.lower() == type_filter
+                i for i in filtered if i.jenis_kredensial.lower() == active_tab
             ]
 
     if lokasi and lokasi.strip().lower() not in ("semua", "all", ""):
@@ -199,6 +221,18 @@ def list_credentials(
     if level_akses and level_akses.strip().lower() not in ("semua", "all", ""):
         lvl_clean = level_akses.strip().lower()
         filtered = [i for i in filtered if i.level_akses.lower() == lvl_clean]
+
+    if status_filter and status_filter.strip().lower() not in ("semua", "all", ""):
+        st_clean = status_filter.strip().lower()
+        filtered = [i for i in filtered if i.status.lower() == st_clean]
+
+    if sort_by and sort_by.strip():
+        s_key = sort_by.strip()
+        rev = (sort_dir or "asc").strip().lower() == "desc"
+        filtered.sort(
+            key=lambda i: str(getattr(i, s_key, "") or "").lower(),
+            reverse=rev,
+        )
 
     total = len(filtered)
     paged = filtered[page_params.offset : page_params.offset + page_params.page_size]
@@ -270,6 +304,7 @@ def _perform_reveal(
         username=row.username,
         password=plain_pwd,
         secret=plain_pwd,
+        value=plain_pwd,
         secret_extra=plain_extra,
         revealed_by=current_user.username,
     )
@@ -373,15 +408,29 @@ def _apply_credential_update(
     )
 
     data = payload.model_dump(exclude_unset=True)
-    if "nama_perangkat" in data and "nama_layanan" not in data:
-        data["nama_layanan"] = data.pop("nama_perangkat")
-    else:
-        data.pop("nama_perangkat", None)
+    for alias_name in ("nama_perangkat", "induk"):
+        if alias_name in data and "nama_layanan" not in data:
+            data["nama_layanan"] = data.pop(alias_name)
+        else:
+            data.pop(alias_name, None)
 
-    if "kategori" in data and "jenis_kredensial" not in data:
-        data["jenis_kredensial"] = data.pop("kategori")
+    for alias_type in ("kategori", "jenis_key", "jenis_label"):
+        if alias_type in data and "jenis_kredensial" not in data:
+            data["jenis_kredensial"] = data.pop(alias_type)
+        else:
+            data.pop(alias_type, None)
+
+    if "peran" in data and "level_akses" not in data:
+        data["level_akses"] = data.pop("peran")
     else:
-        data.pop("kategori", None)
+        data.pop("peran", None)
+
+    if "target" in data:
+        t_val = (data.pop("target") or "").strip()
+        if "http" in t_val.lower() or "/" in t_val:
+            data["url_akses"] = t_val
+        else:
+            data["ip_address"] = t_val[:80]
 
     if "jenis_kredensial" in data and data["jenis_kredensial"] is not None:
         try:

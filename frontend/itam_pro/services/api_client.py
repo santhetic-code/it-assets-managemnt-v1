@@ -163,11 +163,18 @@ class APIClient:
             await asyncio.sleep(0.08)
             return query_mock_assets(filters=filters, page=page, page_size=page_size)
 
+        clean_filters = dict(filters)
+        attr_filters = clean_filters.pop("attr_filters", None)
         params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
-            **filters,
+            **clean_filters,
         }
+        if isinstance(attr_filters, dict):
+            for k, v in attr_filters.items():
+                if v and str(v).strip() not in ("", "Semua"):
+                    params[f"attr_{k}"] = v
+
         response = await self.request(
             method="GET",
             endpoint="/api/v1/assets",
@@ -187,13 +194,24 @@ class APIClient:
             await asyncio.sleep(0.12)
             return create_mock_assets(payload=payload, count=duplicate_count)
 
+        if duplicate_count > 1:
+            response = await self.request(
+                method="POST",
+                endpoint="/api/v1/assets/bulk",
+                token=token,
+                json_data={"asset": payload, "duplicate_count": duplicate_count},
+            )
+            if isinstance(response, dict) and "items" in response:
+                return list(response["items"])
+            return [response] if isinstance(response, dict) else []
+
         response = await self.request(
             method="POST",
             endpoint="/api/v1/assets",
             token=token,
-            json_data={**payload, "duplicate_count": duplicate_count},
+            json_data=payload,
         )
-        return response  # type: ignore[return-value]
+        return [response] if isinstance(response, dict) else list(response)
 
     async def update_asset(
         self,
@@ -338,6 +356,10 @@ class APIClient:
     def get_vms_on_host_sync(self, host_asset_id: str) -> list[dict[str, str]]:
         return get_vms_on_host(host_asset_id=host_asset_id)
 
+    @property
+    def use_mock(self) -> bool:
+        return USE_MOCK
+
     async def get_purchases(
         self,
         filters: dict[str, Any],
@@ -347,7 +369,14 @@ class APIClient:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return query_purchases(filters, page, page_size)
-        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+        params: dict[str, Any] = {
+            "tab": "pembelian",
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        res = await self.request("GET", "/api/v1/purchases", params=params)
+        return res if isinstance(res, dict) else {"items": [], "total": 0, "summary": {}}
 
     async def convert_purchase_to_asset(
         self,
@@ -363,6 +392,11 @@ class APIClient:
                 payload["lokasi"],
             )
             return True
+        await self.request(
+            "POST",
+            f"/api/v1/purchases/{id_pembelian}/convert-to-asset",
+            json_data=payload,
+        )
         return True
 
     async def get_invoices(
@@ -374,7 +408,14 @@ class APIClient:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return query_invoices(filters, page, page_size)
-        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+        params: dict[str, Any] = {
+            "tab": "invoice",
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        res = await self.request("GET", "/api/v1/purchases", params=params)
+        return res if isinstance(res, dict) else {"items": [], "total": 0, "summary": {}}
 
     async def get_bills(
         self,
@@ -385,13 +426,25 @@ class APIClient:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return query_bills(filters, page, page_size)
-        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+        params: dict[str, Any] = {
+            "tab": "tagihan berulang",
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        res = await self.request("GET", "/api/v1/purchases", params=params)
+        return res if isinstance(res, dict) else {"items": [], "total": 0, "summary": {}}
 
     async def pay_bill(self, bill_id: str, tgl_bayar: str, nominal: int) -> bool:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             action_pay_bill(bill_id, tgl_bayar, nominal)
             return True
+        await self.request(
+            "POST",
+            f"/api/v1/purchases/{bill_id}/pay",
+            json_data={"tanggal_bayar": tgl_bayar, "advance_cycle": True},
+        )
         return True
 
     async def get_maintenance_plans(
@@ -403,7 +456,14 @@ class APIClient:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return query_maintenance_plans(filters, page, page_size)
-        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+        params: dict[str, Any] = {
+            "tab": "jadwal",
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        res = await self.request("GET", "/api/v1/maintenance", params=params)
+        return res if isinstance(res, dict) else {"items": [], "total": 0, "summary": {}}
 
     async def get_maintenance_logs(
         self,
@@ -414,7 +474,14 @@ class APIClient:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return query_maintenance_logs(filters, page, page_size)
-        return {"items": [], "total": 0, "page": page, "page_size": page_size}
+        params: dict[str, Any] = {
+            "tab": "riwayat",
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        res = await self.request("GET", "/api/v1/maintenance", params=params)
+        return res if isinstance(res, dict) else {"items": [], "total": 0}
 
     async def mark_maintenance_complete(
         self,
@@ -428,6 +495,17 @@ class APIClient:
             await asyncio.sleep(0.08)
             action_tandai_selesai(plan_id, tgl_selesai, hasil, catatan, pic)
             return True
+        await self.request(
+            "POST",
+            f"/api/v1/maintenance/{plan_id}/complete",
+            json_data={
+                "tanggal_selesai": tgl_selesai,
+                "hasil": hasil,
+                "tindakan": hasil,
+                "catatan": catatan,
+                "teknisi": pic,
+            },
+        )
         return True
 
     async def create_bulk_maintenance(
@@ -443,6 +521,20 @@ class APIClient:
             await asyncio.sleep(0.08)
             action_buat_jadwal_massal(kategori, kegiatan, jenis, frekuensi, tgl_mulai, pic)
             return True
+        await self.request(
+            "POST",
+            "/api/v1/maintenance/bulk",
+            json_data={
+                "kategori": kategori,
+                "judul": kegiatan,
+                "kegiatan": kegiatan,
+                "deskripsi": kegiatan,
+                "jenis": jenis,
+                "frekuensi": frekuensi,
+                "tgl_mulai": tgl_mulai,
+                "pic": pic,
+            },
+        )
         return True
 
     async def get_credentials(
@@ -471,13 +563,13 @@ class APIClient:
             elif token == "mock-token-viewer":
                 permissions = {}
             return get_filtered_credentials(permissions, filters, page, page_size)
-        return {
-            "items": [],
-            "total": 0,
+        params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
-            "tab_counts": {},
+            **filters,
         }
+        res = await self.request("GET", "/api/v1/credentials", token=token, params=params)
+        return res if isinstance(res, dict) else {"items": [], "total": 0, "tab_counts": {}}
 
     async def reveal_credential(
         self,
@@ -489,6 +581,13 @@ class APIClient:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return await reveal_mock_credential(crd_id, field_key, actor)
+        res = await self.request("POST", f"/api/v1/credentials/{crd_id}/reveal")
+        if isinstance(res, dict):
+            return {
+                **res,
+                "value": res.get("value") or res.get("password") or res.get("secret") or "",
+                "expires_in": 15,
+            }
         return {"value": "", "expires_in": 0}
 
     async def get_server_power(
@@ -501,7 +600,13 @@ class APIClient:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return query_server_power(filters=filters, page=page, page_size=page_size)
-        return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {}}
+        params: dict[str, Any] = {
+            "page": page,
+            "page_size": page_size,
+            **filters,
+        }
+        res = await self.request("GET", "/api/v1/watt-server", params=params)
+        return res if isinstance(res, dict) else {"items": [], "total": 0, "summary": {}}
 
     async def save_server_power(
         self,
@@ -512,13 +617,22 @@ class APIClient:
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return save_server_power_entry(payload=payload, asset_id=asset_id)
-        return {}
+        if asset_id and asset_id.strip():
+            res = await self.request(
+                "PUT",
+                f"/api/v1/watt-server/{asset_id.strip()}",
+                json_data=payload,
+            )
+        else:
+            res = await self.request("POST", "/api/v1/watt-server", json_data=payload)
+        return res if isinstance(res, dict) else {}
 
     async def delete_server_power(self, asset_id: str) -> bool:
         """Hapus satu entri server dari Rekap Watt Server."""
         if USE_MOCK:
             await asyncio.sleep(0.08)
             return remove_server_power_entry(asset_id=asset_id)
+        await self.request("DELETE", f"/api/v1/watt-server/{asset_id.strip()}")
         return True
 
     async def get_audit_logs(

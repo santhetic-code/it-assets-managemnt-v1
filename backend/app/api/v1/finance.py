@@ -8,7 +8,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
+from app.api.v1.assets import generate_next_asset_id
 from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
+from app.models.asset import Asset
 from app.models.base import utcnow
 from app.models.finance import Purchase
 from app.schemas.finance import (
@@ -112,13 +114,34 @@ def _compute_finance_summary(
         "Jatuh Tempo": overdue_count,
     }
 
+    reguler_items = [i for i in public_items if not i.is_recurring]
+    max_item = max(reguler_items, key=lambda i: i.total_harga, default=None)
+    belanja_terbesar_str = (
+        f"Rp {max_item.total_harga:,} ({max_item.nama_item[:20]})".replace(",", ".")
+        if max_item
+        else "Rp 0"
+    )
+    belum_dicatat_cnt = sum(1 for i in reguler_items if not i.id_aset)
+    sudah_ditautkan_cnt = sum(1 for i in public_items if i.terkait_id)
+    belum_ditautkan_cnt = sum(1 for i in public_items if not i.terkait_id)
+
     summary: dict[str, Any] = {
         "total_transaksi": total_count,
         "total_pembelian": pembelian_count,
-        "total_invoice": invoice_count,
+        "total_invoice": invoice_count or total_count,
         "total_tagihan_berulang": recurring_count,
         "total_pengeluaran": total_pengeluaran,
         "total_nilai": total_pengeluaran,
+        "total_belanja": f"Rp {total_pengeluaran:,}".replace(",", "."),
+        "belanja_terbesar": belanja_terbesar_str,
+        "belum_dicatat": belum_dicatat_cnt,
+        "sudah_ditautkan": sudah_ditautkan_cnt,
+        "belum_ditautkan": belum_ditautkan_cnt,
+        "tanpa_bukti": 0,
+        "terlambat": overdue_count,
+        "segera": due_soon_count,
+        "tagihan_aktif": recurring_count,
+        "perlu_dibayar_30d": f"Rp {biaya_bulanan_berulang:,}".replace(",", "."),
         "total_lunas": total_lunas,
         "total_belum_lunas": total_belum_lunas,
         "estimasi_tagihan_bulanan": biaya_bulanan_berulang,
@@ -142,6 +165,12 @@ def _find_purchase(session: Session, identifier: str) -> Purchase:
             )
         ).first()
     if row is None:
+        row = session.exec(
+            select(Purchase).where(
+                func.lower(col(Purchase.nomor_invoice)) == cleaned.lower()
+            )
+        ).first()
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Data pembelian/tagihan tidak ditemukan",
@@ -161,8 +190,14 @@ def list_purchases(
     kategori: str | None = Query(default=None),
     lokasi: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
+    month: str | None = Query(default=None),
+    platform: str | None = Query(default=None),
+    link_status: str | None = Query(default=None),
+    periode: str | None = Query(default=None),
     is_recurring: bool | None = Query(default=None),
     overdue_only: bool = Query(default=False),
+    sort_by: str | None = Query(default=None),
+    sort_dir: str | None = Query(default="asc"),
 ) -> PurchasePageResponse:
     """Mengambil daftar pembelian, invoice, dan tagihan berulang berhalaman."""
     all_rows = list(
@@ -175,7 +210,10 @@ def list_purchases(
     )
     today = date.today()
     tab_counts, summary = _compute_finance_summary(all_rows, today=today)
-    all_public = [PurchasePublic.from_model(r, today=today) for r in all_rows]
+    all_public = [
+        PurchasePublic.from_model(r, today=today, seq_no=idx + 1)
+        for idx, r in enumerate(all_rows)
+    ]
 
     filtered = all_public
 
@@ -186,9 +224,11 @@ def list_purchases(
             for i in filtered
             if keyword in i.kode_pembelian.lower()
             or keyword in i.nomor_invoice.lower()
+            or keyword in i.no_invoice.lower()
             or keyword in i.nama_item.lower()
             or keyword in i.vendor.lower()
             or keyword in i.kategori.lower()
+            or keyword in i.penanggung_jawab.lower()
             or keyword in i.keterangan.lower()
         ]
 
@@ -202,7 +242,9 @@ def list_purchases(
             filtered = [
                 i
                 for i in filtered
-                if i.nomor_invoice != "-" or i.jenis_transaksi.lower() == "invoice"
+                if i.nomor_invoice != "-"
+                or i.jenis_transaksi.lower() == "invoice"
+                or not i.is_recurring
             ]
         elif active_tab == "belum lunas":
             filtered = [
@@ -227,16 +269,64 @@ def list_purchases(
         loc_clean = lokasi.strip().lower()
         filtered = [i for i in filtered if i.lokasi.lower() == loc_clean]
 
+    if month and month.strip().lower() not in ("semua", "all", ""):
+        m_map = {
+            "januari": "-01-",
+            "februari": "-02-",
+            "maret": "-03-",
+            "april": "-04-",
+            "mei": "-05-",
+            "juni": "-06-",
+            "juli": "-07-",
+            "agustus": "-08-",
+            "september": "-09-",
+            "oktober": "-10-",
+            "november": "-11-",
+            "desember": "-12-",
+        }
+        m_sub = m_map.get(month.strip().lower(), month.strip())
+        filtered = [i for i in filtered if m_sub in i.tanggal_beli]
+
+    if platform and platform.strip().lower() not in ("semua", "all", ""):
+        p_clean = platform.strip().lower()
+        filtered = [i for i in filtered if i.domain_chip.lower() == p_clean]
+
+    if periode and periode.strip().lower() not in ("semua", "all", ""):
+        per_clean = periode.strip().lower()
+        filtered = [i for i in filtered if i.periode.lower() == per_clean]
+
+    if link_status and link_status.strip().lower() not in ("semua", "all", ""):
+        ls_clean = link_status.strip().lower()
+        if "sudah" in ls_clean:
+            filtered = [i for i in filtered if bool(i.terkait_id)]
+        elif "belum" in ls_clean:
+            filtered = [i for i in filtered if not i.terkait_id]
+
     if status_filter and status_filter.strip().lower() not in ("semua", "all", ""):
         st_clean = status_filter.strip().lower()
-        if st_clean in ("jatuh tempo", "overdue"):
+        if st_clean in ("jatuh tempo", "overdue", "terlambat"):
             filtered = [i for i in filtered if i.is_overdue]
+        elif st_clean == "segera":
+            filtered = [i for i in filtered if i.is_due_soon]
+        elif st_clean == "aktif":
+            filtered = [i for i in filtered if i.aktif]
         else:
             filtered = [
                 i
                 for i in filtered
                 if i.status.lower() == st_clean or i.status_efektif.lower() == st_clean
             ]
+
+    if sort_by and sort_by.strip():
+        s_key = sort_by.strip()
+        rev = (sort_dir or "asc").strip().lower() == "desc"
+        if s_key in ("harga", "pcs", "total", "nominal", "no"):
+            filtered.sort(key=lambda i: int(getattr(i, s_key, 0) or 0), reverse=rev)
+        else:
+            filtered.sort(
+                key=lambda i: str(getattr(i, s_key, "") or "").lower(),
+                reverse=rev,
+            )
 
     total = len(filtered)
     paged = filtered[page_params.offset : page_params.offset + page_params.page_size]
@@ -315,6 +405,60 @@ def create_purchase(
     return PurchasePublic.from_model(row)
 
 
+@router.post("/{identifier}/convert-to-asset")
+def convert_purchase_to_asset(
+    identifier: str,
+    payload: dict,
+    session: SessionDep,
+    _: EditorUserDep,
+) -> dict[str, Any]:
+    """Mengonversi item pembelian menjadi aset fisik di inventaris dan menautkan id_aset."""
+    row = _find_purchase(session, identifier)
+    kategori_raw = str(payload.get("kategori") or row.kategori or "PC").strip()
+    kat_map = {
+        "pc": "PC",
+        "server": "Server",
+        "monitor": "Monitor",
+        "ups": "UPS",
+        "jaringan": "Jaringan",
+    }
+    kat_final = kat_map.get(kategori_raw.lower(), "PC")
+
+    if row.id_aset:
+        return {
+            "asset_id": row.id_aset,
+            "id_aset": row.id_aset,
+            "item": PurchasePublic.from_model(row),
+        }
+
+    new_asset_id = generate_next_asset_id(session, kat_final)
+    asset = Asset(
+        id_aset=new_asset_id,
+        nama_aset=row.nama_item[:145],
+        kategori=kat_final,
+        merek="Umum",
+        model=row.nama_item[:100],
+        lokasi=row.lokasi or "Head Office (Office Blok 14)",
+        penanggung_jawab=row.penanggung_jawab or "Ridho",
+        status="Digunakan",
+        kondisi="Baru",
+        tanggal_masuk=row.tanggal_beli,
+        catatan=f"Konversi dari pembelian {row.kode_pembelian} ({row.vendor})",
+        extra_specs={"kepemilikan": "XML", "jenis": "Operasional"},
+    )
+    session.add(asset)
+    row.id_aset = new_asset_id
+    row.updated_at = utcnow()
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return {
+        "asset_id": new_asset_id,
+        "id_aset": new_asset_id,
+        "item": PurchasePublic.from_model(row),
+    }
+
+
 def _apply_purchase_update(
     identifier: str,
     payload: PurchaseUpdate,
@@ -323,10 +467,63 @@ def _apply_purchase_update(
     row = _find_purchase(session, identifier)
     data = payload.model_dump(exclude_unset=True)
 
-    if "nama_barang" in data and "nama_item" not in data:
-        data["nama_item"] = data.pop("nama_barang")
+    for alias_k in ("nama_barang", "produk", "nama"):
+        if alias_k in data and "nama_item" not in data:
+            data["nama_item"] = data.pop(alias_k)
+        else:
+            data.pop(alias_k, None)
+
+    if "no_invoice" in data and "nomor_invoice" not in data:
+        data["nomor_invoice"] = data.pop("no_invoice")
     else:
-        data.pop("nama_barang", None)
+        data.pop("no_invoice", None)
+
+    if "nama_toko" in data and "vendor" not in data:
+        data["vendor"] = data.pop("nama_toko")
+    else:
+        data.pop("nama_toko", None)
+
+    if "pcs" in data and "jumlah" not in data:
+        data["jumlah"] = data.pop("pcs")
+    else:
+        data.pop("pcs", None)
+
+    for price_k in ("harga", "nominal"):
+        if price_k in data and "harga_satuan" not in data:
+            data["harga_satuan"] = data.pop(price_k)
+        else:
+            data.pop(price_k, None)
+
+    if "total" in data and "total_harga" not in data:
+        data["total_harga"] = data.pop("total")
+    else:
+        data.pop("total", None)
+
+    if "tanggal" in data and "tanggal_beli" not in data:
+        data["tanggal_beli"] = data.pop("tanggal")
+    else:
+        data.pop("tanggal", None)
+
+    if "jatuh_tempo" in data and "tanggal_jatuh_tempo" not in data:
+        data["tanggal_jatuh_tempo"] = data.pop("jatuh_tempo")
+    else:
+        data.pop("jatuh_tempo", None)
+
+    if "periode" in data and "siklus_tagihan" not in data:
+        data["siklus_tagihan"] = data.pop("periode")
+    else:
+        data.pop("periode", None)
+
+    for pic_k in ("dibeli_oleh", "pembayar"):
+        if pic_k in data and "penanggung_jawab" not in data:
+            data["penanggung_jawab"] = data.pop(pic_k)
+        else:
+            data.pop(pic_k, None)
+
+    if "link_marketplace" in data and "keterangan" not in data:
+        data["keterangan"] = data.pop("link_marketplace")
+    else:
+        data.pop("link_marketplace", None)
 
     if "siklus_tagihan" in data and data["siklus_tagihan"] is not None:
         raw_cycle = str(data["siklus_tagihan"]).strip()

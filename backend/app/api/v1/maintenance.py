@@ -117,13 +117,25 @@ def _compute_maintenance_summary(
         "Rutin": rutin_count,
     }
 
+    segera_count = sum(
+        1
+        for i in public_items
+        if (not i.is_history) and (0 <= i.hari_menuju_jadwal <= 7)
+    )
+    tindak_lanjut_count = sum(
+        1 for i in public_items if i.hasil == "Perlu Tindak Lanjut"
+    )
+
     summary: dict[str, Any] = {
         "total": total_all,
         "total_jadwal": jadwal_aktif,
+        "aktif": jadwal_aktif,
         "terjadwal": terjadwal_count,
+        "segera": segera_count,
         "dalam_proses": proses_count,
         "terlambat": overdue_count,
         "overdue": overdue_count,
+        "tindak_lanjut": tindak_lanjut_count,
         "total_riwayat": riwayat_count,
         "selesai": selesai_count,
         "dibatalkan": batal_count,
@@ -146,9 +158,15 @@ def list_maintenances(
     kategori: str | None = Query(default=None),
     lokasi: str | None = Query(default=None),
     jenis: str | None = Query(default=None),
+    frekuensi: str | None = Query(default=None),
+    pic: str | None = Query(default=None),
+    hasil: str | None = Query(default=None),
+    month: str | None = Query(default=None),
     prioritas: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     overdue_only: bool = Query(default=False),
+    sort_by: str | None = Query(default=None),
+    sort_dir: str | None = Query(default="asc"),
 ) -> MaintenancePageResponse:
     """Mengambil daftar jadwal dan riwayat maintenance berhalaman."""
     all_rows = list(
@@ -219,16 +237,60 @@ def list_maintenances(
         p_clean = prioritas.strip().lower()
         filtered = [i for i in filtered if i.prioritas.lower() == p_clean]
 
+    if frekuensi and frekuensi.strip().lower() not in ("semua", "all", ""):
+        f_clean = VALID_BILLING_CYCLES.get(frekuensi.strip(), frekuensi.strip()).lower()
+        filtered = [i for i in filtered if i.siklus.lower() == f_clean]
+
+    if pic and pic.strip().lower() not in ("semua", "all", ""):
+        pic_clean = pic.strip().lower()
+        filtered = [i for i in filtered if pic_clean in i.teknisi.lower()]
+
+    if hasil and hasil.strip().lower() not in ("semua", "all", ""):
+        h_clean = hasil.strip().lower()
+        filtered = [i for i in filtered if i.hasil.lower() == h_clean]
+
+    if month and month.strip().lower() not in ("semua", "all", ""):
+        m_map = {
+            "januari": "-01-",
+            "februari": "-02-",
+            "maret": "-03-",
+            "april": "-04-",
+            "mei": "-05-",
+            "juni": "-06-",
+            "juli": "-07-",
+            "agustus": "-08-",
+            "september": "-09-",
+            "oktober": "-10-",
+            "november": "-11-",
+            "desember": "-12-",
+        }
+        m_sub = m_map.get(month.strip().lower(), month.strip())
+        filtered = [
+            i for i in filtered if m_sub in (i.tanggal_selesai or i.tanggal_jadwal)
+        ]
+
     if status_filter and status_filter.strip().lower() not in ("semua", "all", ""):
         st_clean = status_filter.strip().lower()
         if st_clean in ("terlambat", "overdue"):
             filtered = [i for i in filtered if i.is_overdue]
+        elif st_clean == "segera":
+            filtered = [
+                i for i in filtered if (not i.is_history) and (0 <= i.hari_menuju_jadwal <= 7)
+            ]
         else:
             filtered = [
                 i
                 for i in filtered
                 if i.status.lower() == st_clean or i.status_efektif.lower() == st_clean
             ]
+
+    if sort_by and sort_by.strip():
+        s_key = sort_by.strip()
+        rev = (sort_dir or "asc").strip().lower() == "desc"
+        filtered.sort(
+            key=lambda i: str(getattr(i, s_key, "") or "").lower(),
+            reverse=rev,
+        )
 
     total = len(filtered)
     paged = filtered[page_params.offset : page_params.offset + page_params.page_size]
@@ -497,13 +559,24 @@ def complete_maintenance(
     row.tanggal_selesai = done_date
     if req.tindakan is not None:
         row.tindakan = req.tindakan.strip()
+    elif req.hasil is not None:
+        row.tindakan = req.hasil.strip()
+
     if req.teknisi is not None:
         row.teknisi = req.teknisi.strip()
+    elif req.pic is not None:
+        row.teknisi = req.pic.strip()
+    elif req.dikerjakan_oleh is not None:
+        row.teknisi = req.dikerjakan_oleh.strip()
+
     if req.biaya is not None:
         row.biaya = req.biaya
     if req.catatan is not None:
         row.catatan = req.catatan.strip()
-    row.kondisi_setelah = req.kondisi_setelah
+    if req.hasil and "tindak lanjut" in req.hasil.lower():
+        row.kondisi_setelah = "Perlu Pengecekan"
+    else:
+        row.kondisi_setelah = req.kondisi_setelah
     row.updated_at = utcnow()
     session.add(row)
 

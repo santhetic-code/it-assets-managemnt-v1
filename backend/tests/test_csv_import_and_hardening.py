@@ -220,7 +220,10 @@ def test_location_disambiguation_and_full_contract_after_csv_import(
         "/api/v1/assets",
         "/api/v1/watt-server",
         "/api/v1/ip-allocations",
+        "/api/v1/ip-entries",
         "/api/v1/purchases",
+        "/api/v1/maintenance",
+        "/api/v1/credentials",
         "/api/v1/audit-logs",
     ):
         res = client.get(path, headers=admin_h)
@@ -230,5 +233,83 @@ def test_location_disambiguation_and_full_contract_after_csv_import(
         assert "total" in payload
         assert "tab_counts" in payload
         assert "summary" in payload
+
+    # 3. Verifikasi kontrak Inventory (Semua Aset, PC, Monitor, UPS) & category_counts
+    assets_all = client.get("/api/v1/assets", headers=admin_h).json()
+    assert "category_counts" in assets_all
+    assert assets_all["category_counts"]["all"] == 77
+    assert assets_all["category_counts"]["pc"] == 49  # 33 PC + 16 Server
+    assert assets_all["category_counts"]["monitor"] == 4
+    assert assets_all["category_counts"]["ups"] == 24
+
+    pc_op = client.get(
+        "/api/v1/assets?slug=pc&tab=Operasional", headers=admin_h
+    ).json()
+    assert pc_op["total"] == 33
+    assert pc_op["tab_counts"]["Operasional"] == 33
+    assert pc_op["tab_counts"]["Server"] == 11
+    assert pc_op["tab_counts"]["Backup"] == 5
+    assert "attributes" in pc_op["items"][0]
+    assert "sn_pid" in pc_op["items"][0]
+
+    # 4. Verifikasi kontrak Dashboard (/api/v1/dashboard/summary)
+    dash = client.get("/api/v1/dashboard/summary", headers=admin_h)
+    assert dash.status_code == 200
+    dash_data = dash.json()
+    assert "kpis" in dash_data
+    assert dash_data["kpis"]["total_assets"] == 77
+    assert len(dash_data["monthly_purchases"]) == 6
+    assert len(dash_data["assets_by_category"]) == 3
+    assert len(dash_data["ups_loads"]) > 0
+
+    # 5. Verifikasi kontrak IP & Server (VM) (/api/v1/ip-entries)
+    ip_res = client.get("/api/v1/ip-entries?grup=Semua", headers=admin_h).json()
+    assert ip_res["kpi"]["total_ip"] == 59
+    assert ip_res["kpi"]["operasional"] == 47
+    assert ip_res["kpi"]["addon"] == 12
+    assert ip_res["kpi"]["vm_tanpa_host"] == 0
+    assert "192.168.1.0/24" in ip_res["subnet_options"]
+    first_ip = ip_res["items"][0]
+    for k in ("nama", "jenis", "asset_id", "host_asset_id", "grup", "fungsi", "host_label"):
+        assert k in first_ip
+
+    # 6. Verifikasi kontrak Rekap Watt Server (/api/v1/watt-server)
+    watt_res = client.get("/api/v1/watt-server?tab=Semua", headers=admin_h).json()
+    assert watt_res["summary"]["total_servers"] == 16
+    assert watt_res["tab_counts"]["Operasional"] == 11
+    assert watt_res["tab_counts"]["Backup"] == 5
+    first_watt = watt_res["items"][0]
+    watt_keys = (
+        "cpu",
+        "cpu_brand",
+        "vga",
+        "hdd_ssd",
+        "tdp_display",
+        "psu_min_display",
+        "beban_badge",
+    )
+    for k in watt_keys:
+        assert k in first_watt
+
+    # 7. Verifikasi kontrak Pembelian, Maintenance, & Credentials
+    po_res = client.get("/api/v1/purchases?tab=pembelian", headers=admin_h).json()
+    assert po_res["total"] == 41
+    assert "total_belanja" in po_res["summary"]
+    first_po = po_res["items"][0]
+    for k in ("produk", "harga", "pcs", "total", "nama_toko", "domain_chip", "aset_status"):
+        assert k in first_po
+
+    mnt_res = client.get("/api/v1/maintenance?tab=jadwal", headers=admin_h).json()
+    assert mnt_res["total"] >= 3
+    assert "objek_display" in mnt_res["items"][0]
+    assert "jadwal_berikutnya" in mnt_res["items"][0]
+
+    crd_res = client.get("/api/v1/credentials", headers=admin_h).json()
+    assert crd_res["total"] >= 6
+    assert "jenis_label" in crd_res["items"][0]
+    assert "induk" in crd_res["items"][0]
+    rev_res = client.post("/api/v1/credentials/CRD-001/reveal", headers=admin_h).json()
+    assert rev_res["value"] != ""
+
 
 

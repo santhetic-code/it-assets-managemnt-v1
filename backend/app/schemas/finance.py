@@ -28,12 +28,16 @@ VALID_BILLING_CYCLES = {
     "Bulanan": "Bulanan",
     "bulanan": "Bulanan",
     "monthly": "Bulanan",
+    "1 bulan": "Bulanan",
     "Triwulan": "Triwulan",
     "triwulan": "Triwulan",
     "quarterly": "Triwulan",
+    "3 bulan": "Triwulan",
+    "6 bulan": "Triwulan",
     "Tahunan": "Tahunan",
     "tahunan": "Tahunan",
     "yearly": "Tahunan",
+    "1 tahun": "Tahunan",
 }
 
 
@@ -84,19 +88,25 @@ class PurchaseCreate(BaseModel):
 
     nama_item: str = Field(default="", max_length=150)
     nama_barang: str | None = Field(default=None, max_length=150)
+    produk: str | None = Field(default=None, max_length=150)
+    nama: str | None = Field(default=None, max_length=150)
     deskripsi: str | None = Field(default=None, max_length=150)
     kategori: str = Field(default="PC", max_length=50)
     jenis_transaksi: str = Field(default="Pembelian", max_length=40)
     vendor: str = Field(default="", max_length=120)
     toko: str | None = Field(default=None, max_length=120)
+    nama_toko: str | None = Field(default=None, max_length=120)
     lokasi: str = Field(default="Head Office (Office Blok 14)", max_length=100)
 
     jumlah: int = Field(default=1, ge=1)
     qty: int | None = Field(default=None, ge=1)
+    pcs: int | None = Field(default=None, ge=1)
     satuan: str = Field(default="Unit", max_length=30)
     harga_satuan: int = Field(default=0, ge=0)
     harga: int | None = Field(default=None, ge=0)
+    nominal: int | None = Field(default=None, ge=0)
     total_harga: int | None = Field(default=None, ge=0)
+    total: int | None = Field(default=None, ge=0)
 
     tanggal_beli: date | None = Field(default=None)
     tanggal: date | None = Field(default=None)
@@ -113,7 +123,10 @@ class PurchaseCreate(BaseModel):
 
     id_aset: str | None = Field(default=None, max_length=30)
     penanggung_jawab: str = Field(default="", max_length=100)
+    dibeli_oleh: str | None = Field(default=None, max_length=100)
+    pembayar: str | None = Field(default=None, max_length=100)
     keterangan: str = Field(default="", max_length=500)
+    link_marketplace: str | None = Field(default=None, max_length=500)
     catatan: str | None = Field(default=None, max_length=500)
 
     @field_validator("lokasi")
@@ -130,7 +143,11 @@ class PurchaseCreate(BaseModel):
             self.nomor_invoice = self.no_invoice.strip()
 
         if not self.nama_item:
-            if self.nama_barang:
+            if self.produk:
+                self.nama_item = self.produk.strip()
+            elif self.nama:
+                self.nama_item = self.nama.strip()
+            elif self.nama_barang:
                 self.nama_item = self.nama_barang.strip()
             elif self.deskripsi:
                 self.nama_item = self.deskripsi.strip()
@@ -138,16 +155,25 @@ class PurchaseCreate(BaseModel):
         if not self.nama_item:
             raise ValueError("Nama barang/item wajib diisi")
 
-        if not self.vendor and self.toko:
-            self.vendor = self.toko.strip()
+        if not self.vendor:
+            if self.nama_toko:
+                self.vendor = self.nama_toko.strip()
+            elif self.toko:
+                self.vendor = self.toko.strip()
         self.vendor = self.vendor.strip()
 
-        if self.qty is not None and self.jumlah == 1:
+        if self.pcs is not None and self.jumlah == 1:
+            self.jumlah = self.pcs
+        elif self.qty is not None and self.jumlah == 1:
             self.jumlah = self.qty
         if self.harga is not None and self.harga_satuan == 0:
             self.harga_satuan = self.harga
+        elif self.nominal is not None and self.harga_satuan == 0:
+            self.harga_satuan = self.nominal
 
-        if self.total_harga is None or self.total_harga == 0:
+        if self.total is not None and (self.total_harga is None or self.total_harga == 0):
+            self.total_harga = self.total
+        elif self.total_harga is None or self.total_harga == 0:
             self.total_harga = self.jumlah * self.harga_satuan
 
         if self.tanggal_beli is None:
@@ -190,12 +216,21 @@ class PurchaseCreate(BaseModel):
         if self.status == "Lunas" and self.tanggal_bayar is None and not self.is_recurring:
             self.tanggal_bayar = self.tanggal_beli
 
-        if not self.keterangan and self.catatan:
-            self.keterangan = self.catatan.strip()
+        if not self.penanggung_jawab:
+            if self.dibeli_oleh:
+                self.penanggung_jawab = self.dibeli_oleh.strip()
+            elif self.pembayar:
+                self.penanggung_jawab = self.pembayar.strip()
+
+        if not self.keterangan:
+            if self.link_marketplace:
+                self.keterangan = self.link_marketplace.strip()
+            elif self.catatan:
+                self.keterangan = self.catatan.strip()
 
         if self.id_aset:
             cleaned_id = self.id_aset.strip().upper()
-            self.id_aset = cleaned_id if cleaned_id not in ("", "-") else None
+            self.id_aset = cleaned_id if cleaned_id not in ("", "-", "—") else None
 
         return self
 
@@ -206,26 +241,40 @@ class PurchaseUpdate(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     nomor_invoice: str | None = None
+    no_invoice: str | None = None
     nama_item: str | None = None
     nama_barang: str | None = None
+    produk: str | None = None
+    nama: str | None = None
     kategori: str | None = None
     jenis_transaksi: str | None = None
     vendor: str | None = None
+    nama_toko: str | None = None
     lokasi: str | None = None
     jumlah: int | None = Field(default=None, ge=1)
+    pcs: int | None = Field(default=None, ge=1)
     satuan: str | None = None
     harga_satuan: int | None = Field(default=None, ge=0)
+    harga: int | None = Field(default=None, ge=0)
+    nominal: int | None = Field(default=None, ge=0)
     total_harga: int | None = Field(default=None, ge=0)
+    total: int | None = Field(default=None, ge=0)
     tanggal_beli: date | None = None
+    tanggal: date | None = None
     tanggal_jatuh_tempo: date | None = None
+    jatuh_tempo: date | None = None
     tanggal_bayar: date | None = None
     status: str | None = None
     metode_pembayaran: str | None = None
     is_recurring: bool | None = None
     siklus_tagihan: str | None = None
+    periode: str | None = None
     id_aset: str | None = None
     penanggung_jawab: str | None = None
+    dibeli_oleh: str | None = None
+    pembayar: str | None = None
     keterangan: str | None = None
+    link_marketplace: str | None = None
 
 
 class MarkPaidRequest(BaseModel):
@@ -236,51 +285,92 @@ class MarkPaidRequest(BaseModel):
     advance_cycle: bool = True
 
 
+def _extract_domain_chip(raw_url: str) -> str:
+    low = (raw_url or "").lower()
+    if "tokopedia" in low:
+        return "Tokopedia"
+    if "shopee" in low:
+        return "Shopee"
+    if "blibli" in low:
+        return "Blibli"
+    if "http" in low:
+        return "Web"
+    return "Offline"
+
+
 class PurchasePublic(BaseModel):
     """Representasi JSON item Pembelian / Invoice / Tagihan Berulang untuk frontend."""
 
     id: int
+    no: int = 1
     kode_pembelian: str
     id_pembelian: str
     nomor_invoice: str
     no_invoice: str
     nama_item: str
     nama_barang: str
+    produk: str = ""
+    nama: str = ""
     kategori: str
     jenis_transaksi: str
     vendor: str
     toko: str
+    nama_toko: str = ""
     lokasi: str
 
     jumlah: int
     qty: int
+    pcs: int = 1
     satuan: str
     harga_satuan: int
+    harga: int = 0
+    nominal: int = 0
     total_harga: int
+    total: int = 0
+    total_display: str = ""
+    nominal_display: str = ""
 
     tanggal_beli: str
     tanggal: str
     tanggal_jatuh_tempo: str | None
+    jatuh_tempo: str = ""
     tanggal_bayar: str | None
 
     status: str
     status_efektif: str
+    status_label: str = ""
+    status_variant: str = "info"
     is_overdue: bool
     is_due_soon: bool
     hari_menuju_jatuh_tempo: int | None
+    pengingat_hari: int = 7
+    pengingat_display: str = "H-7"
 
     metode_pembayaran: str
     is_recurring: bool
+    aktif: bool = True
     siklus_tagihan: str
+    periode: str = "Sekali"
     id_aset: str | None
+    aset_status: str = "Belum Dicatat"
     penanggung_jawab: str
+    dibeli_oleh: str = "Ridho"
+    pembayar: str = "Finance"
     keterangan: str
+    link_marketplace: str = ""
+    domain_chip: str = "Offline"
+
+    berkas: str = "Ada PDF"
+    terkait_tipe: str = "pembelian"
+    terkait_id: str = ""
+    terkait_label: str = "Belum Ditautkan"
 
     @classmethod
     def from_model(
         cls,
         row: Purchase,
         today: date | None = None,
+        seq_no: int | None = None,
     ) -> "PurchasePublic":
         ref_today = today or date.today()
         due = row.tanggal_jatuh_tempo
@@ -298,40 +388,86 @@ class PurchasePublic(BaseModel):
 
         effective_status = "Jatuh Tempo" if is_overdue else row.status
         tgl_beli = row.tanggal_beli.isoformat()
+        due_str = due.isoformat() if due else tgl_beli
+
+        if is_overdue:
+            st_lbl = f"Terlambat ({abs(days_left or 0)}h)"
+            st_var = "danger"
+        elif is_due_soon:
+            st_lbl = f"Segera (H-{days_left or 0})"
+            st_var = "warning"
+        elif row.status.lower() == "lunas":
+            st_lbl = "Lunas"
+            st_var = "success"
+        else:
+            st_lbl = "Aktif" if row.is_recurring else row.status
+            st_var = "info"
+
+        total_rp = f"Rp {row.total_harga:,}".replace(",", ".")
+        link_val = row.keterangan if "http" in (row.keterangan or "").lower() else ""
+        domain_val = _extract_domain_chip(link_val)
+        aset_st = row.id_aset if row.id_aset else "Belum Dicatat"
+        inv_code = row.nomor_invoice if row.nomor_invoice else f"INV-{row.kode_pembelian}"
 
         return cls(
             id=row.id or 0,
+            no=seq_no or (row.id or 1),
             kode_pembelian=row.kode_pembelian,
             id_pembelian=row.kode_pembelian,
             nomor_invoice=row.nomor_invoice or "-",
-            no_invoice=row.nomor_invoice or "-",
+            no_invoice=inv_code,
             nama_item=row.nama_item,
             nama_barang=row.nama_item,
+            produk=row.nama_item,
+            nama=row.nama_item,
             kategori=row.kategori,
             jenis_transaksi=row.jenis_transaksi,
             vendor=row.vendor or "-",
             toko=row.vendor or "-",
+            nama_toko=row.vendor or "-",
             lokasi=row.lokasi,
             jumlah=row.jumlah,
             qty=row.jumlah,
+            pcs=row.jumlah,
             satuan=row.satuan,
             harga_satuan=row.harga_satuan,
+            harga=row.harga_satuan,
+            nominal=row.total_harga,
             total_harga=row.total_harga,
+            total=row.total_harga,
+            total_display=total_rp,
+            nominal_display=total_rp,
             tanggal_beli=tgl_beli,
             tanggal=tgl_beli,
             tanggal_jatuh_tempo=due.isoformat() if due else None,
+            jatuh_tempo=due_str,
             tanggal_bayar=row.tanggal_bayar.isoformat() if row.tanggal_bayar else None,
             status=row.status,
             status_efektif=effective_status,
+            status_label=st_lbl,
+            status_variant=st_var,
             is_overdue=is_overdue,
             is_due_soon=is_due_soon,
             hari_menuju_jatuh_tempo=days_left,
+            pengingat_hari=7,
+            pengingat_display="H-7",
             metode_pembayaran=row.metode_pembayaran,
             is_recurring=row.is_recurring,
+            aktif=row.status.lower() != "dibatalkan",
             siklus_tagihan=row.siklus_tagihan,
+            periode=row.siklus_tagihan,
             id_aset=row.id_aset,
-            penanggung_jawab=row.penanggung_jawab,
+            aset_status=aset_st,
+            penanggung_jawab=row.penanggung_jawab or "Ridho",
+            dibeli_oleh=row.penanggung_jawab or "Ridho",
+            pembayar=row.penanggung_jawab or "Finance",
             keterangan=row.keterangan,
+            link_marketplace=link_val,
+            domain_chip=domain_val,
+            berkas="Ada PDF",
+            terkait_tipe="tagihan" if row.is_recurring else "pembelian",
+            terkait_id=row.kode_pembelian,
+            terkait_label=f"{row.kode_pembelian} · {row.nama_item[:24]}",
         )
 
 

@@ -3,6 +3,8 @@ from typing import Any
 
 import reflex as rx
 
+from itam_pro.config import USE_MOCK
+from itam_pro.services.api_client import api_client
 from itam_pro.services.mock.audit_mock import query_audit_logs
 
 
@@ -44,12 +46,7 @@ class AuditState(rx.State):
     def result_count_label(self) -> str:
         return f"{self.total_items} catatan"
 
-    @rx.event
-    def load_page(self) -> None:
-        self.fetch_logs()
-
-    @rx.event
-    def fetch_logs(self) -> None:
+    def _sync_mock_logs(self) -> None:
         res = query_audit_logs(
             filters={"search": self.search_query, "module": self.module_filter},
             page=self.page,
@@ -59,41 +56,92 @@ class AuditState(rx.State):
         self.total_items = res["total"]
 
     @rx.event
-    def set_search_query(self, val: str) -> None:
+    async def load_page(self) -> None:
+        await self.fetch_logs()
+
+    @rx.event
+    async def fetch_logs(self) -> None:
+        if USE_MOCK:
+            self._sync_mock_logs()
+            return
+
+        mod_map = {
+            "credential": "Kredensial",
+            "asset": "Aset",
+            "finance": "Keuangan",
+            "maintenance": "Maintenance",
+            "user": "Pengguna",
+        }
+        mod_val = mod_map.get(self.module_filter.lower(), self.module_filter)
+        try:
+            res = await api_client.get_audit_logs(
+                filters={"search": self.search_query, "modul": mod_val},
+                page=self.page,
+                page_size=self.page_size,
+            )
+            self.logs = list(res.get("items", []))
+            self.total_items = int(res.get("total", len(self.logs)))
+        except Exception:
+            self.logs = []
+            self.total_items = 0
+
+    @rx.event
+    def set_search_query(self, val: str) -> Any:
         self.search_query = val
         self.page = 1
-        self.fetch_logs()
+        if USE_MOCK:
+            self._sync_mock_logs()
+            return None
+        return AuditState.fetch_logs
 
     @rx.event
-    def set_module_filter(self, val: str) -> None:
+    def set_module_filter(self, val: str) -> Any:
         self.module_filter = val
         self.page = 1
-        self.fetch_logs()
+        if USE_MOCK:
+            self._sync_mock_logs()
+            return None
+        return AuditState.fetch_logs
 
     @rx.event
-    def reset_filters(self) -> None:
+    def reset_filters(self) -> Any:
         self.search_query = ""
         self.module_filter = ""
         self.page = 1
-        self.fetch_logs()
+        if USE_MOCK:
+            self._sync_mock_logs()
+            return None
+        return AuditState.fetch_logs
 
     @rx.event
-    def prev_page(self) -> None:
+    def prev_page(self) -> Any:
         if self.page > 1:
             self.page -= 1
-            self.fetch_logs()
+            if USE_MOCK:
+                self._sync_mock_logs()
+                return None
+            return AuditState.fetch_logs
+        return None
 
     @rx.event
-    def next_page(self) -> None:
+    def next_page(self) -> Any:
         if self.page < self.total_pages:
             self.page += 1
-            self.fetch_logs()
+            if USE_MOCK:
+                self._sync_mock_logs()
+                return None
+            return AuditState.fetch_logs
+        return None
 
     @rx.event
-    def select_page(self, token: str) -> None:
+    def select_page(self, token: str) -> Any:
         if token.isdigit():
             self.page = int(token)
-            self.fetch_logs()
+            if USE_MOCK:
+                self._sync_mock_logs()
+                return None
+            return AuditState.fetch_logs
+        return None
 
 
 __all__ = ["AuditState"]

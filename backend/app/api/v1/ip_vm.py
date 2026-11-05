@@ -132,6 +132,8 @@ def _build_counts_and_summary(
         "all": total,
         "Fisik": fisik_count,
         "VM": vm_count,
+        "Operasional": fisik_count,
+        "Addon (VM)": vm_count,
         "Konflik": konflik_count,
         "VM Tanpa Host": orphan_count,
     }
@@ -145,7 +147,10 @@ def _build_counts_and_summary(
         "total_vm": vm_count,
         "vm": vm_count,
         "fisik": fisik_count,
+        "operasional": fisik_count,
+        "addon": vm_count,
         "konflik": konflik_count,
+        "bentrok": konflik_count,
         "vm_tanpa_host": orphan_count,
         "orphan_vm": orphan_count,
     }
@@ -160,10 +165,18 @@ def list_ip_allocations(
     search: str | None = Query(default=None),
     q: str | None = Query(default=None),
     tipe: str | None = Query(default=None),
+    jenis: str | None = Query(default=None),
+    grup: str | None = Query(default=None),
+    host: str | None = Query(default=None),
+    subnet: str | None = Query(default=None),
     lokasi: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     only_vm: bool | None = Query(default=None),
     orphan_only: bool = Query(default=False),
+    only_orphan_vm: bool = Query(default=False),
+    only_conflict: bool = Query(default=False),
+    sort_by: str | None = Query(default=None),
+    sort_dir: str | None = Query(default="asc"),
 ) -> IPAllocationPageResponse:
     """Mengambil daftar alokasi IP & VM yang diurutkan secara numerik berdasarkan IPv4."""
     all_rows = session.exec(select(IPAllocation)).all()
@@ -181,6 +194,9 @@ def list_ip_allocations(
                 col(IPAllocation.nama_perangkat).ilike(pattern),
                 col(IPAllocation.hostname).ilike(pattern),
                 col(IPAllocation.host_name).ilike(pattern),
+                col(IPAllocation.id_aset).ilike(pattern),
+                col(IPAllocation.id_aset_host).ilike(pattern),
+                col(IPAllocation.os).ilike(pattern),
                 col(IPAllocation.pengguna).ilike(pattern),
                 col(IPAllocation.keterangan).ilike(pattern),
             )
@@ -192,15 +208,7 @@ def list_ip_allocations(
     if status_filter and status_filter.strip().lower() not in ("semua", "all", ""):
         st_clean = status_filter.strip().lower()
         if st_clean == "konflik":
-            if conflict_ips:
-                stmt = stmt.where(
-                    or_(
-                        col(IPAllocation.ip_address).in_(conflict_ips),
-                        func.lower(IPAllocation.status) == "konflik",
-                    )
-                )
-            else:
-                stmt = stmt.where(func.lower(IPAllocation.status) == "konflik")
+            only_conflict = True
         else:
             stmt = stmt.where(func.lower(IPAllocation.status) == st_clean)
 
@@ -209,8 +217,9 @@ def list_ip_allocations(
     elif only_vm is False:
         stmt = stmt.where(col(IPAllocation.is_vm).is_(False))
 
-    if tipe and tipe.strip().lower() not in ("semua", "all", ""):
-        t_clean = tipe.strip().lower()
+    effective_tipe = (tipe or jenis or "").strip()
+    if effective_tipe and effective_tipe.lower() not in ("semua", "all", ""):
+        t_clean = effective_tipe.lower()
         if t_clean == "vm":
             stmt = stmt.where(col(IPAllocation.is_vm).is_(True))
         elif t_clean == "fisik":
@@ -218,39 +227,118 @@ def list_ip_allocations(
         elif t_clean in ("vm tanpa host", "orphan", "orphan_vm"):
             orphan_only = True
         elif t_clean == "konflik":
+            only_conflict = True
+        else:
+            stmt = stmt.where(func.lower(IPAllocation.tipe) == t_clean)
+
+    if grup and grup.strip().lower() not in ("semua", "all", ""):
+        g_clean = grup.strip().lower()
+        if "vm" in g_clean or "addon" in g_clean:
+            stmt = stmt.where(col(IPAllocation.is_vm).is_(True))
+        elif "operasional" in g_clean or "fisik" in g_clean:
+            stmt = stmt.where(col(IPAllocation.is_vm).is_(False))
+
+    if host and host.strip().lower() not in ("semua", "all", ""):
+        h_clean = host.strip()
+        h_code = h_clean.split(" ")[0].strip().upper()
+        stmt = stmt.where(
+            or_(
+                func.upper(IPAllocation.id_aset_host) == h_code,
+                col(IPAllocation.host_name).ilike(f"%{h_clean}%"),
+            )
+        )
+
+    if only_conflict:
+        if conflict_ips:
             stmt = stmt.where(
                 or_(
-                    col(IPAllocation.ip_address).in_(conflict_ips) if conflict_ips else False,
+                    col(IPAllocation.ip_address).in_(conflict_ips),
                     func.lower(IPAllocation.status) == "konflik",
                 )
             )
         else:
-            stmt = stmt.where(func.lower(IPAllocation.tipe) == t_clean)
+            stmt = stmt.where(func.lower(IPAllocation.status) == "konflik")
 
-    if orphan_only:
+    if orphan_only or only_orphan_vm:
         if orphan_ids:
             stmt = stmt.where(col(IPAllocation.id).in_(orphan_ids))
         else:
             stmt = stmt.where(IPAllocation.id == -1)
 
-    count_stmt = select(func.count()).select_from(stmt.subquery())
-    total = session.exec(count_stmt).one()
-
-    # Pengurutan wajib numerik berdasarkan ip_int ASC
-    rows = session.exec(
+    matched_rows = session.exec(
         stmt.order_by(col(IPAllocation.ip_int).asc(), col(IPAllocation.id).asc())
-        .offset(page_params.offset)
-        .limit(page_params.page_size)
     ).all()
 
-    items = [
+    all_matching_items = [
         IPAllocationPublic.from_model(
             r,
             is_orphan=(r.id in orphan_ids),
             is_conflict=(r.ip_address in conflict_ips or r.status.lower() == "konflik"),
         )
-        for r in rows
+        for r in matched_rows
     ]
+
+    if subnet and subnet.strip().lower() not in ("semua", "all", ""):
+        sub_clean = subnet.strip().lower()
+        all_matching_items = [
+            it for it in all_matching_items if it.subnet.lower() == sub_clean
+        ]
+
+    if sort_by and sort_by.strip():
+        s_key = sort_by.strip()
+        rev = (sort_dir or "asc").strip().lower() == "desc"
+        if s_key == "ip_address":
+            all_matching_items.sort(key=lambda it: it.ip_int, reverse=rev)
+        else:
+            all_matching_items.sort(
+                key=lambda it: str(getattr(it, s_key, "") or "").lower(),
+                reverse=rev,
+            )
+
+    total = len(all_matching_items)
+    items = all_matching_items[page_params.offset : page_params.offset + page_params.page_size]
+
+    all_public_for_opts = [
+        IPAllocationPublic.from_model(
+            r,
+            is_orphan=(r.id in orphan_ids),
+            is_conflict=(r.ip_address in conflict_ips or r.status.lower() == "konflik"),
+        )
+        for r in all_rows
+    ]
+    subnet_set = sorted({it.subnet for it in all_public_for_opts if it.subnet})
+    subnet_options = ["Semua", *subnet_set]
+
+    srv_assets = session.exec(
+        select(Asset)
+        .where(col(Asset.kategori).in_(["Server", "PC"]))
+        .order_by(col(Asset.id_aset).asc())
+    ).all()
+    server_only_assets = [a for a in srv_assets if a.kategori.lower() == "server"]
+    host_options = ["Semua"] + [
+        f"{a.id_aset} ({a.nama_aset})" for a in server_only_assets
+    ]
+    server_asset_ids = ["—"] + [a.id_aset for a in srv_assets]
+    os_set = sorted(
+        {
+            r.os.strip()
+            for r in all_rows
+            if r.os and r.os.strip() and r.os.strip() not in ("-", "—")
+        }
+    )
+
+    conflict_banner = ""
+    if conflict_ips:
+        conflict_list = ", ".join(sorted(conflict_ips))
+        conflict_banner = f"Terdeteksi bentrok alamat IP pada: {conflict_list}"
+
+    kpi_fe = {
+        "total_ip": summary["total_ip"],
+        "operasional": summary["operasional"],
+        "addon": summary["addon"],
+        "bentrok": summary["bentrok"],
+        "vm_tanpa_host": summary["vm_tanpa_host"],
+    }
 
     return IPAllocationPageResponse(
         items=items,
@@ -259,6 +347,12 @@ def list_ip_allocations(
         page_size=page_params.page_size,
         tab_counts=tab_counts,
         summary=summary,
+        kpi=kpi_fe,
+        conflict_banner=conflict_banner,
+        subnet_options=subnet_options,
+        host_options=host_options,
+        server_asset_ids=server_asset_ids,
+        os_suggestions=os_set,
     )
 
 
@@ -347,6 +441,40 @@ def _apply_ip_update(
         )
 
     data = payload.model_dump(exclude_unset=True)
+    if "nama" in data and "nama_perangkat" not in data:
+        data["nama_perangkat"] = data.pop("nama") or ""
+    else:
+        data.pop("nama", None)
+
+    if "jenis" in data and "tipe" not in data:
+        data["tipe"] = data.pop("jenis") or "Fisik"
+        data["is_vm"] = data["tipe"].strip().upper() == "VM"
+    else:
+        data.pop("jenis", None)
+
+    if "grup" in data:
+        g_val = (data.pop("grup") or "").lower()
+        if "vm" in g_val and "is_vm" not in data:
+            data["is_vm"] = True
+            data["tipe"] = "VM"
+
+    if "asset_id" in data and "id_aset" not in data:
+        aid = (data.pop("asset_id") or "").strip().upper()
+        data["id_aset"] = aid if aid not in ("", "-", "—") else None
+    else:
+        data.pop("asset_id", None)
+
+    if "host_asset_id" in data and "id_aset_host" not in data:
+        haid = (data.pop("host_asset_id") or "").strip().upper()
+        data["id_aset_host"] = haid if haid not in ("", "-", "—") else None
+    else:
+        data.pop("host_asset_id", None)
+
+    if "fungsi" in data and "keterangan" not in data:
+        data["keterangan"] = data.pop("fungsi") or ""
+    else:
+        data.pop("fungsi", None)
+
     if "host" in data and "host_name" not in data:
         data["host_name"] = data.pop("host") or ""
     else:

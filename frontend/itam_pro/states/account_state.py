@@ -4,6 +4,8 @@ from typing import Any
 
 import reflex as rx
 
+from itam_pro.config import USE_MOCK
+from itam_pro.services.api_client import api_client
 from itam_pro.services.mock.audit_mock import record_audit_event
 from itam_pro.services.mock.auth_mock import MOCK_USERS
 from itam_pro.services.router_utils import get_current_params
@@ -52,9 +54,30 @@ class AccountState(rx.State):
         self.profile_error = ""
         self.pwd_msg = ""
         self.pwd_error = ""
-        self._refresh_users()
+        await self._refresh_users()
 
-    def _refresh_users(self) -> None:
+    async def _refresh_users(self) -> None:
+        if not USE_MOCK:
+            try:
+                res = await api_client.get_users(page=1, page_size=50)
+                items = list(res.get("items", []))
+                self.users_list = [
+                    {
+                        "id": str(u.get("id", u.get("username", ""))),
+                        "username": str(u.get("username", "")),
+                        "full_name": str(u.get("full_name", "")),
+                        "role": str(u.get("role", "Member")),
+                        "status": str(
+                            u.get("status")
+                            or ("Aktif" if u.get("is_active", True) else "Nonaktif")
+                        ),
+                    }
+                    for u in items
+                ]
+                return
+            except Exception:
+                pass
+
         rows: list[dict[str, Any]] = []
         for uname, rec in MOCK_USERS.items():
             u = rec["user"]
@@ -121,7 +144,7 @@ class AccountState(rx.State):
         self.new_password = ""
         self.confirm_password = ""
 
-        if not rec or rec.get("password") != cur_pw:
+        if USE_MOCK and (not rec or rec.get("password") != cur_pw):
             self.pwd_error = "Password saat ini salah."
             self.pwd_msg = ""
             return
@@ -146,8 +169,17 @@ class AccountState(rx.State):
             self.pwd_msg = ""
             return
 
-        rec["password"] = new_pw
-        record_audit_event(actor, "user.password_diubah", uname, "Pengguna mengganti password")
+        if not USE_MOCK:
+            try:
+                await api_client.change_password(cur_pw, new_pw)
+            except Exception as exc:
+                self.pwd_error = str(exc)
+                self.pwd_msg = ""
+                return
+        elif rec:
+            rec["password"] = new_pw
+            record_audit_event(actor, "user.password_diubah", uname, "Pengguna mengganti password")
+
         self.pwd_error = ""
         self.pwd_msg = "Password berhasil diperbarui."
 
@@ -179,29 +211,45 @@ class AccountState(rx.State):
         if not fname or len(uname) < 3 or len(uname) > 32:
             self.user_form_error = "Nama lengkap wajib diisi dan username harus 3-32 karakter."
             return
-        if uname in MOCK_USERS:
+        if USE_MOCK and uname in MOCK_USERS:
             self.user_form_error = "Username sudah digunakan."
             return
 
         temp_pw = f"Tmp-{secrets.token_urlsafe(12)}"
-        MOCK_USERS[uname] = {
-            "password": temp_pw,
-            "user": {
-                "id": len(MOCK_USERS) + 1,
-                "username": uname,
-                "full_name": fname,
-                "role": self.new_user_role,
-                "is_active": True,
-            },
-            "access_token": f"mock-token-{uname}",
-        }
-        actor = str(auth.current_user.get("full_name", "Admin IT"))
-        record_audit_event(actor, "user.pengguna_dibuat", uname, f"Peran: {self.new_user_role}")
+        if not USE_MOCK:
+            try:
+                await api_client.create_user(
+                    {
+                        "username": uname,
+                        "full_name": fname,
+                        "role": self.new_user_role,
+                        "password": temp_pw,
+                        "is_active": True,
+                    }
+                )
+            except Exception as exc:
+                self.user_form_error = str(exc)
+                return
+        else:
+            MOCK_USERS[uname] = {
+                "password": temp_pw,
+                "user": {
+                    "id": len(MOCK_USERS) + 1,
+                    "username": uname,
+                    "full_name": fname,
+                    "role": self.new_user_role,
+                    "is_active": True,
+                },
+                "access_token": f"mock-token-{uname}",
+            }
+            actor = str(auth.current_user.get("full_name", "Admin IT"))
+            record_audit_event(actor, "user.pengguna_dibuat", uname, f"Peran: {self.new_user_role}")
+
         self.new_user_fullname = ""
         self.new_user_username = ""
         self.user_form_error = ""
         self.generated_temp_password = temp_pw
-        self._refresh_users()
+        await self._refresh_users()
 
 
 __all__ = ["AccountState"]
