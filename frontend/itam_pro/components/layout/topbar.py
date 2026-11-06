@@ -1,7 +1,9 @@
 """
 Komponen Topbar ITAM Pro.
-Tinggi 68px, putih, border bawah Color.BORDER, padding 0 32px.
+Sticky, latar putih semi-transparan + blur, breadcrumb pill biru muda,
+search pill abu (radius 12px) + Ctrl K, tombol notifikasi 42x42, avatar gradasi biru.
 """
+
 import reflex as rx
 
 from itam_pro.states.auth_state import AuthState
@@ -18,10 +20,10 @@ def _mobile_menu_trigger() -> rx.Component:
         on_click=NavState.toggle_mobile_sidebar,
         style=rx.Style(
             {
-                "width": "40px",
-                "height": "40px",
+                "width": "42px",
+                "height": "42px",
                 "border": f"1px solid {Color.BORDER}",
-                "border_radius": Radius.CONTROL,
+                "border_radius": "12px",
                 "background_color": Color.SURFACE,
                 "display": "none",
                 "align_items": "center",
@@ -37,28 +39,40 @@ def _mobile_menu_trigger() -> rx.Component:
 
 
 def _breadcrumb(group: str | rx.Var[str], page: str | rx.Var[str]) -> rx.Component:
-    """Breadcrumb kiri: 'Grup / Halaman'."""
+    """Breadcrumb kiri: 'Grup › [Pill Biru Muda Halaman Aktif]'."""
     return rx.hstack(
         _mobile_menu_trigger(),
         rx.hstack(
             rx.text(
                 group,
-                font_size=FontSize.BASE,
+                font_size=FontSize.SM,
                 font_weight=FontWeight.MEDIUM,
                 color=Color.MUTED,
             ),
             rx.text(
-                "/",
+                "›",
                 font_size=FontSize.BASE,
                 font_weight=FontWeight.REGULAR,
                 color=Color.MUTED,
                 margin_x="2px",
             ),
-            rx.text(
-                page,
-                font_size=FontSize.BASE,
-                font_weight=FontWeight.BOLD,
-                color=Color.TEXT,
+            rx.box(
+                rx.text(
+                    page,
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.BOLD,
+                    color=Color.ACCENT,
+                    line_height="1.2",
+                ),
+                style=rx.Style(
+                    {
+                        "padding": "5px 12px",
+                        "background_color": Color.BLUE_100,
+                        "border_radius": Radius.FULL,
+                        "display": "inline-flex",
+                        "align_items": "center",
+                    }
+                ),
             ),
             spacing="2",
             align="center",
@@ -69,7 +83,7 @@ def _breadcrumb(group: str | rx.Var[str], page: str | rx.Var[str]) -> rx.Compone
 
 
 def _search_box() -> rx.Component:
-    """Kotak pencarian tengah 340px tinggi 44px dengan badge 'Ctrl K'."""
+    """Kotak pencarian berbentuk pill abu (radius 12px) dengan badge 'Ctrl K'."""
     return rx.hstack(
         rx.icon(
             tag="search",
@@ -101,10 +115,10 @@ def _search_box() -> rx.Component:
             "Ctrl K",
             style=rx.Style(
                 {
-                    "padding": "3px 7px",
+                    "padding": "4px 8px",
                     "background_color": Color.SURFACE,
                     "border": f"1px solid {Color.BORDER}",
-                    "border_radius": Radius.BADGE_KBD,
+                    "border_radius": "6px",
                     "font_size": FontSize.GROUP_LABEL,
                     "font_weight": FontWeight.SEMIBOLD,
                     "color": Color.MUTED,
@@ -119,12 +133,12 @@ def _search_box() -> rx.Component:
         style=rx.Style(
             {
                 "width": Size.SEARCH_WIDTH,
-                "height": Size.TOPBAR_CONTROL_H,
+                "height": "42px",
                 "padding": "0 12px 0 14px",
-                "background_color": Color.SEARCH_BG,
-                "border": f"1px solid {Color.INPUT_BORDER}",
-                "border_radius": Radius.CONTROL,
-                "transition": "border-color 0.15s ease, box-shadow 0.15s ease",
+                "background_color": Color.SLATE_100,
+                "border": "1px solid transparent",
+                "border_radius": "12px",
+                "transition": "all 0.15s ease",
                 "@media (max-width: 767px)": {
                     "display": "none",
                 },
@@ -139,7 +153,7 @@ def _search_box() -> rx.Component:
 
 
 def _notification_button() -> rx.Component:
-    """Tombol lonceng 44x44 dengan indikator titik merah."""
+    """Tombol lonceng 42x42 radius 12px dengan indikator titik merah."""
     return rx.el.button(
         rx.box(
             rx.icon(
@@ -148,15 +162,14 @@ def _notification_button() -> rx.Component:
                 color=Color.TEXT,
                 stroke_width=2,
             ),
-            # Titik merah di pojok kanan-atas ikon lonceng
             rx.box(
                 style=rx.Style(
                     {
                         "position": "absolute",
                         "top": "-2px",
                         "right": "-2px",
-                        "width": Size.NOTIF_DOT,
-                        "height": Size.NOTIF_DOT,
+                        "width": "8px",
+                        "height": "8px",
                         "background_color": Color.NOTIFICATION_DOT,
                         "border": f"1.5px solid {Color.SURFACE}",
                         "border_radius": Radius.FULL,
@@ -176,11 +189,11 @@ def _notification_button() -> rx.Component:
         aria_label="Notifikasi sistem",
         style=rx.Style(
             {
-                "width": Size.TOPBAR_CONTROL_H,
-                "height": Size.TOPBAR_CONTROL_H,
+                "width": "42px",
+                "height": "42px",
                 "background_color": Color.SURFACE,
                 "border": f"1px solid {Color.BORDER}",
-                "border_radius": Radius.CONTROL,
+                "border_radius": "12px",
                 "display": "inline-flex",
                 "align_items": "center",
                 "justify_content": "center",
@@ -194,7 +207,7 @@ def _notification_button() -> rx.Component:
 
 
 def _profile_menu() -> rx.Component:
-    """Avatar bulat + nama + role dari AuthState.current_user dengan menu aksi 'Keluar'."""
+    """Avatar bulat bergradasi biru + nama + role dari AuthState.current_user."""
     return rx.menu.root(
         rx.menu.trigger(
             rx.el.button(
@@ -208,9 +221,14 @@ def _profile_menu() -> rx.Component:
                         ),
                         width=Size.AVATAR_BOX,
                         height=Size.AVATAR_BOX,
-                        background_color=Color.ACCENT,
                         border_radius=Radius.FULL,
                         flex_shrink="0",
+                        style=rx.Style(
+                            {
+                                "background": Color.GRADIENT_BLUE,
+                                "box_shadow": "0 2px 6px rgba(29, 78, 216, 0.25)",
+                            }
+                        ),
                     ),
                     rx.vstack(
                         rx.text(
@@ -240,7 +258,7 @@ def _profile_menu() -> rx.Component:
                         "background": "transparent",
                         "border": "none",
                         "padding": "4px 6px",
-                        "border_radius": Radius.CONTROL,
+                        "border_radius": "12px",
                         "cursor": "pointer",
                         "display": "inline-flex",
                         "align_items": "center",
@@ -290,7 +308,7 @@ def _profile_menu() -> rx.Component:
 def topbar(
     breadcrumb: tuple[str | rx.Var[str], str | rx.Var[str]] = ("Overview", "Dashboard"),
 ) -> rx.Component:
-    """Bar navigasi atas setinggi 68px."""
+    """Bar navigasi atas sticky dengan efek semi-transparan dan blur."""
     group, page = breadcrumb
     return rx.box(
         _breadcrumb(group, page),
@@ -306,7 +324,9 @@ def topbar(
             {
                 "width": "100%",
                 "height": Size.TOPBAR_HEIGHT,
-                "background_color": Color.SURFACE,
+                "background_color": "rgba(255, 255, 255, 0.88)",
+                "backdrop_filter": "blur(12px)",
+                "-webkit-backdrop-filter": "blur(12px)",
                 "border_bottom": f"1px solid {Color.BORDER}",
                 "padding": "0 32px",
                 "display": "flex",
@@ -314,7 +334,7 @@ def topbar(
                 "justify_content": "space-between",
                 "position": "sticky",
                 "top": "0",
-                "z_index": "20",
+                "z_index": "30",
                 "@media (max-width: 899px)": {
                     "padding": "0 20px",
                 },

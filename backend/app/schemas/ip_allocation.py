@@ -50,7 +50,7 @@ class IPAllocationCreate(BaseModel):
     nama_vm: str | None = Field(default=None, max_length=150)
     tipe: str = Field(default="Fisik", max_length=30)
     jenis: str | None = Field(default=None, max_length=30)
-    grup: str | None = Field(default=None, max_length=50)
+    grup: str | None = Field(default="", max_length=50)
     kategori: str | None = Field(default=None, max_length=30)
     status: str = Field(default="Aktif", max_length=30)
 
@@ -117,6 +117,25 @@ class IPAllocationCreate(BaseModel):
         elif self.is_vm:
             self.tipe = "VM"
 
+        if self.is_vm:
+            self.tipe = "VM"
+            self.jenis = "VM"
+            if not self.grup:
+                self.grup = "Addon (VM)"
+        else:
+            self.tipe = "Fisik"
+            self.jenis = "Fisik"
+            self.is_vm = False
+            self.id_aset_host = None
+            self.host_name = ""
+            if not self.grup:
+                self.grup = "Operasional"
+
+        # Turunkan subnet /24 otomatis dari 3 oktet pertama IPv4
+        parts = self.ip_address.strip().split(".")
+        if len(parts) == 4 and all(p.isdigit() for p in parts):
+            self.subnet = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+
         if not self.host_name and self.host:
             self.host_name = self.host.strip()
         self.host_name = self.host_name.strip()
@@ -152,12 +171,7 @@ class IPAllocationCreate(BaseModel):
         self.status = matched_status
 
         # Bila entri adalah VM dan tidak sengaja diizinkan orphan, wajib punya host
-        if (
-            self.is_vm
-            and not self.allow_orphan_vm
-            and not self.host_name
-            and not self.id_aset_host
-        ):
+        if self.is_vm and not self.allow_orphan_vm and not self.host_name and not self.id_aset_host:
             raise ValueError("VM wajib memiliki host induk (host_name atau id_aset_host)")
 
         return self
@@ -275,16 +289,23 @@ class IPAllocationPublic(BaseModel):
         grup_val = "Addon (VM)" if row.is_vm else "Operasional"
         asset_id_str = (row.id_aset or "").strip()
         host_asset_id_str = (row.id_aset_host or "").strip()
+        ket_raw = (row.keterangan or "").strip()
+        has_kendala = bool(ket_raw and ket_raw not in ("—", "-"))
+        if has_kendala:
+            sub_lbl = "● Ada kendala (lihat keterangan)"
+        elif row.is_vm:
+            sub_lbl = f"Host: {host_asset_id_str}" if host_asset_id_str else "Tanpa host"
+        else:
+            sub_lbl = f"Aset: {asset_id_str}" if asset_id_str else "Server / PC fisik"
+
         if row.is_vm:
-            sub_lbl = f"VM · Host: {host_asset_id_str or row.host_name or 'Tanpa Host'}"
             if is_orphan:
-                host_lbl = "⚠️ Tanpa Host"
+                host_lbl = "Tanpa host"
             elif host_asset_id_str and row.host_name:
                 host_lbl = f"{host_asset_id_str} ({row.host_name})"
             else:
                 host_lbl = host_asset_id_str or row.host_name or "—"
         else:
-            sub_lbl = f"Aset: {asset_id_str}" if asset_id_str else "Fisik · Non-Aset"
             host_lbl = "—"
 
         fungsi_val = (row.keterangan or row.port_servis or "Operasional").strip()
@@ -345,4 +366,3 @@ class IPAllocationPageResponse(BaseModel):
     host_options: list[str] = ["Semua"]
     server_asset_ids: list[str] = ["—"]
     os_suggestions: list[str] = []
-

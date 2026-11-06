@@ -3,14 +3,20 @@
 from collections.abc import Sequence
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
+from app.core.ip_export import (
+    build_a4_landscape_ip_pdf,
+    build_openxml_xlsx,
+    read_xlsx_rows,
+)
 from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
 from app.models.asset import Asset
 from app.models.base import utcnow
 from app.models.ip_allocation import IPAllocation
+from app.schemas.audit import record_audit_log
 from app.schemas.ip_allocation import (
     IPAllocationCreate,
     IPAllocationPageResponse,
@@ -44,8 +50,7 @@ def _check_ip_conflict(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Konflik IP: alamat {ip_address} sudah digunakan oleh "
-                f"'{existing.nama_perangkat}'"
+                f"Konflik IP: alamat {ip_address} sudah digunakan oleh '{existing.nama_perangkat}'"
             ),
         )
 
@@ -280,9 +285,7 @@ def list_ip_allocations(
 
     if subnet and subnet.strip().lower() not in ("semua", "all", ""):
         sub_clean = subnet.strip().lower()
-        all_matching_items = [
-            it for it in all_matching_items if it.subnet.lower() == sub_clean
-        ]
+        all_matching_items = [it for it in all_matching_items if it.subnet.lower() == sub_clean]
 
     if sort_by and sort_by.strip():
         s_key = sort_by.strip()
@@ -315,16 +318,10 @@ def list_ip_allocations(
         .order_by(col(Asset.id_aset).asc())
     ).all()
     server_only_assets = [a for a in srv_assets if a.kategori.lower() == "server"]
-    host_options = ["Semua"] + [
-        f"{a.id_aset} ({a.nama_aset})" for a in server_only_assets
-    ]
+    host_options = ["Semua"] + [f"{a.id_aset} ({a.nama_aset})" for a in server_only_assets]
     server_asset_ids = ["—"] + [a.id_aset for a in srv_assets]
     os_set = sorted(
-        {
-            r.os.strip()
-            for r in all_rows
-            if r.os and r.os.strip() and r.os.strip() not in ("-", "—")
-        }
+        {r.os.strip() for r in all_rows if r.os and r.os.strip() and r.os.strip() not in ("-", "—")}
     )
 
     conflict_banner = ""
@@ -334,6 +331,8 @@ def list_ip_allocations(
 
     kpi_fe = {
         "total_ip": summary["total_ip"],
+        "fisik": summary.get("fisik", summary["operasional"]),
+        "vm": summary.get("vm", summary["addon"]),
         "operasional": summary["operasional"],
         "addon": summary["addon"],
         "bentrok": summary["bentrok"],
@@ -353,6 +352,451 @@ def list_ip_allocations(
         host_options=host_options,
         server_asset_ids=server_asset_ids,
         os_suggestions=os_set,
+    )
+
+
+@router.get("/import-template")
+def get_ip_import_template(_: CurrentUserDep) -> Response:
+    """Unduh file template Excel (.xlsx) resmi untuk impor alokasi IP & VM."""
+    headers = [
+        "IP Address",
+        "Nama Server/VM",
+        "Jenis",
+        "Host Server",
+        "Status",
+        "Fungsi",
+        "OS",
+        "Keterangan",
+    ]
+    sample_row = [
+        "192.168.1.30",
+        "PC CS RETAIL",
+        "Fisik",
+        "",
+        "Aktif",
+        "Workstation Operasional",
+        "Windows 11 Pro",
+        "",
+    ]
+    widths = [18, 26, 12, 18, 14, 32, 24, 34]
+    xlsx_bytes = build_openxml_xlsx(headers, [sample_row], widths, is_template=True)
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="Template_Import_IP_Server_ITAM_Pro.xlsx"'
+        },
+    )
+
+
+@router.post("/import-preview")
+async def preview_ip_import(
+    session: SessionDep,
+    _: EditorUserDep,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Validasi file .xlsx / .csv (maks 5 MB) sebelum disimpan permanen."""
+    raw_bytes = await file.read()
+    if len(raw_bytes) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Ukuran file melebihi batas maksimum 5 MB",
+        )
+
+    filename = file.filename or "data.xlsx"
+    raw_rows: list[list[str]] = []
+    try:
+        if filename.lower().endswith(".xlsx"):
+            raw_rows = read_xlsx_rows(raw_bytes)
+        else:
+            import csv
+            import io
+
+            text_csv = raw_bytes.decode("utf-8-sig", errors="replace")
+            reader = csv.reader(io.StringIO(text_csv))
+            raw_rows = [[str(c).strip() for c in r] for r in reader if any(r)]
+    except Exception as exc:
+        return {
+            "valid_count": 0,
+            "error_count": 1,
+            "valid_rows": [],
+            "errors": [
+                {"row_number": 1, "ip_address": "—", "reason": f"File rusak/tidak terbaca ({exc})"}
+            ],
+            "error_report_csv": "",
+        }
+
+    if len(raw_rows) <= 1:
+        return {
+            "valid_count": 0,
+            "error_count": 1,
+            "valid_rows": [],
+            "errors": [
+                {"row_number": 1, "ip_address": "—", "reason": "File tidak memiliki baris data"}
+            ],
+            "error_report_csv": "",
+        }
+
+    # Kumpulkan IP eksisting & server fisik aktif untuk validasi
+    existing_ips = set(session.exec(select(IPAllocation.ip_address)).all())
+    active_servers = {
+        a.id_aset.upper(): a.nama_aset
+        for a in session.exec(
+            select(Asset).where(
+                Asset.kategori == "Server",
+                func.lower(Asset.status).notin_(["rusak", "nonaktif"]),
+            )
+        ).all()
+    }
+
+    seen_in_file: set[str] = set()
+    valid_rows: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+
+    for idx, cols in enumerate(raw_rows[1:], start=2):
+        padded = [*cols, "", "", "", "", "", "", "", ""][:8]
+        ip_val, nama_val, jenis_val, host_val, status_val, fungsi_val, os_val, ket_val = [
+            str(x).strip() for x in padded
+        ]
+        if not any([ip_val, nama_val, jenis_val]):
+            continue
+
+        if not ip_val:
+            errors.append({"row_number": idx, "ip_address": "—", "reason": "IP Address kosong"})
+            continue
+
+        try:
+            canonical_ip, ip_int = parse_and_validate_ipv4(ip_val)
+        except ValueError as exc:
+            errors.append({"row_number": idx, "ip_address": ip_val, "reason": str(exc)})
+            continue
+
+        if canonical_ip in seen_in_file or canonical_ip in existing_ips:
+            errors.append(
+                {
+                    "row_number": idx,
+                    "ip_address": canonical_ip,
+                    "reason": "IP sudah terdaftar (duplikat)",
+                }
+            )
+            continue
+
+        if not nama_val:
+            errors.append(
+                {"row_number": idx, "ip_address": canonical_ip, "reason": "Nama Server/VM kosong"}
+            )
+            continue
+
+        jenis_norm = (
+            "VM" if jenis_val.upper() == "VM" else ("Fisik" if jenis_val.lower() == "fisik" else "")
+        )
+        if not jenis_norm:
+            errors.append(
+                {
+                    "row_number": idx,
+                    "ip_address": canonical_ip,
+                    "reason": "Jenis harus Fisik atau VM",
+                }
+            )
+            continue
+
+        status_norm = (
+            "Aktif"
+            if status_val.lower() in ("aktif", "")
+            else ("Nonaktif" if status_val.lower() == "nonaktif" else "")
+        )
+        if not status_norm:
+            errors.append(
+                {
+                    "row_number": idx,
+                    "ip_address": canonical_ip,
+                    "reason": "Status harus Aktif atau Nonaktif",
+                }
+            )
+            continue
+
+        host_id_clean = host_val.split(" ")[0].strip().upper() if jenis_norm == "VM" else ""
+        host_name_resolved = ""
+        if jenis_norm == "VM":
+            if not host_id_clean:
+                errors.append(
+                    {
+                        "row_number": idx,
+                        "ip_address": canonical_ip,
+                        "reason": "Host Server wajib diisi untuk VM",
+                    }
+                )
+                continue
+            if host_id_clean not in active_servers:
+                matched_id = next(
+                    (
+                        aid
+                        for aid, aname in active_servers.items()
+                        if aname.lower() == host_val.lower()
+                    ),
+                    None,
+                )
+                if not matched_id:
+                    errors.append(
+                        {
+                            "row_number": idx,
+                            "ip_address": canonical_ip,
+                            "reason": (
+                                f"Host '{host_val}' tidak ditemukan di daftar server fisik aktif"
+                            ),
+                        }
+                    )
+                    continue
+                host_id_clean = matched_id
+                host_name_resolved = active_servers[matched_id]
+            else:
+                host_name_resolved = active_servers[host_id_clean]
+
+        seen_in_file.add(canonical_ip)
+        parts = canonical_ip.split(".")
+        subnet_24 = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+        valid_rows.append(
+            {
+                "ip_address": canonical_ip,
+                "ip_int": ip_int,
+                "subnet": subnet_24,
+                "gateway": "",
+                "nama_perangkat": nama_val,
+                "hostname": nama_val,
+                "tipe": jenis_norm,
+                "status": status_norm,
+                "is_vm": (jenis_norm == "VM"),
+                "id_aset_host": host_id_clean or None,
+                "host_name": host_name_resolved,
+                "fungsi": fungsi_val,
+                "os": os_val,
+                "keterangan": ket_val,
+                "lokasi": "Head Office (Office Blok 14)",
+            }
+        )
+
+    import csv
+    import io
+
+    err_buf = io.StringIO()
+    writer = csv.writer(err_buf)
+    writer.writerow(["Baris", "IP Address", "Alasan Error"])
+    for e in errors:
+        writer.writerow([e["row_number"], e["ip_address"], e["reason"]])
+
+    return {
+        "valid_count": len(valid_rows),
+        "error_count": len(errors),
+        "valid_rows": valid_rows,
+        "errors": errors,
+        "error_report_csv": err_buf.getvalue(),
+    }
+
+
+@router.post("/import-commit")
+def commit_ip_import(
+    payload: dict[str, Any],
+    session: SessionDep,
+    current_user: EditorUserDep,
+) -> dict[str, Any]:
+    """Menyimpan seluruh baris valid hasil preview ke database dalam satu transaksi."""
+    rows = payload.get("valid_rows", [])
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tidak ada data baris valid yang dikirim untuk diimpor",
+        )
+
+    for item in rows:
+        row = IPAllocation(
+            ip_address=item["ip_address"],
+            ip_int=item["ip_int"],
+            subnet=item.get("subnet", "192.168.1.0/24"),
+            gateway=item.get("gateway", ""),
+            nama_perangkat=item["nama_perangkat"],
+            hostname=item.get("hostname", item["nama_perangkat"]),
+            tipe=item.get("tipe", "Fisik"),
+            status=item.get("status", "Aktif"),
+            lokasi=item.get("lokasi", "Head Office (Office Blok 14)"),
+            id_aset=item.get("id_aset"),
+            is_vm=bool(item.get("is_vm", False)),
+            host_name=item.get("host_name", ""),
+            id_aset_host=item.get("id_aset_host"),
+            os=item.get("os", ""),
+            vcpu=int(item.get("vcpu", 0)),
+            ram=str(item.get("ram", "")),
+            storage=str(item.get("storage", "")),
+            port_servis=str(item.get("port_servis", "")),
+            mac_address=str(item.get("mac_address", "")),
+            pengguna=str(item.get("pengguna", "")),
+            keterangan=str(item.get("keterangan", "")),
+        )
+        session.add(row)
+
+    record_audit_log(
+        session,
+        username=current_user.username,
+        nama_pengguna=current_user.full_name or current_user.username,
+        role=current_user.role,
+        aksi="IMPORT",
+        modul="Infrastructure",
+        target_id="ip_allocations",
+        detail=f"Import massal {len(rows)} data IP & Server (VM)",
+        level_risiko="Sedang",
+    )
+    session.commit()
+    return {"success": True, "imported_count": len(rows)}
+
+
+@router.get("/export")
+def export_ip_allocations(
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    format: str = Query(default="xlsx"),
+    search: str | None = Query(default=None),
+    tipe: str | None = Query(default=None),
+    jenis: str | None = Query(default=None),
+    grup: str | None = Query(default=None),
+    host: str | None = Query(default=None),
+    subnet: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    only_conflict: bool = Query(default=False),
+    only_orphan_vm: bool = Query(default=False),
+) -> Response:
+    """Ekspor seluruh data IP & Server (VM) sesuai filter aktif dalam format Excel atau PDF."""
+    stmt = select(IPAllocation)
+
+    effective_jenis = jenis or tipe
+    if effective_jenis and effective_jenis not in ("Semua", "Semua jenis"):
+        if effective_jenis == "VM":
+            stmt = stmt.where(IPAllocation.is_vm == True)  # noqa: E712
+        elif effective_jenis == "Fisik":
+            stmt = stmt.where(IPAllocation.is_vm == False)  # noqa: E712
+
+    if grup and grup not in ("Semua", "all"):
+        if grup in ("VM", "Addon (VM)"):
+            stmt = stmt.where(IPAllocation.is_vm == True)  # noqa: E712
+        elif grup in ("Fisik", "Operasional"):
+            stmt = stmt.where(IPAllocation.is_vm == False)  # noqa: E712
+
+    if status_filter and status_filter not in ("Semua", "Semua status"):
+        stmt = stmt.where(func.lower(IPAllocation.status) == status_filter.lower())
+
+    if subnet and subnet not in ("Semua", "Semua subnet"):
+        stmt = stmt.where(func.lower(IPAllocation.subnet) == subnet.lower())
+
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(IPAllocation.ip_address).like(term),
+                func.lower(IPAllocation.nama_perangkat).like(term),
+                func.lower(IPAllocation.hostname).like(term),
+                func.lower(IPAllocation.host_name).like(term),
+                func.lower(IPAllocation.os).like(term),
+                func.lower(IPAllocation.keterangan).like(term),
+            )
+        )
+
+    # Urutkan berdasarkan IPv4 secara numerik naik
+    stmt = stmt.order_by(IPAllocation.ip_int.asc())
+    rows = session.exec(stmt).all()
+
+    orphan_ids, conflict_ips = _detect_orphan_and_conflict_maps(session, rows)
+
+    export_items: list[dict[str, Any]] = []
+    for r in rows:
+        is_conf = r.ip_address in conflict_ips or r.status.lower() == "konflik"
+        is_orph = r.id in orphan_ids
+        if only_conflict and not is_conf:
+            continue
+        if only_orphan_vm and not is_orph:
+            continue
+        host_disp = "—" if not r.is_vm else (r.host_name or r.id_aset_host or "Tanpa host")
+        export_items.append(
+            {
+                "ip_address": r.ip_address,
+                "nama": r.nama_perangkat,
+                "jenis": "VM" if r.is_vm else "Fisik",
+                "host_display": host_disp,
+                "fungsi": r.keterangan or "—",
+                "os": r.os or "—",
+                "status": "Konflik" if is_conf else r.status,
+                "keterangan": r.keterangan or "—",
+            }
+        )
+
+    from datetime import datetime
+
+    today_str = datetime.now().strftime("%Y%m%d")
+
+    if format.lower() == "pdf":
+        from datetime import datetime
+
+        now = datetime.now()
+        months_id = [
+            "",
+            "Januari",
+            "Februari",
+            "Maret",
+            "April",
+            "Mei",
+            "Juni",
+            "Juli",
+            "Agustus",
+            "September",
+            "Oktober",
+            "November",
+            "Desember",
+        ]
+        date_lbl = f"{now.day} {months_id[now.month]} {now.year}"
+        pdf_bytes = build_a4_landscape_ip_pdf(
+            rows=export_items,
+            export_date_label=date_lbl,
+            exporter_name=current_user.full_name or current_user.username,
+        )
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="Daftar_IP_Server_VM_{today_str}.pdf"'
+            },
+        )
+
+    # Default: Excel (.xlsx)
+    headers = [
+        "No",
+        "IP Address",
+        "Nama Server/VM",
+        "Jenis",
+        "Host",
+        "Fungsi",
+        "OS",
+        "Status",
+        "Keterangan",
+    ]
+    xlsx_rows = [
+        [
+            str(i),
+            it["ip_address"],
+            it["nama"],
+            it["jenis"],
+            it["host_display"],
+            it["fungsi"],
+            it["os"],
+            it["status"],
+            it["keterangan"],
+        ]
+        for i, it in enumerate(export_items, start=1)
+    ]
+    widths = [6, 18, 28, 12, 18, 34, 24, 14, 34]
+    xlsx_bytes = build_openxml_xlsx(headers, xlsx_rows, widths, is_template=False)
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="Daftar_IP_Server_VM_{today_str}.xlsx"'
+        },
     )
 
 
@@ -564,4 +1008,3 @@ def delete_ip_allocation(
     session.delete(row)
     session.commit()
     return {"status": "ok", "id": item_id, "ip_address": deleted_ip}
-

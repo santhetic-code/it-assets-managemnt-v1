@@ -1,7 +1,9 @@
 """
 Komponen Data Table Generik ITAM Pro (Tahap 6d).
-Dioptimalkan dengan pre-compiled static rx.Style untuk rendering baris dan sel yang cepat.
+Dioptimalkan dengan pre-compiled static rx.Style, dukungan indikator 'Ada kendala'
+beserta tooltip keterangan, serta chip Jenis (Fisik = abu, VM = biru).
 """
+
 from typing import Any, Literal, Required, TypedDict
 
 import reflex as rx
@@ -25,6 +27,7 @@ RenderType = Literal[
     "ip_address",
     "name_with_sub",
     "chip",
+    "jenis_chip",
     "badge",
     "condition_badge",
     "status_badge",
@@ -63,7 +66,7 @@ _TWO_LINE_CLAMP_STYLE = rx.Style(
 
 _SUB_LABEL_STYLE = rx.Style(
     {
-        "line_height": "1.15",
+        "line_height": "1.2",
         "white_space": "nowrap",
         "overflow": "hidden",
         "text_overflow": "ellipsis",
@@ -73,10 +76,7 @@ _SUB_LABEL_STYLE = rx.Style(
 
 _MONO_NOWRAP_STYLE = rx.Style(
     {
-        "font_family": (
-            "ui-monospace, SFMono-Regular, Menlo, "
-            "Monaco, Consolas, monospace"
-        ),
+        "font_family": ("ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"),
         "white_space": "nowrap",
     }
 )
@@ -128,6 +128,30 @@ _CHECKBOX_INPUT_STYLE = rx.Style(
 )
 
 
+def _render_jenis_chip(val: Any) -> rx.Component:
+    """Chip Jenis: Fisik = abu, VM = biru."""
+    is_vm = val == "VM"
+    return rx.box(
+        rx.text(
+            val,
+            font_size=FontSize.XS,
+            font_weight=FontWeight.BOLD,
+            color=rx.cond(is_vm, Color.BLUE_700, Color.SLATE_700),
+            line_height="1",
+        ),
+        style=rx.Style(
+            {
+                "display": "inline-flex",
+                "align_items": "center",
+                "padding": "5px 10px",
+                "border_radius": "6px",
+                "background_color": rx.cond(is_vm, Color.BLUE_100, Color.SLATE_100),
+                "white_space": "nowrap",
+            }
+        ),
+    )
+
+
 def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -> rx.Component:
     """Render isi sel berdasarkan render_type dengan dukungan 2-line clamp + tooltip."""
     accessor = col.get("accessor")
@@ -159,6 +183,8 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
 
     if rtype == "name_with_sub":
         sub_k = str(col.get("sub_key", "sub_label"))
+        sub_val = row[sub_k]
+        is_warn_sub = (sub_val == "Tanpa host") | (sub_val == "● Ada kendala (lihat keterangan)")
         return rx.vstack(
             rx.text(
                 row[key],
@@ -169,13 +195,17 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
                 style=_TWO_LINE_CLAMP_STYLE,
             ),
             rx.text(
-                row[sub_k],
-                title=row[sub_k],
+                sub_val,
+                title=rx.cond(
+                    sub_val == "● Ada kendala (lihat keterangan)",
+                    row["keterangan"],
+                    sub_val,
+                ),
                 font_size=FontSize.XS,
-                font_weight=FontWeight.MEDIUM,
+                font_weight=rx.cond(is_warn_sub, FontWeight.SEMIBOLD, FontWeight.MEDIUM),
                 color=rx.cond(
-                    row[sub_k] == "Tanpa host",
-                    Color.WARNING_FG,
+                    is_warn_sub,
+                    Color.AMBER_700,
                     Color.MUTED,
                 ),
                 style=_SUB_LABEL_STYLE,
@@ -185,7 +215,12 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
             width="100%",
         )
 
+    if rtype == "jenis_chip":
+        return _render_jenis_chip(row[key])
+
     if rtype == "chip":
+        if key == "jenis":
+            return _render_jenis_chip(row[key])
         return connector_chip(row[key])
 
     if rtype == "bold_blue":
@@ -576,7 +611,7 @@ def reusable_data_table(
                 {
                     "background_color": row_bg,
                     "position": "sticky",
-                    "left": "48px",
+                    "left": "48px" if show_checkbox else "0",
                     "z_index": "2",
                     "border_right": f"1px solid {Color.DIVIDER}",
                 }
@@ -593,7 +628,7 @@ def reusable_data_table(
         is_highlighted = (
             (selected_ids.contains(row_id) | (active_row_id == row_id))
             if selected_ids is not None and active_row_id is not None
-            else False
+            else (active_row_id == row_id if active_row_id is not None else False)
         )
         is_conflict = (row["is_conflict"] == True) if has_ip_col else False  # noqa: E712
         row_bg = rx.cond(

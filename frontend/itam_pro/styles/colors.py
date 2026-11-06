@@ -93,5 +93,36 @@ class Color:
     GRAY_200 = "#E5E7EB"
     BLUE_500 = "#3B82F6"
 
+    # Extended Tokens for Topbar, Modals, Badges, KPI, & Gradients
+    NAVY_900 = "#0F172A"
+    NAVY_800 = "#1E3A8A"
+    BLUE_600 = "#2563EB"
+    BLUE_700 = "#1D4ED8"
+    BLUE_100 = "#DBEAFE"
+    BLUE_50 = "#EFF6FF"
+    BLUE_BORDER = "#BFDBFE"
+    PURPLE_600 = "#7C3AED"
+    PURPLE_50 = "#F5F3FF"
+    AMBER_700 = "#B45309"
+    AMBER_600 = "#D97706"
+    AMBER_800 = "#92400E"
+    AMBER_100 = "#FEF3C7"
+    AMBER_BORDER = "#FDE68A"
+    GREEN_700 = "#15803D"
+    GREEN_800 = "#166534"
+    GREEN_100 = "#DCFCE7"
+    GREEN_BORDER = "#BBF7D0"
+    RED_600 = "#DC2626"
+    RED_700 = "#B91C1C"
+    RED_100 = "#FEE2E2"
+    SLATE_50 = "#F8FAFC"
+    SLATE_100 = "#F1F5F9"
+    SLATE_200 = "#E2E8F0"
+    SLATE_700 = "#334155"
+
+    GRADIENT_BLUE = "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)"
+    GRADIENT_PRIMARY = "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)"
+    GRADIENT_NAVY = "linear-gradient(135deg, #0F172A 0%, #1E3A8A 58%, #1D4ED8 100%)"
+
 
 __all__ = ["Color"]

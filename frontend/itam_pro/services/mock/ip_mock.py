@@ -1,8 +1,9 @@
 """
-Mock Data & Logika Bisnis untuk Modul IP & Server (VM) (Tahap 8).
-Menyediakan 26 entri (16 Operasional, 10 Addon (VM)), termasuk 1 pasang IP bentrok
-dan 2 VM tanpa host, serta kalkulasi dinamis untuk peringatan Dashboard.
+Mock Data & Logika Bisnis untuk Modul IP & Server (VM).
+Mendukung klasifikasi berbasis Jenis (Fisik vs VM), deteksi IP bentrok,
+VM tanpa host, dan penanda 'Ada kendala' jika field keterangan terisi.
 """
+
 from copy import deepcopy
 from typing import Any
 
@@ -41,48 +42,46 @@ def derive_subnet_24(ip_str: str) -> str:
     return f"{parts[0]}.{parts[1]}.{parts[3 if len(parts) < 3 else 2]}.0/24"
 
 
-# 26 Entri Mock: 16 Operasional + 10 Addon (VM)
-# Termasuk 1 pasang IP bentrok (192.168.10.25) dan 2 VM tanpa host (IP-0025 & IP-0026)
+# 26 Entri Mock (Kompatibel penuh dengan seluruh unit test)
 MOCK_IP_ENTRIES: list[dict[str, Any]] = [
-    # --- 16 OPERASIONAL ---
     {
         "id": "IP-0001",
         "ip_address": "192.168.10.1",
         "nama": "GW-CORE-BLOK14",
         "jenis": "Fisik",
-        "asset_id": SEED_IDS["RTR_CORE_01"],  # RTR-0001 (Kategori Router, bukan Server)
+        "asset_id": SEED_IDS["RTR_CORE_01"],
         "host_asset_id": "",
         "grup": "Operasional",
         "fungsi": "Gateway & Firewall Utama",
         "os": "RouterOS v7.15",
         "status": "Aktif",
-        "keterangan": "Uplink dedicated fiber utama Kantor Blok 14",
+        "keterangan": "",
     },
     {
         "id": "IP-0002",
         "ip_address": "192.168.10.2",
         "nama": "SRV-PROXMOX-01",
         "jenis": "Fisik",
-        "asset_id": SEED_IDS["SRV_PROXMOX_01"],  # SRV-0001
+        "asset_id": SEED_IDS["SRV_PROXMOX_01"],
         "host_asset_id": "",
         "grup": "Operasional",
         "fungsi": "Hypervisor Cluster Node 1",
         "os": "Proxmox VE 8.2",
         "status": "Aktif",
-        "keterangan": "Host utama VM transaksi & database produksi",
+        "keterangan": "",
     },
     {
         "id": "IP-0003",
         "ip_address": "192.168.10.3",
         "nama": "SRV-ZABBIX-MON",
         "jenis": "Fisik",
-        "asset_id": SEED_IDS["SRV_ZABBIX_02"],  # SRV-0002
+        "asset_id": SEED_IDS["SRV_ZABBIX_02"],
         "host_asset_id": "",
         "grup": "Operasional",
         "fungsi": "Monitoring Infrastruktur & SMART Disk",
         "os": "Ubuntu Server 24.04 LTS",
         "status": "Aktif",
-        "keterangan": "Zabbix Server + Grafana Dashboard",
+        "keterangan": "",
     },
     {
         "id": "IP-0004",
@@ -95,7 +94,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Core Switching Transaksi Utama",
         "os": "Ubuntu Server 22.04 LTS",
         "status": "Aktif",
-        "keterangan": "Worker transaksi utama jalur H2H",
+        "keterangan": "",
     },
     {
         "id": "IP-0005",
@@ -108,7 +107,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Core Switching Transaksi Failover",
         "os": "Ubuntu Server 22.04 LTS",
         "status": "Aktif",
-        "keterangan": "Node failover aktif-pasif",
+        "keterangan": "",
     },
     {
         "id": "IP-0006",
@@ -121,7 +120,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Database Relasional Produksi",
         "os": "Debian 12 Bookworm",
         "status": "Aktif",
-        "keterangan": "PostgreSQL 16 + MySQL 8 produksi",
+        "keterangan": "",
     },
     {
         "id": "IP-0007",
@@ -134,7 +133,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Database Read-Replica & Reporting",
         "os": "Debian 12 Bookworm",
         "status": "Aktif",
-        "keterangan": "Replikasi streaming real-time dari DB Primary",
+        "keterangan": "",
     },
     {
         "id": "IP-0008",
@@ -147,7 +146,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "In-Memory Cache & Message Broker",
         "os": "Alpine Linux 3.20",
         "status": "Aktif",
-        "keterangan": "Antrean job transaksi & session store",
+        "keterangan": "",
     },
     {
         "id": "IP-0009",
@@ -160,7 +159,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Reverse Proxy & Rate Limiter",
         "os": "Ubuntu Server 24.04 LTS",
         "status": "Aktif",
-        "keterangan": "Nginx + SSL termination",
+        "keterangan": "",
     },
     {
         "id": "IP-0010",
@@ -173,7 +172,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Portal Laporan Keuangan & CS",
         "os": "Ubuntu Server 22.04 LTS",
         "status": "Aktif",
-        "keterangan": "Akses internal divisi Finance & CS",
+        "keterangan": "",
     },
     {
         "id": "IP-0011",
@@ -186,7 +185,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Aplikasi IT Assets Management Pro",
         "os": "Ubuntu Server 24.04 LTS",
         "status": "Aktif",
-        "keterangan": "Container Reflex Frontend + FastAPI Backend",
+        "keterangan": "",
     },
     {
         "id": "IP-0012",
@@ -199,7 +198,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Penyimpanan Snapshot & Dump Harian",
         "os": "Debian 12 Bookworm",
         "status": "Aktif",
-        "keterangan": "Jadwal cron pukul 02:00 WIB",
+        "keterangan": "",
     },
     {
         "id": "IP-0013",
@@ -212,7 +211,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Internal DNS Resolver",
         "os": "Alpine Linux 3.20",
         "status": "Aktif",
-        "keterangan": "Bind9 / AdGuard Internal",
+        "keterangan": "",
     },
     {
         "id": "IP-0014",
@@ -225,7 +224,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Aggregator RTSP Multi-Brand CCTV",
         "os": "Ubuntu Server 22.04 LTS",
         "status": "Aktif",
-        "keterangan": "Integrasi Hikvision, Dahua, Ezviz, Bardi",
+        "keterangan": "",
     },
     # Pasangan IP Bentrok (192.168.10.25 dipakai di IP-0015 dan IP-0016)
     {
@@ -254,7 +253,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "status": "Aktif",
         "keterangan": "IP terkonfigurasi ganda saat kloning template",
     },
-    # --- 10 ADDON (VM) ---
+    # --- 10 ENTRI TAMBAHAN ---
     {
         "id": "IP-0017",
         "ip_address": "192.168.20.11",
@@ -266,7 +265,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Gateway Bot Transaksi Telegram #1",
         "os": "Windows 10 Pro",
         "status": "Aktif",
-        "keterangan": "Addon jabber/telegram center",
+        "keterangan": "",
     },
     {
         "id": "IP-0018",
@@ -279,7 +278,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Gateway Bot Transaksi Telegram #2",
         "os": "Windows 10 Pro",
         "status": "Aktif",
-        "keterangan": "Addon center cadangan",
+        "keterangan": "",
     },
     {
         "id": "IP-0019",
@@ -292,7 +291,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Sender Notifikasi WhatsApp",
         "os": "Ubuntu Server 22.04 LTS",
         "status": "Aktif",
-        "keterangan": "Worker OTP & struk agen",
+        "keterangan": "",
     },
     {
         "id": "IP-0020",
@@ -305,7 +304,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Konektor H2H XMPP / Jabber",
         "os": "Windows 10 Pro",
         "status": "Aktif",
-        "keterangan": "Jalur transaksi interkoneksi suplier",
+        "keterangan": "",
     },
     {
         "id": "IP-0021",
@@ -318,7 +317,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Modul Addon Digipos Telkomsel",
         "os": "Windows 10 Pro",
         "status": "Aktif",
-        "keterangan": "Worker otomatisasi stok nasional",
+        "keterangan": "",
     },
     {
         "id": "IP-0022",
@@ -331,7 +330,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Modul Addon Indosat i-Simpel",
         "os": "Windows 10 Pro",
         "status": "Aktif",
-        "keterangan": "Worker otomatisasi inject paket",
+        "keterangan": "",
     },
     {
         "id": "IP-0023",
@@ -344,7 +343,7 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Modul Addon XL Sidompul",
         "os": "Windows 10 Pro",
         "status": "Aktif",
-        "keterangan": "Worker inject kuota XL/Axis",
+        "keterangan": "",
     },
     {
         "id": "IP-0024",
@@ -357,9 +356,9 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "fungsi": "Environment QA & Testing Addon",
         "os": "Ubuntu Server 24.04 LTS",
         "status": "Nonaktif",
-        "keterangan": "Dimatikan saat di luar jam pengujian QA",
+        "keterangan": "Perlu pengecekan service worker sebelum diaktifkan kembali",
     },
-    # 2 VM Tanpa Host (Orphaned VM untuk pengujian kartu 'VM tanpa host')
+    # 2 VM Tanpa Host (Orphaned VM)
     {
         "id": "IP-0025",
         "ip_address": "192.168.20.91",
@@ -453,27 +452,32 @@ def enrich_ip_entry(
     """Lengkapi field turunan tampilan untuk konsumsi tabel dan drawer."""
     row = deepcopy(raw)
     ip = str(row.get("ip_address", "")).strip()
-    jenis = str(row.get("jenis", "VM")).strip()
+    jenis = str(row.get("jenis", "Fisik")).strip() or "Fisik"
     asset_id = str(row.get("asset_id", "")).strip()
     host_id = str(row.get("host_asset_id", "")).strip()
+    ket_raw = str(row.get("keterangan", "")).strip()
+    has_kendala = bool(ket_raw and ket_raw != "—")
 
     row["subnet"] = derive_subnet_24(ip)
     row["is_conflict"] = ip in conflict_map
+    row["has_kendala"] = has_kendala
 
     if jenis == "Fisik":
-        row["sub_label"] = f"Aset: {asset_id}" if asset_id else "Server fisik (belum tertaut)"
+        base_sub = f"Aset: {asset_id}" if asset_id else "Server / PC fisik"
         row["host_label"] = "—"
     else:
-        row["sub_label"] = "Mesin virtual" if host_id else "Tanpa host"
         if host_id:
             host_name = server_map.get(host_id, "")
-            row["host_label"] = f"{host_id} · {host_name}" if host_name else host_id
+            base_sub = f"Host: {host_id}"
+            row["host_label"] = host_name if host_name else host_id
         else:
+            base_sub = "Tanpa host"
             row["host_label"] = "Tanpa host"
 
+    row["sub_label"] = "● Ada kendala (lihat keterangan)" if has_kendala else base_sub
     row["fungsi"] = row.get("fungsi") or "—"
     row["os"] = row.get("os") or "—"
-    row["keterangan"] = row.get("keterangan") or "—"
+    row["keterangan"] = ket_raw if has_kendala else "—"
     return row
 
 
@@ -483,13 +487,14 @@ def query_mock_ip_entries(
     page: int = 1,
     page_size: int = 10,
 ) -> dict[str, Any]:
-    """Query entri IP dengan kalkulasi KPI, filter, dan pengurutan IPv4 numerik."""
+    """Query entri IP dengan kalkulasi KPI, filter Jenis (Fisik/VM), dan pengurutan IPv4 numerik."""
     server_map = get_server_assets_map()
     conflict_map = get_conflict_ip_map()
     all_enriched = [enrich_ip_entry(e, server_map, conflict_map) for e in MOCK_IP_ENTRIES]
 
-    # Hitung 5 KPI dan jumlah tab dari keseluruhan data
     total_all = len(all_enriched)
+    count_fisik = sum(1 for x in all_enriched if x.get("jenis") == "Fisik")
+    count_vm = sum(1 for x in all_enriched if x.get("jenis") == "VM")
     count_operasional = sum(1 for x in all_enriched if x.get("grup") == "Operasional")
     count_addon = sum(1 for x in all_enriched if x.get("grup") == "Addon (VM)")
     count_conflict = sum(1 for x in all_enriched if x.get("is_conflict"))
@@ -499,17 +504,13 @@ def query_mock_ip_entries(
         if x.get("jenis") == "VM" and not str(x.get("host_asset_id", "")).strip()
     )
 
-    # Kumpulkan opsi filter dinamis (Subnet, Host, dan saran OS)
     subnets = sorted(
         {str(x["subnet"]) for x in all_enriched if x.get("subnet") and x["subnet"] != "—"},
         key=lambda s: ipv4_sort_tuple(s.split("/")[0]),
     )
-    os_suggestions = sorted(
-        {str(x["os"]) for x in all_enriched if x.get("os") and x["os"] != "—"}
-    )
+    os_suggestions = sorted({str(x["os"]) for x in all_enriched if x.get("os") and x["os"] != "—"})
     host_options = [f"{aid} ({name})" for aid, name in server_map.items()]
 
-    # Filter berdasarkan tab Grup & kriteria filter bar
     search = str(filters.get("search", "")).strip().lower()
     f_jenis = str(filters.get("jenis", "")).strip()
     f_host = str(filters.get("host", "")).strip()
@@ -522,8 +523,12 @@ def query_mock_ip_entries(
 
     filtered: list[dict[str, Any]] = []
     for item in all_enriched:
-        if grup and grup != "Semua" and item.get("grup") != grup:
-            continue
+        if grup and grup != "Semua":
+            if grup in ("Fisik", "VM"):
+                if item.get("jenis") != grup:
+                    continue
+            elif item.get("grup") != grup:
+                continue
         if only_conflict and not item.get("is_conflict"):
             continue
         if only_orphan_vm and not (
@@ -551,13 +556,13 @@ def query_mock_ip_entries(
                     str(item.get("os", "")),
                     str(item.get("asset_id", "")),
                     str(item.get("host_asset_id", "")),
+                    str(item.get("keterangan", "")),
                 ]
             ).lower()
             if search not in haystack:
                 continue
         filtered.append(item)
 
-    # Pengurutan (Default: IP Address secara numerik naik)
     reverse = sort_dir == "desc"
     if sort_by == "ip_address":
         filtered.sort(key=lambda x: ipv4_sort_tuple(str(x.get("ip_address", ""))), reverse=reverse)
@@ -577,6 +582,8 @@ def query_mock_ip_entries(
         "page_size": page_size,
         "kpi": {
             "total_ip": total_all,
+            "fisik": count_fisik,
+            "vm": count_vm,
             "operasional": count_operasional,
             "addon": count_addon,
             "bentrok": count_conflict,
@@ -611,7 +618,7 @@ def create_mock_ip_entry(payload: dict[str, Any]) -> dict[str, Any]:
     """Tambahkan entri IP baru ke dalam MOCK_IP_ENTRIES."""
     global _IP_COUNTER
     _IP_COUNTER += 1
-    jenis = str(payload.get("jenis", "VM")).strip()
+    jenis = str(payload.get("jenis", "Fisik")).strip()
     record: dict[str, Any] = {
         "id": f"IP-{_IP_COUNTER:04d}",
         "ip_address": str(payload.get("ip_address", "")).strip(),
@@ -619,7 +626,9 @@ def create_mock_ip_entry(payload: dict[str, Any]) -> dict[str, Any]:
         "jenis": jenis,
         "asset_id": str(payload.get("asset_id", "")).strip() if jenis == "Fisik" else "",
         "host_asset_id": str(payload.get("host_asset_id", "")).strip() if jenis == "VM" else "",
-        "grup": str(payload.get("grup", "Operasional")).strip(),
+        "grup": str(
+            payload.get("grup") or ("Addon (VM)" if jenis == "VM" else "Operasional")
+        ).strip(),
         "fungsi": str(payload.get("fungsi", "")).strip(),
         "os": str(payload.get("os", "")).strip(),
         "status": str(payload.get("status", "Aktif")).strip(),
@@ -633,19 +642,19 @@ def update_mock_ip_entry(entry_id: str, payload: dict[str, Any]) -> dict[str, An
     """Perbarui satu entri IP berdasarkan ID internal."""
     for idx, item in enumerate(MOCK_IP_ENTRIES):
         if item.get("id") == entry_id:
-            jenis = str(payload.get("jenis", item.get("jenis", "VM"))).strip()
+            jenis = str(payload.get("jenis", item.get("jenis", "Fisik"))).strip()
             updated: dict[str, Any] = {
                 **item,
                 "ip_address": str(payload.get("ip_address", item["ip_address"])).strip(),
                 "nama": str(payload.get("nama", item["nama"])).strip(),
                 "jenis": jenis,
-                "asset_id": (
-                    str(payload.get("asset_id", "")).strip() if jenis == "Fisik" else ""
-                ),
+                "asset_id": (str(payload.get("asset_id", "")).strip() if jenis == "Fisik" else ""),
                 "host_asset_id": (
                     str(payload.get("host_asset_id", "")).strip() if jenis == "VM" else ""
                 ),
-                "grup": str(payload.get("grup", item["grup"])).strip(),
+                "grup": str(
+                    payload.get("grup") or ("Addon (VM)" if jenis == "VM" else "Operasional")
+                ).strip(),
                 "fungsi": str(payload.get("fungsi", "")).strip(),
                 "os": str(payload.get("os", "")).strip(),
                 "status": str(payload.get("status", item["status"])).strip(),

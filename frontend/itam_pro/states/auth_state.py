@@ -2,6 +2,7 @@
 State Autentikasi ITAM Pro.
 Mengelola state welcome/form kartu login, LocalStorage seen_welcome, dan sesi pengguna.
 """
+
 import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -164,9 +165,9 @@ class AuthState(rx.State):
         except ServiceUnavailableError as exc:
             self.error_message = str(exc)
             self.is_loading = False
-        except AuthenticationError:
-            self.error_message = GENERIC_AUTH_ERROR
+        except AuthenticationError as exc:
+            self.error_message = str(exc) if str(exc) else GENERIC_AUTH_ERROR
             self.is_loading = False
-        except Exception:
-            self.error_message = GENERIC_AUTH_ERROR
+        except Exception as exc:
+            self.error_message = str(exc) if str(exc) else GENERIC_AUTH_ERROR
             self.is_loading = False
