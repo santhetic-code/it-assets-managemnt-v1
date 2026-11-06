@@ -122,6 +122,7 @@ class Color:
     GREEN_50 = "#F0FDF4"
     GREEN_BORDER = "#BBF7D0"
     RED_600 = "#DC2626"
+    RED_500 = "#EF4444"
     RED_700 = "#B91C1C"
     RED_300 = "#FCA5A5"
     RED_100 = "#FEE2E2"

@@ -1205,7 +1205,7 @@ def _ip_map_sidebar() -> rx.Component:
                 IPState.map_largest_empty_range != "",
                 rx.box(
                     rx.hstack(
-                        rx.icon(tag="check-circle", size=16, color=Color.GREEN_700),
+                        rx.icon(tag="circle-check", size=16, color=Color.GREEN_700),
                         rx.text(
                             IPState.map_largest_empty_range,
                             font_size=FontSize.XS,

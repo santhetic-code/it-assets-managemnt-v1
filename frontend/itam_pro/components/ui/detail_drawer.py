@@ -824,7 +824,7 @@ def _ip_detail_drawer(
                                         rx.vstack(
                                             rx.hstack(
                                                 rx.text(
-                                                    f"{len(IPState.active_child_vms)} "
+                                                    f"{IPState.active_child_vms.length()} "
                                                     "VM berjalan di host ini",
                                                     font_size="13px",
                                                     font_weight=FontWeight.BOLD,
