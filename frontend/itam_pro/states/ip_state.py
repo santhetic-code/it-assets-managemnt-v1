@@ -50,7 +50,19 @@ class IPState(rx.State):
     kpi_vm: int = 0
     kpi_bentrok: int = 0
     kpi_vm_tanpa_host: int = 0
+    kpi_kosong_count: int = 254
     conflict_banner_text: str = ""
+
+    view_mode: str = "table"  # "table" | "map"
+    active_subnet: str = "192.168.1.0/24"
+    subnet_options: list[str] = ["192.168.1.0/24", "192.168.2.0/24", "10.0.0.0/24"]
+    map_cells: list[dict[str, Any]] = []
+    map_stats: dict[str, Any] = {}
+    map_selected_octet: int = -1
+    map_selected_cell: dict[str, Any] = {}
+    map_suggested_ips: list[str] = []
+    map_largest_empty_range: str = ""
+    map_only_empty: bool = False
 
     active_jenis_tab: str = "Semua"
     sort_by: str = "ip_address"
@@ -90,6 +102,8 @@ class IPState(rx.State):
     import_modal_open: bool = False
     import_is_processing: bool = False
     import_filename: str = ""
+    import_id: str = ""
+    import_duplicate_mode: str = "skip"  # "skip" | "update"
     import_valid_rows: list[dict[str, Any]] = []
     import_errors: list[dict[str, Any]] = []
     import_summary_text: str = ""
@@ -107,6 +121,14 @@ class IPState(rx.State):
     @rx.var(cache=True)
     def vm_percent(self) -> int:
         return round((self.kpi_vm / self.kpi_total_ip) * 100) if self.kpi_total_ip > 0 else 0
+
+    @rx.var(cache=True)
+    def is_map_view(self) -> bool:
+        return self.view_mode == "map"
+
+    @rx.var(cache=True)
+    def kosong_percent(self) -> int:
+        return int((self.kpi_kosong_count / 254) * 100) if self.kpi_kosong_count else 0
 
     @rx.var(cache=True)
     def jenis_options(self) -> list[str]:
@@ -163,6 +185,14 @@ class IPState(rx.State):
         tokens.append(str(tp))
         return tokens
 
+    @rx.var
+    def import_duplicate_mode_label(self) -> str:
+        return (
+            "Perbarui data jika IP ada"
+            if self.import_duplicate_mode == "update"
+            else "Lewati duplikat"
+        )
+
     @rx.var(cache=True)
     def pagination_summary(self) -> str:
         if self.total == 0:
@@ -218,6 +248,50 @@ class IPState(rx.State):
     def active_status_badge(self) -> str:
         item = self._get_active_entry()
         return "Bentrok" if item.get("is_conflict") else str(item.get("status", "Aktif"))
+
+    @rx.var(cache=True)
+    def drawer_has_kendala(self) -> bool:
+        entry = self._get_active_entry()
+        ket = str(entry.get("keterangan", "")).strip()
+        fung = str(entry.get("fungsi", "")).strip()
+        return bool(ket and ket != "—" and ket != fung)
+
+    @rx.var(cache=True)
+    def active_host_name(self) -> str:
+        entry = self._get_active_entry()
+        return str(
+            entry.get("host_display")
+            or entry.get("host_label")
+            or entry.get("host_asset_id")
+            or "Tidak ada (standalone)"
+        )
+
+    @rx.var(cache=True)
+    def active_is_vm(self) -> bool:
+        return self.active_jenis_badge == "VM"
+
+    @rx.var(cache=True)
+    def active_child_vms(self) -> list[dict[str, str]]:
+        entry = self._get_active_entry()
+        if not entry or entry.get("jenis") != "Fisik":
+            return []
+        return api_client.get_vms_on_host_sync(
+            str(entry.get("asset_id") or entry.get("nama") or "")
+        )
+
+    @rx.var(cache=True)
+    def active_has_child_vms(self) -> bool:
+        return len(self.active_child_vms) > 0
+
+    @rx.var(cache=True)
+    def map_selected_ip_display(self) -> str:
+        return str(self.map_selected_cell.get("ip_address", ""))
+
+    @rx.var(cache=True)
+    def has_map_selected_empty(self) -> bool:
+        return bool(
+            self.map_selected_octet >= 0 and self.map_selected_cell.get("status") == "kosong"
+        )
 
     @rx.var(cache=True)
     def active_general_items(self) -> list[dict[str, str]]:
@@ -311,6 +385,86 @@ class IPState(rx.State):
     @rx.event
     async def load_ip_page(self) -> None:
         await self.fetch_ip_entries()
+        if self.view_mode == "map":
+            await self.fetch_ip_map()
+
+    @rx.event
+    async def set_view_mode(self, mode: str) -> None:
+        if self.view_mode == mode:
+            return
+        self.view_mode = mode
+        if mode == "map" and not self.map_cells:
+            await self.fetch_ip_map()
+
+    @rx.event
+    async def set_active_subnet(self, val: str) -> None:
+        if self.active_subnet == val:
+            return
+        self.active_subnet = val
+        self.map_selected_octet = -1
+        self.map_selected_cell = {}
+        await self.fetch_ip_map()
+
+    @rx.event
+    async def fetch_ip_map(self) -> None:
+        res = await api_client.get_ip_map(self.active_subnet)
+        self.map_cells = res.get("cells", [])
+        self.map_stats = res.get("stats", {})
+        self.map_suggested_ips = res.get("suggested_ips", [])
+        self.map_largest_empty_range = res.get("largest_empty_range", "")
+        self.kpi_kosong_count = int(self.map_stats.get("kosong", max(0, 254 - self.total)))
+
+    @rx.event
+    def select_map_cell(self, cell: dict[str, Any]) -> Any:
+        self.map_selected_octet = int(cell.get("octet", -1))
+        self.map_selected_cell = cell
+        if cell.get("is_occupied"):
+            entry_id = str(cell.get("entry_id", ""))
+            if entry_id:
+                return self.open_detail_drawer_by_id(entry_id)
+            return None
+        if cell.get("is_reserved"):
+            return rx.toast.info(
+                "Alamat IP ini direservasi oleh sistem network.", position="top-right"
+            )
+        return None
+
+    @rx.event
+    def open_add_from_map(self, ip_address: str) -> None:
+        self.open_add_modal()
+        self.form_ip_address = ip_address
+
+    @rx.event
+    def toggle_map_only_empty(self) -> None:
+        self.map_only_empty = not self.map_only_empty
+
+    @rx.event
+    def open_host_drawer_by_code(self, host_code: str) -> Any:
+        clean = host_code.strip().lower()
+        for item in self.items:
+            aid = str(item.get("asset_id", "")).strip().lower()
+            nama = str(item.get("nama", "")).strip().lower()
+            if aid == clean or nama == clean:
+                self.active_entry_id = str(item.get("id", ""))
+                self.drawer_tab = "detail"
+                self.drawer_open = True
+                return None
+        return rx.toast.info(
+            f"Host '{host_code}' tidak ditemukan di tabel ini.", position="top-right"
+        )
+
+    @rx.event
+    def open_detail_drawer_by_id(self, entry_id: str) -> None:
+        self.active_entry_id = entry_id
+        self.drawer_tab = "detail"
+        self.drawer_open = True
+
+    @rx.event
+    def set_import_duplicate_mode(self, mode: str) -> None:
+        if "perbarui" in mode.lower() or mode == "update":
+            self.import_duplicate_mode = "update"
+        else:
+            self.import_duplicate_mode = "skip"
 
     @rx.event
     async def fetch_ip_entries(self) -> None:
@@ -346,6 +500,7 @@ class IPState(rx.State):
         self.kpi_vm = int(kpi.get("vm", sum(1 for x in raw_items if x.get("jenis") == "VM")))
         self.kpi_bentrok = int(kpi.get("bentrok", 0))
         self.kpi_vm_tanpa_host = int(kpi.get("vm_tanpa_host", 0))
+        self.kpi_kosong_count = int(kpi.get("kosong", max(0, 254 - self.total)))
         self.conflict_banner_text = str(res.get("conflict_banner", ""))
         self.host_options = res.get("host_options", [])
         self.server_asset_ids = res.get("server_asset_ids", ["SRV-0001", "SRV-0002"])
@@ -690,10 +845,13 @@ class IPState(rx.State):
         fname = upload_file.filename or "data.xlsx"
         raw_bytes = await upload_file.read()
 
+        self.import_is_processing = True
         preview = await api_client.preview_ip_import_bytes(raw_bytes, fname, self.server_asset_ids)
-        self.import_valid_rows = preview["valid_rows"]
-        self.import_errors = preview["errors"]
+        self.import_valid_rows = preview.get("valid_rows", [])
+        self.import_errors = preview.get("errors", [])
+        self.import_id = preview.get("import_id", "")
         self.import_has_preview = True
+        self.import_is_processing = False
 
         v_cnt = len(self.import_valid_rows)
         e_cnt = len(self.import_errors)
@@ -729,11 +887,23 @@ class IPState(rx.State):
     async def commit_import_data(self) -> Any:
         if not self.import_valid_rows:
             return None
-        for row in self.import_valid_rows:
-            await api_client.create_ip_entry(payload=row)
+        self.import_is_processing = True
+        res = await api_client.commit_ip_import(
+            import_id=self.import_id,
+            duplicate_mode=self.import_duplicate_mode,
+            valid_rows=self.import_valid_rows,
+        )
+        self.import_is_processing = False
         self.close_import_modal()
         await self.fetch_ip_entries()
-        return rx.toast.success("Import berhasil.", position="top-right")
+        if self.view_mode == "map":
+            await self.fetch_ip_map()
+        imp_cnt = res.get("imported_count", len(self.import_valid_rows))
+        upd_cnt = res.get("updated_count", 0)
+        return rx.toast.success(
+            f"Import berhasil ({imp_cnt} baru, {upd_cnt} diperbarui).",
+            position="top-right",
+        )
 
     async def _collect_filtered_for_export(self) -> list[dict[str, Any]]:
         effective_jenis = (
@@ -787,16 +957,27 @@ class IPState(rx.State):
         return rx.download(data=pdf_bytes, filename=f"Daftar_IP_{today}.pdf")
 
     @rx.event
-    def confirm_delete_entry(self, row_id: str) -> None:
+    def confirm_delete_entry(self, row_id: str) -> Any:
         target = row_id or self.active_entry_id
         for item in self.items:
-            if item.get("id") == target:
-                self.entry_to_delete = target
+            if str(item.get("id")) == str(target):
+                if item.get("jenis") == "Fisik":
+                    vms = api_client.get_vms_on_host_sync(
+                        str(item.get("asset_id") or item.get("nama") or "")
+                    )
+                    if vms:
+                        return rx.toast.error(
+                            f"Masih ada {len(vms)} VM di host ini. "
+                            "Pindahkan atau hapus VM terlebih dahulu.",
+                            position="top-right",
+                        )
+                self.entry_to_delete = str(target)
                 self.entry_to_delete_label = (
                     f"{item.get('ip_address', '')} · {item.get('pengguna', '')}"
                 )
                 self.delete_dialog_open = True
-                return
+                return None
+        return None
 
     @rx.event
     def cancel_delete(self) -> None:

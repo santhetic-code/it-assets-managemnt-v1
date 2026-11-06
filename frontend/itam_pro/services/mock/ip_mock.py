@@ -702,6 +702,147 @@ def delete_mock_ip_entry(entry_id: str) -> bool:
     return False
 
 
+def get_mock_ip_map(subnet: str = "192.168.1.0/24") -> dict[str, Any]:
+    """Menghasilkan representasi 256 sel peta IP untuk mode mock."""
+    clean_subnet = subnet.strip()
+    base_ip = clean_subnet.split("/")[0] if "/" in clean_subnet else clean_subnet
+    parts = base_ip.split(".")
+    prefix = f"{parts[0]}.{parts[1]}.{parts[2]}" if len(parts) >= 3 else "192.168.1"
+    normalized_subnet = f"{prefix}.0/24"
+
+    alloc_map: dict[int, dict[str, Any]] = {}
+    for item in MOCK_IP_ENTRIES:
+        ip = str(item.get("ip_address", "")).strip()
+        if ip.startswith(f"{prefix}."):
+            try:
+                oct_val = int(ip.split(".")[3])
+                alloc_map[oct_val] = item
+            except (IndexError, ValueError):
+                continue
+
+    cells: list[dict[str, Any]] = []
+    terpakai = 0
+    fisik_count = 0
+    vm_count = 0
+    nonaktif_count = 0
+
+    for octet in range(256):
+        ip_str = f"{prefix}.{octet}"
+        if octet == 0:
+            cells.append({
+                "octet": octet,
+                "ip_address": ip_str,
+                "status": "network",
+                "label": "Network ID",
+                "is_reserved": True,
+                "is_occupied": False,
+            })
+        elif octet == 255:
+            cells.append({
+                "octet": octet,
+                "ip_address": ip_str,
+                "status": "broadcast",
+                "label": "Broadcast",
+                "is_reserved": True,
+                "is_occupied": False,
+            })
+        else:
+            alloc = alloc_map.get(octet)
+            if alloc:
+                terpakai += 1
+                is_nonaktif = str(alloc.get("status", "")).lower() == "nonaktif"
+                is_vm = str(alloc.get("jenis", "")).upper() == "VM"
+                if is_nonaktif:
+                    cell_status = "nonaktif"
+                    nonaktif_count += 1
+                elif is_vm:
+                    cell_status = "vm"
+                    vm_count += 1
+                else:
+                    cell_status = "fisik"
+                    fisik_count += 1
+
+                cells.append({
+                    "octet": octet,
+                    "ip_address": ip_str,
+                    "status": cell_status,
+                    "is_reserved": False,
+                    "is_occupied": True,
+                    "entry_id": alloc.get("id"),
+                    "nama": alloc.get("nama") or alloc.get("pengguna", ""),
+                    "pengguna": alloc.get("pengguna") or alloc.get("nama", ""),
+                    "jenis": "VM" if is_vm else "Fisik",
+                    "host": alloc.get("host_asset_id") or ("—" if not is_vm else "Tanpa host"),
+                    "os": alloc.get("os", "—"),
+                    "fungsi": alloc.get("fungsi", "—"),
+                })
+            else:
+                cells.append({
+                    "octet": octet,
+                    "ip_address": ip_str,
+                    "status": "kosong",
+                    "is_reserved": False,
+                    "is_occupied": False,
+                    "label": "Tersedia",
+                })
+
+    kosong = 254 - terpakai
+
+    empty_octets = [
+        c["octet"] for c in cells if not c.get("is_reserved") and not c.get("is_occupied")
+    ]
+    suggested_octets = [o for o in empty_octets if o > 1][:5]
+    if len(suggested_octets) < 5:
+        suggested_octets = empty_octets[:5]
+    suggested_ips = [f"{prefix}.{o}" for o in suggested_octets]
+
+    largest_start = None
+    largest_end = None
+    largest_len = 0
+    cur_start = None
+    cur_len = 0
+
+    for octet in range(1, 255):
+        if octet not in alloc_map:
+            if cur_start is None:
+                cur_start = octet
+                cur_len = 1
+            else:
+                cur_len += 1
+            if cur_len > largest_len:
+                largest_len = cur_len
+                largest_start = cur_start
+                largest_end = octet
+        else:
+            cur_start = None
+            cur_len = 0
+
+    if largest_start is not None and largest_end is not None and largest_len > 0:
+        largest_empty_range = (
+            f"{prefix}.{largest_start} - {prefix}.{largest_end} ({largest_len} IP)"
+        )
+    else:
+        largest_empty_range = "Tidak ada rentang kosong"
+
+    stats = {
+        "total_allocatable": 254,
+        "terpakai": terpakai,
+        "kosong": kosong,
+        "fisik": fisik_count,
+        "vm": vm_count,
+        "nonaktif": nonaktif_count,
+    }
+
+    return {
+        "subnet": normalized_subnet,
+        "prefix": prefix,
+        "cells": cells,
+        "stats": stats,
+        "suggested_ips": suggested_ips,
+        "largest_empty_range": largest_empty_range,
+    }
+
+
 __all__ = [
     "MOCK_IP_ENTRIES",
     "create_mock_ip_entry",
@@ -711,6 +852,7 @@ __all__ = [
     "find_ip_duplicate_owner",
     "get_conflict_ip_map",
     "get_ip_conflict_summary",
+    "get_mock_ip_map",
     "get_server_assets_map",
     "get_vms_on_host",
     "ipv4_sort_tuple",

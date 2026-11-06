@@ -107,9 +107,15 @@ class Color:
     AMBER_700 = "#B45309"
     AMBER_600 = "#D97706"
     AMBER_800 = "#92400E"
+    AMBER_900 = "#78350F"
     AMBER_300 = "#FCD34D"
     AMBER_100 = "#FEF3C7"
+    AMBER_50 = "#FFFBEB"
     AMBER_BORDER = "#FDE68A"
+    PURPLE_100 = "#F3E8FF"
+    PURPLE_500 = "#A855F7"
+    PURPLE_700 = "#7E22CE"
+    GREEN_400 = "#4ADE80"
     GREEN_700 = "#15803D"
     GREEN_800 = "#166534"
     GREEN_100 = "#DCFCE7"
@@ -123,11 +129,14 @@ class Color:
     SLATE_100 = "#F1F5F9"
     SLATE_200 = "#E2E8F0"
     SLATE_300 = "#CBD5E1"
+    SLATE_400 = "#94A3B8"
     SLATE_700 = "#334155"
 
     GRADIENT_BLUE = "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)"
     GRADIENT_PRIMARY = "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)"
     GRADIENT_NAVY = "linear-gradient(135deg, #0F172A 0%, #1E3A8A 58%, #1D4ED8 100%)"
+    GRADIENT_PURPLE = "linear-gradient(135deg, #A855F7 0%, #7E22CE 100%)"
+    SCRIM_DARK = "rgba(15, 23, 42, 0.4)"
 
 
 __all__ = ["Color"]

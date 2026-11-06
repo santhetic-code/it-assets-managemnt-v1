@@ -1,6 +1,7 @@
 """Endpoint autentikasi: login dan informasi pengguna aktif."""
 
 from fastapi import APIRouter, HTTPException, Request, status
+from sqlalchemy import func
 from sqlmodel import select
 
 from app.core.rate_limit import (
@@ -39,7 +40,9 @@ def login(payload: LoginRequest, session: SessionDep, request: Request) -> Token
             detail="Terlalu banyak percobaan login gagal. Silakan coba lagi dalam beberapa saat.",
         )
 
-    user = session.exec(select(User).where(User.username == username)).first()
+    user = session.exec(
+        select(User).where(func.lower(User.username) == username.lower())
+    ).first()
 
     if user is None or not verify_password(payload.password, user.password_hash):
         record_failed_login(client_ip, username)

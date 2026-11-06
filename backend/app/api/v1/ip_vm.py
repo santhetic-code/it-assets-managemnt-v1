@@ -1,5 +1,9 @@
 """Endpoint CRUD IP Address & Virtual Machine (konflik IP, VM tanpa host, urut numerik)."""
 
+import csv
+import io
+import time
+import uuid
 from collections.abc import Sequence
 from typing import Any
 
@@ -26,6 +30,17 @@ from app.schemas.ip_allocation import (
 )
 
 router = APIRouter()
+
+# Sesi cache in-memory untuk transaksi impor 2-fase (TTL 1 jam)
+_IMPORT_SESSIONS: dict[str, dict[str, Any]] = {}
+
+
+def _prune_import_sessions() -> None:
+    """Membersihkan sesi impor yang telah berusia lebih dari 1 jam."""
+    now = time.time()
+    expired = [k for k, v in _IMPORT_SESSIONS.items() if now - v.get("created_at", 0) > 3600]
+    for k in expired:
+        _IMPORT_SESSIONS.pop(k, None)
 
 
 def _check_ip_conflict(
@@ -360,6 +375,170 @@ def list_ip_allocations(
     )
 
 
+@router.get("/map")
+def get_ip_map(
+    session: SessionDep,
+    _: CurrentUserDep,
+    subnet: str = Query(default="192.168.1.0/24"),
+) -> dict[str, Any]:
+    """Mengembalikan peta alokasi IP (256 sel oktet) untuk subnet /24 tertentu."""
+    clean_subnet = subnet.strip()
+    if "/" in clean_subnet:
+        base_ip = clean_subnet.split("/")[0]
+    else:
+        base_ip = clean_subnet
+    parts = base_ip.split(".")
+    if len(parts) >= 3:
+        prefix = f"{parts[0]}.{parts[1]}.{parts[2]}"
+    else:
+        prefix = "192.168.1"
+    normalized_subnet = f"{prefix}.0/24"
+
+    records = session.exec(
+        select(IPAllocation).where(func.lower(IPAllocation.ip_address).like(f"{prefix.lower()}.%"))
+    ).all()
+
+    alloc_map: dict[int, IPAllocation] = {}
+    for r in records:
+        try:
+            oct_val = int(r.ip_address.split(".")[3])
+            alloc_map[oct_val] = r
+        except (IndexError, ValueError):
+            continue
+
+    cells: list[dict[str, Any]] = []
+    terpakai = 0
+    fisik_count = 0
+    vm_count = 0
+    nonaktif_count = 0
+
+    for octet in range(256):
+        ip_str = f"{prefix}.{octet}"
+        if octet == 0:
+            cells.append(
+                {
+                    "octet": octet,
+                    "ip_address": ip_str,
+                    "status": "network",
+                    "label": "Network ID",
+                    "is_reserved": True,
+                    "is_occupied": False,
+                }
+            )
+        elif octet == 255:
+            cells.append(
+                {
+                    "octet": octet,
+                    "ip_address": ip_str,
+                    "status": "broadcast",
+                    "label": "Broadcast",
+                    "is_reserved": True,
+                    "is_occupied": False,
+                }
+            )
+        else:
+            alloc = alloc_map.get(octet)
+            if alloc:
+                terpakai += 1
+                is_nonaktif = alloc.status.lower() == "nonaktif"
+                if is_nonaktif:
+                    cell_status = "nonaktif"
+                    nonaktif_count += 1
+                elif alloc.is_vm:
+                    cell_status = "vm"
+                    vm_count += 1
+                else:
+                    cell_status = "fisik"
+                    fisik_count += 1
+
+                cells.append(
+                    {
+                        "octet": octet,
+                        "ip_address": ip_str,
+                        "status": cell_status,
+                        "is_reserved": False,
+                        "is_occupied": True,
+                        "entry_id": alloc.id,
+                        "nama": alloc.nama_perangkat,
+                        "pengguna": alloc.pengguna or alloc.nama_perangkat,
+                        "jenis": "VM" if alloc.is_vm else "Fisik",
+                        "host": alloc.host_name
+                        or alloc.id_aset_host
+                        or ("—" if not alloc.is_vm else "Tanpa host"),
+                        "os": alloc.os or "—",
+                        "fungsi": alloc.keterangan or "—",
+                        "lokasi": alloc.lokasi,
+                    }
+                )
+            else:
+                cells.append(
+                    {
+                        "octet": octet,
+                        "ip_address": ip_str,
+                        "status": "kosong",
+                        "is_reserved": False,
+                        "is_occupied": False,
+                        "label": "Tersedia",
+                    }
+                )
+
+    kosong = 254 - terpakai
+
+    empty_octets = [
+        c["octet"] for c in cells if not c.get("is_reserved") and not c.get("is_occupied")
+    ]
+    suggested_octets = [o for o in empty_octets if o > 1][:5]
+    if len(suggested_octets) < 5:
+        suggested_octets = empty_octets[:5]
+    suggested_ips = [f"{prefix}.{o}" for o in suggested_octets]
+
+    largest_start = None
+    largest_end = None
+    largest_len = 0
+    cur_start = None
+    cur_len = 0
+
+    for octet in range(1, 255):
+        if octet not in alloc_map:
+            if cur_start is None:
+                cur_start = octet
+                cur_len = 1
+            else:
+                cur_len += 1
+            if cur_len > largest_len:
+                largest_len = cur_len
+                largest_start = cur_start
+                largest_end = octet
+        else:
+            cur_start = None
+            cur_len = 0
+
+    if largest_start is not None and largest_end is not None and largest_len > 0:
+        largest_empty_range = (
+            f"{prefix}.{largest_start} - {prefix}.{largest_end} ({largest_len} IP)"
+        )
+    else:
+        largest_empty_range = "Tidak ada rentang kosong"
+
+    stats = {
+        "total_allocatable": 254,
+        "terpakai": terpakai,
+        "kosong": kosong,
+        "fisik": fisik_count,
+        "vm": vm_count,
+        "nonaktif": nonaktif_count,
+    }
+
+    return {
+        "subnet": normalized_subnet,
+        "prefix": prefix,
+        "cells": cells,
+        "stats": stats,
+        "suggested_ips": suggested_ips,
+        "largest_empty_range": largest_empty_range,
+    }
+
+
 @router.get("/import-template")
 def get_ip_import_template(_: CurrentUserDep) -> Response:
     """Unduh file template Excel (.xlsx) resmi untuk impor alokasi IP & VM."""
@@ -414,14 +593,16 @@ async def preview_ip_import(
         if filename.lower().endswith(".xlsx"):
             raw_rows = read_xlsx_rows(raw_bytes)
         else:
-            import csv
-            import io
-
             text_csv = raw_bytes.decode("utf-8-sig", errors="replace")
-            reader = csv.reader(io.StringIO(text_csv))
+            first_line = text_csv.split("\n")[0] if text_csv else ""
+            delim = (
+                ";" if ";" in first_line and first_line.count(";") > first_line.count(",") else ","
+            )
+            reader = csv.reader(io.StringIO(text_csv), delimiter=delim)
             raw_rows = [[c.strip() for c in r] for r in reader if any(r)]
     except Exception as exc:
         return {
+            "import_id": "",
             "valid_count": 0,
             "error_count": 1,
             "valid_rows": [],
@@ -433,6 +614,7 @@ async def preview_ip_import(
 
     if len(raw_rows) <= 1:
         return {
+            "import_id": "",
             "valid_count": 0,
             "error_count": 1,
             "valid_rows": [],
@@ -441,6 +623,10 @@ async def preview_ip_import(
             ],
             "error_report_csv": "",
         }
+
+    # Batasi maksimum 1000 baris data
+    if len(raw_rows) > 1001:
+        raw_rows = raw_rows[:1001]
 
     # Kumpulkan IP eksisting & server fisik aktif untuk validasi
     existing_ips = set(session.exec(select(IPAllocation.ip_address)).all())
@@ -476,15 +662,17 @@ async def preview_ip_import(
             errors.append({"row_number": idx, "ip_address": ip_val, "reason": str(exc)})
             continue
 
-        if canonical_ip in seen_in_file or canonical_ip in existing_ips:
+        if canonical_ip in seen_in_file:
             errors.append(
                 {
                     "row_number": idx,
                     "ip_address": canonical_ip,
-                    "reason": "IP sudah terdaftar (duplikat)",
+                    "reason": "IP duplikat di dalam file yang sama",
                 }
             )
             continue
+
+        is_existing = canonical_ip in existing_ips
 
         if not nama_val:
             errors.append(
@@ -577,11 +765,9 @@ async def preview_ip_import(
                 "os": os_val,
                 "keterangan": ket_val,
                 "lokasi": "Head Office (Office Blok 14)",
+                "is_existing": is_existing,
             }
         )
-
-    import csv
-    import io
 
     err_buf = io.StringIO()
     writer = csv.writer(err_buf)
@@ -589,7 +775,15 @@ async def preview_ip_import(
     for e in errors:
         writer.writerow([e["row_number"], e["ip_address"], e["reason"]])
 
+    _prune_import_sessions()
+    import_id = str(uuid.uuid4())
+    _IMPORT_SESSIONS[import_id] = {
+        "created_at": time.time(),
+        "valid_rows": valid_rows,
+    }
+
     return {
+        "import_id": import_id,
         "valid_count": len(valid_rows),
         "error_count": len(errors),
         "valid_rows": valid_rows,
@@ -605,53 +799,115 @@ def commit_ip_import(
     current_user: EditorUserDep,
 ) -> dict[str, Any]:
     """Menyimpan seluruh baris valid hasil preview ke database dalam satu transaksi."""
-    rows = payload.get("valid_rows", [])
+    import_id = payload.get("import_id")
+    duplicate_mode = str(payload.get("duplicate_mode", "skip")).lower().strip()
+    if duplicate_mode not in ("skip", "update"):
+        duplicate_mode = "skip"
+
+    rows: list[dict[str, Any]] = []
+    if import_id and import_id in _IMPORT_SESSIONS:
+        cached = _IMPORT_SESSIONS.pop(import_id)
+        rows = cached.get("valid_rows", [])
+    elif "valid_rows" in payload and isinstance(payload["valid_rows"], list):
+        rows = payload["valid_rows"]
+
     if not rows:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tidak ada data baris valid yang dikirim untuk diimpor",
+            detail=(
+                "Tidak ada data baris valid yang dikirim untuk diimpor "
+                "atau sesi telah kedaluwarsa"
+            ),
         )
 
-    for item in rows:
-        row = IPAllocation(
-            ip_address=item["ip_address"],
-            ip_int=item["ip_int"],
-            subnet=item.get("subnet", "192.168.1.0/24"),
-            gateway=item.get("gateway", ""),
-            nama_perangkat=item["nama_perangkat"],
-            hostname=item.get("hostname", item["nama_perangkat"]),
-            tipe=item.get("tipe", "Fisik"),
-            status=item.get("status", "Aktif"),
-            lokasi=item.get("lokasi", "Head Office (Office Blok 14)"),
-            id_aset=item.get("id_aset"),
-            is_vm=bool(item.get("is_vm", False)),
-            host_name=item.get("host_name", ""),
-            id_aset_host=item.get("id_aset_host"),
-            os=item.get("os", ""),
-            vcpu=int(item.get("vcpu", 0)),
-            ram=str(item.get("ram", "")),
-            storage=str(item.get("storage", "")),
-            port_servis=str(item.get("port_servis", "")),
-            mac_address=str(item.get("mac_address", "")),
-            pengguna=str(item.get("pengguna") or item.get("nama_perangkat", "")),
-            kategori=str(item.get("kategori", "IP Operasional")),
-            keterangan=str(item.get("keterangan", "")),
-        )
-        session.add(row)
+    imported_count = 0
+    updated_count = 0
+    skipped_count = 0
 
-    record_audit_log(
-        session,
-        username=current_user.username,
-        nama_pengguna=current_user.full_name or current_user.username,
-        role=current_user.role,
-        aksi="IMPORT",
-        modul="Infrastructure",
-        target_id="ip_allocations",
-        detail=f"Import massal {len(rows)} data IP & Server (VM)",
-        level_risiko="Sedang",
-    )
-    session.commit()
-    return {"success": True, "imported_count": len(rows)}
+    try:
+        for item in rows:
+            ip_addr = item["ip_address"]
+            existing = session.exec(
+                select(IPAllocation).where(IPAllocation.ip_address == ip_addr)
+            ).first()
+
+            if existing:
+                if duplicate_mode == "update":
+                    existing.nama_perangkat = item["nama_perangkat"]
+                    existing.hostname = item.get("hostname", item["nama_perangkat"])
+                    existing.tipe = item.get("tipe", "Fisik")
+                    existing.status = item.get("status", "Aktif")
+                    existing.is_vm = bool(item.get("is_vm", False))
+                    existing.host_name = item.get("host_name", "")
+                    existing.id_aset_host = item.get("id_aset_host")
+                    existing.os = item.get("os", "")
+                    existing.pengguna = str(
+                        item.get("pengguna") or item.get("nama_perangkat", "")
+                    )
+                    existing.kategori = str(item.get("kategori", "IP Operasional"))
+                    existing.keterangan = str(item.get("keterangan", ""))
+                    session.add(existing)
+                    updated_count += 1
+                else:
+                    skipped_count += 1
+                    continue
+            else:
+                new_alloc = IPAllocation(
+                    ip_address=item["ip_address"],
+                    ip_int=item["ip_int"],
+                    subnet=item.get("subnet", "192.168.1.0/24"),
+                    gateway=item.get("gateway", ""),
+                    nama_perangkat=item["nama_perangkat"],
+                    hostname=item.get("hostname", item["nama_perangkat"]),
+                    tipe=item.get("tipe", "Fisik"),
+                    status=item.get("status", "Aktif"),
+                    lokasi=item.get("lokasi", "Head Office (Office Blok 14)"),
+                    id_aset=item.get("id_aset"),
+                    is_vm=bool(item.get("is_vm", False)),
+                    host_name=item.get("host_name", ""),
+                    id_aset_host=item.get("id_aset_host"),
+                    os=item.get("os", ""),
+                    vcpu=int(item.get("vcpu", 0)),
+                    ram=str(item.get("ram", "")),
+                    storage=str(item.get("storage", "")),
+                    port_servis=str(item.get("port_servis", "")),
+                    mac_address=str(item.get("mac_address", "")),
+                    pengguna=str(item.get("pengguna") or item.get("nama_perangkat", "")),
+                    kategori=str(item.get("kategori", "IP Operasional")),
+                    keterangan=str(item.get("keterangan", "")),
+                )
+                session.add(new_alloc)
+                imported_count += 1
+
+        record_audit_log(
+            session,
+            username=current_user.username,
+            nama_pengguna=current_user.full_name or current_user.username,
+            role=current_user.role,
+            aksi="IMPORT",
+            modul="Infrastructure",
+            target_id="ip_allocations",
+            detail=(
+                f"Import massal: {imported_count} baru, {updated_count} diperbarui, "
+                f"{skipped_count} dilewati (mode: {duplicate_mode})"
+            ),
+            level_risiko="Sedang",
+        )
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Gagal melakukan transaksi impor: {exc}",
+        ) from exc
+
+    return {
+        "success": True,
+        "imported_count": imported_count,
+        "updated_count": updated_count,
+        "skipped_count": skipped_count,
+        "total_processed": len(rows),
+    }
 
 
 @router.get("/export")
@@ -711,6 +967,12 @@ def export_ip_allocations(
 
     orphan_ids, conflict_ips = _detect_orphan_and_conflict_maps(session, rows)
 
+    def _sanitize_formula(val: Any) -> str:
+        s = str(val or "")
+        if s and s[0] in ("=", "+", "-", "@"):
+            return "'" + s
+        return s
+
     export_items: list[dict[str, Any]] = []
     for r in rows:
         is_conf = r.ip_address in conflict_ips or r.status.lower() == "konflik"
@@ -723,13 +985,13 @@ def export_ip_allocations(
         export_items.append(
             {
                 "ip_address": r.ip_address,
-                "nama": r.nama_perangkat,
+                "nama": _sanitize_formula(r.nama_perangkat),
                 "jenis": "VM" if r.is_vm else "Fisik",
-                "host_display": host_disp,
-                "fungsi": r.keterangan or "—",
-                "os": r.os or "—",
+                "host_display": _sanitize_formula(host_disp),
+                "fungsi": _sanitize_formula(r.keterangan or "—"),
+                "os": _sanitize_formula(r.os or "—"),
                 "status": "Konflik" if is_conf else r.status,
-                "keterangan": r.keterangan or "—",
+                "keterangan": _sanitize_formula(r.keterangan or "—"),
             }
         )
 

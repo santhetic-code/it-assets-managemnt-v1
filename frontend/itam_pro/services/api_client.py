@@ -34,6 +34,7 @@ from itam_pro.services.mock.ip_mock import (
     create_mock_ip_entry,
     delete_mock_ip_entry,
     find_ip_duplicate_owner,
+    get_mock_ip_map,
     get_vms_on_host,
     is_valid_ipv4,
     query_mock_ip_entries,
@@ -863,6 +864,37 @@ class APIClient:
     def get_vms_on_host_sync(self, host_asset_id: str) -> list[dict[str, str]]:
         return get_vms_on_host(host_asset_id=host_asset_id)
 
+    async def get_ip_map(self, subnet: str = "192.168.1.0/24") -> dict[str, Any]:
+        """Ambil peta alokasi IP (256 sel oktet) untuk subnet /24 tertentu."""
+        if USE_MOCK:
+            return get_mock_ip_map(subnet=subnet)
+        res = await self.request("GET", "/api/v1/ip-entries/map", params={"subnet": subnet})
+        return res if isinstance(res, dict) else {}
+
+    async def commit_ip_import(
+        self,
+        import_id: str = "",
+        duplicate_mode: str = "skip",
+        valid_rows: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Commit hasil import IP ke database."""
+        if USE_MOCK:
+            rows = valid_rows or []
+            return {
+                "success": True,
+                "imported_count": len(rows),
+                "updated_count": 0,
+                "skipped_count": 0,
+            }
+        payload: dict[str, Any] = {
+            "import_id": import_id,
+            "duplicate_mode": duplicate_mode,
+        }
+        if valid_rows:
+            payload["valid_rows"] = valid_rows
+        res = await self.request("POST", "/api/v1/ip-entries/import-commit", json_data=payload)
+        return res if isinstance(res, dict) else {}
+
     async def get_ip_import_template_bytes(self) -> bytes:
         """Buat file template .xlsx standar murni teks (tanpa dropdown)."""
         headers = [
@@ -1022,7 +1054,14 @@ class APIClient:
         return all_rows
 
     async def generate_ip_excel_bytes(self, rows: list[dict[str, Any]]) -> bytes:
-        """Hasilkan file Excel (.xlsx) untuk daftar IP & Server (VM)."""
+        """Hasilkan file Excel (.xlsx) untuk daftar IP & Server (VM) dengan sanitasi formula."""
+
+        def _clean(val: Any) -> str:
+            s = str(val or "")
+            if s and s[0] in ("=", "+", "-", "@"):
+                return "'" + s
+            return s
+
         headers = [
             "No",
             "IP Address",
@@ -1041,14 +1080,14 @@ class APIClient:
                 [
                     str(i),
                     str(r.get("ip_address", "")),
-                    str(r.get("pengguna") or r.get("nama") or ""),
-                    str(r.get("jenis", "Fisik")),
-                    str(r.get("host_display", "—")),
-                    str(r.get("kategori", "IP Operasional")),
-                    str(r.get("fungsi", "")),
-                    str(r.get("os", "")),
-                    str(r.get("status", "Aktif")),
-                    str(r.get("keterangan", "")),
+                    _clean(r.get("pengguna") or r.get("nama") or ""),
+                    _clean(r.get("jenis", "Fisik")),
+                    _clean(r.get("host_display", "—")),
+                    _clean(r.get("kategori", "IP Operasional")),
+                    _clean(r.get("fungsi", "")),
+                    _clean(r.get("os", "")),
+                    _clean(r.get("status", "Aktif")),
+                    _clean(r.get("keterangan", "")),
                 ]
             )
         return _build_openxml_xlsx(
