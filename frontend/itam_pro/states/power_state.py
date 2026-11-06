@@ -2,6 +2,7 @@
 State Management untuk Halaman Infrastructure -> Rekap Watt Server (/watt-server).
 Dioptimalkan dengan @rx.var(cache=True) dan filter guards.
 """
+
 from typing import Any
 
 import reflex as rx
@@ -126,6 +127,7 @@ class PowerState(rx.State):
         """Muat data saat halaman /watt-server dibuka."""
         await self.fetch_power_data()
 
+    @rx.event
     async def fetch_power_data(self) -> None:
         self.is_loading = True
         filters = {
@@ -176,6 +178,7 @@ class PowerState(rx.State):
         self.footer_kwh_display = f"{kwh_str} kWh/bln"
         self.is_loading = False
 
+    @rx.event
     async def set_tab(self, tab: str) -> None:
         if self.active_tab == tab:
             return
@@ -183,6 +186,7 @@ class PowerState(rx.State):
         self.page = 1
         await self.fetch_power_data()
 
+    @rx.event
     async def set_search_query(self, val: str) -> None:
         if self.search_query == val:
             return
@@ -190,6 +194,7 @@ class PowerState(rx.State):
         self.page = 1
         await self.fetch_power_data()
 
+    @rx.event
     async def set_cpu_brand_filter(self, val: str) -> None:
         if self.cpu_brand_filter == val:
             return
@@ -197,6 +202,7 @@ class PowerState(rx.State):
         self.page = 1
         await self.fetch_power_data()
 
+    @rx.event
     async def set_beban_filter(self, val: str) -> None:
         if self.beban_filter == val:
             return
@@ -204,6 +210,7 @@ class PowerState(rx.State):
         self.page = 1
         await self.fetch_power_data()
 
+    @rx.event
     async def reset_filters(self) -> None:
         self.active_tab = "Semua"
         self.search_query = ""
@@ -214,6 +221,7 @@ class PowerState(rx.State):
         self.page = 1
         await self.fetch_power_data()
 
+    @rx.event
     async def toggle_sort(self, col_key: str) -> None:
         if self.sort_by == col_key:
             self.sort_dir = "desc" if self.sort_dir == "asc" else "asc"
@@ -222,26 +230,31 @@ class PowerState(rx.State):
             self.sort_dir = "asc"
         await self.fetch_power_data()
 
+    @rx.event
     def toggle_column_visibility(self, col_key: str) -> None:
         if col_key in self.hidden_columns:
             self.hidden_columns = [c for c in self.hidden_columns if c != col_key]
         else:
             self.hidden_columns = [*self.hidden_columns, col_key]
 
+    @rx.event
     def reset_columns(self) -> None:
         if self.hidden_columns:
             self.hidden_columns = []
 
+    @rx.event
     async def prev_page(self) -> None:
         if self.page > 1:
             self.page -= 1
             await self.fetch_power_data()
 
+    @rx.event
     async def next_page(self) -> None:
         if self.page < self.total_pages:
             self.page += 1
             await self.fetch_power_data()
 
+    @rx.event
     async def select_page(self, token: str) -> None:
         if token.isdigit():
             target = int(token)
@@ -250,6 +263,7 @@ class PowerState(rx.State):
                 await self.fetch_power_data()
 
     # --- Drawer Detail ---
+    @rx.event
     def open_drawer(self, row_id: str) -> None:
         target = next((x for x in self.items if x["id"] == row_id), None)
         if not target:
@@ -286,15 +300,18 @@ class PowerState(rx.State):
         ]
         self.drawer_open = True
 
+    @rx.event
     def close_drawer(self) -> None:
         if self.drawer_open:
             self.drawer_open = False
 
+    @rx.event
     def set_drawer_tab(self, tab: str) -> None:
         if self.drawer_tab != tab:
             self.drawer_tab = tab
 
     # --- Modal Tambah / Edit Manual ---
+    @rx.event
     def open_add_modal(self) -> None:
         self.is_edit_mode = False
         self.edit_asset_id = ""
@@ -312,6 +329,7 @@ class PowerState(rx.State):
         self.form_catatan = ""
         self.form_modal_open = True
 
+    @rx.event
     def open_edit_modal(self, row_id: str) -> None:
         target_id = row_id or self.active_row_id
         target = next((x for x in self.items if x["id"] == target_id), None)
@@ -334,6 +352,7 @@ class PowerState(rx.State):
         self.drawer_open = False
         self.form_modal_open = True
 
+    @rx.event
     def open_duplicate_modal(self, row_id: str) -> None:
         target_id = row_id or self.active_row_id
         target = next((x for x in self.items if x["id"] == target_id), None)
@@ -344,47 +363,58 @@ class PowerState(rx.State):
         self.edit_asset_id = ""
         self.form_nama_aset = f"{target['nama_aset']} COPY"
 
+    @rx.event
     def close_form_modal(self) -> None:
         if self.form_modal_open:
             self.form_modal_open = False
         self.form_error = ""
 
+    @rx.event
     def set_form_nama_aset(self, val: str) -> None:
         self.form_nama_aset = val
 
+    @rx.event
     def set_form_cpu(self, val: str) -> None:
         self.form_cpu = val
 
+    @rx.event
     def set_form_vga(self, val: str) -> None:
         self.form_vga = val
 
+    @rx.event
     def set_form_ram(self, val: str) -> None:
         self.form_ram = val
 
+    @rx.event
     def set_form_hdd_ssd(self, val: str) -> None:
         self.form_hdd_ssd = val
 
-    def set_form_tdp_w(self, val: float | str) -> None:
+    @rx.event
+    def set_form_tdp_w(self, val: str) -> None:
         if isinstance(val, float) and val.is_integer():
             self.form_tdp_w = str(int(val))
         else:
-            self.form_tdp_w = str(val) if val is not None else ""
+            self.form_tdp_w = val if val is not None else ""
 
-    def set_form_psu_min_w(self, val: float | str) -> None:
+    @rx.event
+    def set_form_psu_min_w(self, val: str) -> None:
         if isinstance(val, float) and val.is_integer():
             self.form_psu_min_w = str(int(val))
         else:
-            self.form_psu_min_w = str(val) if val is not None else ""
+            self.form_psu_min_w = val if val is not None else ""
 
-    def set_form_psu_rek_w(self, val: float | str) -> None:
+    @rx.event
+    def set_form_psu_rek_w(self, val: str) -> None:
         if isinstance(val, float) and val.is_integer():
             self.form_psu_rek_w = str(int(val))
         else:
-            self.form_psu_rek_w = str(val) if val is not None else ""
+            self.form_psu_rek_w = val if val is not None else ""
 
+    @rx.event
     def set_form_catatan(self, val: str) -> None:
         self.form_catatan = val
 
+    @rx.event
     async def submit_form(self) -> None:
         if not self.form_nama_aset.strip():
             self.form_error = "ID Server wajib diisi (contoh: SERVER OTO H2H)."
@@ -421,6 +451,7 @@ class PowerState(rx.State):
         await self.fetch_power_data()
 
     # --- Dialog Hapus ---
+    @rx.event
     def confirm_delete_entry(self, row_id: str) -> None:
         target_id = row_id or self.active_row_id
         target = next((x for x in self.items if x["id"] == target_id), None)
@@ -431,11 +462,13 @@ class PowerState(rx.State):
         self.drawer_open = False
         self.delete_dialog_open = True
 
+    @rx.event
     def cancel_delete(self) -> None:
         if self.delete_dialog_open:
             self.delete_dialog_open = False
         self.delete_target_id = ""
 
+    @rx.event
     async def execute_delete_entry(self) -> None:
         if self.delete_target_id:
             await api_client.delete_server_power(self.delete_target_id)

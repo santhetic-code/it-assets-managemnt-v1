@@ -27,4 +27,3 @@ class User(TimestampMixin, SQLModel, table=True):
     password_hash: str = Field(max_length=255, nullable=False)
     role: str = Field(default=UserRole.VIEWER.value, max_length=30, nullable=False)
     is_active: bool = Field(default=True, nullable=False)
-

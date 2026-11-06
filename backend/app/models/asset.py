@@ -65,4 +65,3 @@ class Asset(TimestampMixin, SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSON, nullable=False, server_default="{}"),
     )
-

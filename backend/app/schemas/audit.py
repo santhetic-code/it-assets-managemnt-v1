@@ -187,4 +187,3 @@ class AuditLogPageResponse(BaseModel):
     tab_counts: dict[str, int]
     summary: dict[str, Any]
     kpi: dict[str, Any]
-

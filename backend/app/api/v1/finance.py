@@ -66,27 +66,17 @@ def _compute_finance_summary(
     pembelian_count = sum(1 for i in public_items if not i.is_recurring)
     recurring_count = sum(1 for i in public_items if i.is_recurring)
     invoice_count = sum(
-        1
-        for i in public_items
-        if i.nomor_invoice != "-" or i.jenis_transaksi.lower() == "invoice"
+        1 for i in public_items if i.nomor_invoice != "-" or i.jenis_transaksi.lower() == "invoice"
     )
     lunas_count = sum(1 for i in public_items if i.status.lower() == "lunas")
-    unpaid_count = sum(
-        1 for i in public_items if i.status.lower() not in ("lunas", "dibatalkan")
-    )
+    unpaid_count = sum(1 for i in public_items if i.status.lower() not in ("lunas", "dibatalkan"))
     overdue_count = sum(1 for i in public_items if i.is_overdue)
     due_soon_count = sum(1 for i in public_items if i.is_due_soon)
 
-    total_pengeluaran = sum(
-        i.total_harga for i in public_items if i.status.lower() != "dibatalkan"
-    )
-    total_lunas = sum(
-        i.total_harga for i in public_items if i.status.lower() == "lunas"
-    )
+    total_pengeluaran = sum(i.total_harga for i in public_items if i.status.lower() != "dibatalkan")
+    total_lunas = sum(i.total_harga for i in public_items if i.status.lower() == "lunas")
     total_belum_lunas = sum(
-        i.total_harga
-        for i in public_items
-        if i.status.lower() not in ("lunas", "dibatalkan")
+        i.total_harga for i in public_items if i.status.lower() not in ("lunas", "dibatalkan")
     )
 
     # Estimasi biaya langganan berulang per bulan
@@ -160,15 +150,11 @@ def _find_purchase(session: Session, identifier: str) -> Purchase:
         row = session.get(Purchase, int(cleaned))
     if row is None:
         row = session.exec(
-            select(Purchase).where(
-                func.lower(col(Purchase.kode_pembelian)) == cleaned.lower()
-            )
+            select(Purchase).where(func.lower(col(Purchase.kode_pembelian)) == cleaned.lower())
         ).first()
     if row is None:
         row = session.exec(
-            select(Purchase).where(
-                func.lower(col(Purchase.nomor_invoice)) == cleaned.lower()
-            )
+            select(Purchase).where(func.lower(col(Purchase.nomor_invoice)) == cleaned.lower())
         ).first()
     if row is None:
         raise HTTPException(
@@ -211,8 +197,7 @@ def list_purchases(
     today = date.today()
     tab_counts, summary = _compute_finance_summary(all_rows, today=today)
     all_public = [
-        PurchasePublic.from_model(r, today=today, seq_no=idx + 1)
-        for idx, r in enumerate(all_rows)
+        PurchasePublic.from_model(r, today=today, seq_no=idx + 1) for idx, r in enumerate(all_rows)
     ]
 
     filtered = all_public
@@ -247,9 +232,7 @@ def list_purchases(
                 or not i.is_recurring
             ]
         elif active_tab == "belum lunas":
-            filtered = [
-                i for i in filtered if i.status.lower() not in ("lunas", "dibatalkan")
-            ]
+            filtered = [i for i in filtered if i.status.lower() not in ("lunas", "dibatalkan")]
         elif active_tab in ("jatuh tempo", "overdue", "terlambat"):
             filtered = [i for i in filtered if i.is_overdue]
 
@@ -363,9 +346,7 @@ def create_purchase(
     if payload.kode_pembelian and payload.kode_pembelian.strip():
         final_code = payload.kode_pembelian.strip().upper()
         dup = session.exec(
-            select(Purchase).where(
-                func.lower(col(Purchase.kode_pembelian)) == final_code.lower()
-            )
+            select(Purchase).where(func.lower(col(Purchase.kode_pembelian)) == final_code.lower())
         ).first()
         if dup is not None:
             raise HTTPException(

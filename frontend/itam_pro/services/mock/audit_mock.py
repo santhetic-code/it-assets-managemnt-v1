@@ -1,4 +1,5 @@
 """Layanan Audit Log (In-Memory) untuk ITAM Pro."""
+
 from copy import deepcopy
 from datetime import datetime
 from typing import Any

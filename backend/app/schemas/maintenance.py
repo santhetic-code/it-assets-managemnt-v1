@@ -121,11 +121,7 @@ class MaintenanceCreate(BaseModel):
         self.prioritas = matched_prio
 
         matched_st = next(
-            (
-                s
-                for s in VALID_MAINTENANCE_STATUSES
-                if s.lower() == self.status.strip().lower()
-            ),
+            (s for s in VALID_MAINTENANCE_STATUSES if s.lower() == self.status.strip().lower()),
             None,
         )
         if not matched_st:
@@ -243,9 +239,7 @@ class BulkMaintenanceRequest(BaseModel):
             self.id_assets = self.asset_ids
 
         clean_ids = [
-            code.strip().upper()
-            for code in (self.id_assets or [])
-            if code and code.strip()
+            code.strip().upper() for code in (self.id_assets or []) if code and code.strip()
         ]
         self.id_assets = clean_ids if clean_ids else None
         self.lokasi = _normalize_location_opt(self.lokasi)
@@ -397,9 +391,7 @@ class MaintenancePublic(BaseModel):
             tanggal_jadwal=tgl_str,
             jadwal_berikutnya=tgl_str,
             tanggal=tgl_str,
-            tanggal_selesai=(
-                row.tanggal_selesai.isoformat() if row.tanggal_selesai else tgl_str
-            ),
+            tanggal_selesai=(row.tanggal_selesai.isoformat() if row.tanggal_selesai else tgl_str),
             status=row.status,
             status_efektif=effective_status,
             status_variant=st_variant,
@@ -432,4 +424,3 @@ class MaintenancePageResponse(BaseModel):
     tab_counts: dict[str, int]
     summary: dict[str, Any]
     kpi: dict[str, Any]
-

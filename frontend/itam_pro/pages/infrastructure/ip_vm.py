@@ -590,44 +590,40 @@ def _ip_tabs() -> rx.Component:
 
 
 def _ip_filter_bar() -> rx.Component:
-    """Bilah pencarian & dropdown filter: Subnet, Host, Status."""
+    """Bilah pencarian & dropdown filter: Jenis, Host, Subnet, Status."""
+    dropdowns: list[FilterDropdownConfig] = [
+        {
+            "label": "Semua jenis",
+            "value": IPState.jenis_filter,
+            "options": IPState.jenis_options,
+            "on_change": IPState.set_jenis_filter,
+        },
+        {
+            "label": "Semua host",
+            "value": IPState.host_filter,
+            "options": IPState.host_options,
+            "on_change": IPState.set_host_filter,
+        },
+        {
+            "label": "Semua subnet",
+            "value": IPState.subnet_filter,
+            "options": IPState.subnet_options,
+            "on_change": IPState.set_subnet_filter,
+        },
+        {
+            "label": "Semua status",
+            "value": IPState.status_filter,
+            "options": IPState.status_options,
+            "on_change": IPState.set_status_filter,
+        },
+    ]
     return table_filter_bar(
         search_value=IPState.search_query,
         on_search_change=IPState.set_search_query,
         search_placeholder="Cari IP, nama, fungsi, OS, keterangan...",
-        dropdowns=[
-            FilterDropdownConfig(
-                label="Subnet",
-                options=IPState.subnet_options,
-                value=IPState.subnet_filter,
-                on_change=IPState.set_subnet_filter,
-                empty_label="Semua subnet",
-            ),
-            FilterDropdownConfig(
-                label="Host",
-                options=IPState.host_options,
-                value=IPState.host_filter,
-                on_change=IPState.set_host_filter,
-                empty_label="Semua host",
-            ),
-            FilterDropdownConfig(
-                label="Status",
-                options=IPState.status_options,
-                value=IPState.status_filter,
-                on_change=IPState.set_status_filter,
-                empty_label="Semua status",
-            ),
-        ],
-        has_active_filter=(
-            (IPState.search_query != "")
-            | (IPState.subnet_filter != "")
-            | (IPState.host_filter != "")
-            | (IPState.status_filter != "")
-            | IPState.only_conflict_filter
-            | IPState.only_orphan_vm_filter
-        ),
-        on_reset_filter=IPState.reset_filters,
-        result_count_label=IPState.result_count_label,
+        dropdowns=dropdowns,
+        on_reset=IPState.reset_filters,
+        result_count_text=IPState.result_count_label,
     )
 
 
@@ -1115,11 +1111,13 @@ def ip_vm_page() -> rx.Component:
             ),
             table_pagination(
                 summary_text=IPState.pagination_summary,
+                current_page=IPState.page,
+                current_page_str=IPState.current_page_str,
+                total_pages=IPState.total_pages,
                 page_tokens=IPState.page_tokens,
-                current_page=IPState.current_page_str,
                 on_prev=IPState.prev_page,
                 on_next=IPState.next_page,
-                on_select_page=IPState.select_page,
+                on_page_select=IPState.select_page,
             ),
             style=rx.Style(
                 {
@@ -1135,26 +1133,38 @@ def ip_vm_page() -> rx.Component:
         detail_drawer(
             is_open=IPState.drawer_open,
             on_close=IPState.close_drawer,
-            item_id=IPState.active_ip_code,
-            item_name=IPState.active_nama_title,
-            category_badge=IPState.active_jenis_badge,
-            status_badge=IPState.active_status_badge,
+            code_var=IPState.active_ip_code,
+            title_var=IPState.active_nama_title,
+            category_var=IPState.active_jenis_badge,
+            status_var=IPState.active_status_badge,
             active_tab=IPState.drawer_tab,
             on_tab_change=IPState.set_drawer_tab,
+            section1_title="Data entri IP",
             general_items=IPState.active_general_items,
-            specs_items=IPState.active_relation_items,
+            section2_title="Aset fisik & daftar VM host",
+            usage_items=IPState.active_relation_items,
             history_items=IPState.active_history_items,
-            on_edit=IPState.open_edit_modal(IPState.active_entry_id),
-            on_delete=IPState.confirm_delete_entry(IPState.active_entry_id),
+            duplicate_label="Duplikat",
+            on_edit=lambda: IPState.open_edit_modal(""),
+            on_duplicate=lambda: IPState.open_duplicate_modal(""),
+            on_delete=lambda: IPState.confirm_delete_entry(""),
+            tabs=(
+                ("detail", "Rincian IP & Host"),
+                ("history", "Riwayat & Log"),
+            ),
         ),
         # Modals
         ip_form_modal(),
         _ip_import_modal(),
         confirm_delete_dialog(
             is_open=IPState.delete_dialog_open,
-            item_label=IPState.entry_to_delete_label,
-            on_confirm=IPState.execute_delete_entry,
+            title="Hapus Entri IP?",
+            description=(
+                f"Apakah Anda yakin ingin menghapus entri {IPState.entry_to_delete_label}? "
+                "Tindakan ini akan dicatat pada Audit Log."
+            ),
             on_cancel=IPState.cancel_delete,
+            on_confirm=IPState.execute_delete_entry,
         ),
         spacing="5",
         width="100%",
@@ -1163,8 +1173,7 @@ def ip_vm_page() -> rx.Component:
     return base_layout(
         content=content,
         breadcrumb=("Infrastructure", "IP & Server (VM)"),
-        on_mount=IPState.load_ip_page,
     )
 
 
-__all__ = ["ip_vm_page"]
+__all__ = ["IP_TABLE_COLUMNS", "ip_vm_page"]

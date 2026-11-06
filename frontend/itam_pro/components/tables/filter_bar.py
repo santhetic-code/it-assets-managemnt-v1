@@ -3,6 +3,7 @@ Komponen Filter Bar Tabel Generik ITAM Pro.
 Mendukung kotak pencarian, N dropdown filter, tombol Reset, popover 'Atur kolom',
 serta label jumlah unit.
 """
+
 from typing import Any, Required, TypedDict
 
 import reflex as rx

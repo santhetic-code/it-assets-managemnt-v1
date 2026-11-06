@@ -130,9 +130,7 @@ def build_openxml_xlsx(
     h_cells = []
     for c_idx, h_text in enumerate(headers, start=1):
         ref = f"{col_letter(c_idx)}1"
-        h_cells.append(
-            f'<c r="{ref}" t="inlineStr" s="1"><is><t>{xml_escape(str(h_text))}</t></is></c>'
-        )
+        h_cells.append(f'<c r="{ref}" t="inlineStr" s="1"><is><t>{xml_escape(h_text)}</t></is></c>')
     sheet_rows_xml.append(f'<row r="1" ht="26" customHeight="1">{"".join(h_cells)}</row>')
 
     # Data rows
@@ -142,8 +140,7 @@ def build_openxml_xlsx(
         for c_idx, val in enumerate(row_vals, start=1):
             ref = f"{col_letter(c_idx)}{r_idx}"
             d_cells.append(
-                f'<c r="{ref}" t="inlineStr" s="{style_id}">'
-                f"<is><t>{xml_escape(str(val))}</t></is></c>"
+                f'<c r="{ref}" t="inlineStr" s="{style_id}"><is><t>{xml_escape(val)}</t></is></c>'
             )
         sheet_rows_xml.append(f'<row r="{r_idx}" ht="21" customHeight="1">{"".join(d_cells)}</row>')
 
@@ -246,8 +243,7 @@ def read_xlsx_rows(file_bytes: bytes) -> list[list[str]]:
 def pdf_escape(text: str) -> str:
     """Escape karakter khusus pada literal string PDF (Latin-1)."""
     clean = (
-        str(text)
-        .replace("●", "*")
+        text.replace("●", "*")
         .replace("—", "-")
         .replace("–", "-")
         .replace("·", "-")

@@ -2,6 +2,7 @@
 Master Data & Config untuk Credential Manager ITAM Pro (Tahap 12).
 Menggantikan 13 halaman e-Report dengan satu konfigurasi terpusat.
 """
+
 from typing import TypedDict
 
 
@@ -210,4 +211,3 @@ CREDENTIAL_CATEGORIES: dict[str, CredentialCategory] = {
         ],
     },
 }
-

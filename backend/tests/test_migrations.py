@@ -34,4 +34,3 @@ def test_models_and_migrations_are_in_sync(alembic_cfg: Config) -> None:
 def test_downgrade_base_works(alembic_cfg: Config) -> None:
     command.upgrade(alembic_cfg, "head")
     command.downgrade(alembic_cfg, "base")
-

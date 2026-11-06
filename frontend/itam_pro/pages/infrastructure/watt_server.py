@@ -3,6 +3,7 @@ Halaman Infrastructure -> Rekap Watt Server (/watt-server).
 Menampilkan spesifikasi perangkat keras server beserta kalkulasi TDP (W),
 kebutuhan PSU Minimum & Rekomendasi, dan estimasi kWh bulanan.
 """
+
 import reflex as rx
 
 from itam_pro.components.feedback import confirm_delete_dialog

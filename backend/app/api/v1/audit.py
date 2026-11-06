@@ -22,14 +22,10 @@ def _compute_audit_summary(
     all_rows: list[AuditLog],
 ) -> tuple[dict[str, int], dict[str, Any]]:
     total = len(all_rows)
-    tinggi_count = sum(
-        1 for r in all_rows if r.level_risiko.lower() in ("tinggi", "kritis")
-    )
+    tinggi_count = sum(1 for r in all_rows if r.level_risiko.lower() in ("tinggi", "kritis"))
     sedang_count = sum(1 for r in all_rows if r.level_risiko.lower() == "sedang")
     rendah_count = sum(1 for r in all_rows if r.level_risiko.lower() == "rendah")
-    gagal_count = sum(
-        1 for r in all_rows if r.status.lower() in ("gagal", "ditolak")
-    )
+    gagal_count = sum(1 for r in all_rows if r.status.lower() in ("gagal", "ditolak"))
     reveal_count = sum(1 for r in all_rows if "reveal" in r.aksi.lower())
 
     tab_counts: dict[str, int] = {
@@ -98,15 +94,11 @@ def list_audit_logs(
     if modul and modul.strip().lower() not in ("semua", "all", ""):
         m_clean = modul.strip().lower()
         if m_clean == "risiko tinggi":
-            filtered = [
-                i for i in filtered if i.level_risiko.lower() in ("tinggi", "kritis")
-            ]
+            filtered = [i for i in filtered if i.level_risiko.lower() in ("tinggi", "kritis")]
         elif m_clean == "reveal":
             filtered = [i for i in filtered if "reveal" in i.aksi.lower()]
         elif m_clean == "gagal":
-            filtered = [
-                i for i in filtered if i.status.lower() in ("gagal", "ditolak")
-            ]
+            filtered = [i for i in filtered if i.status.lower() in ("gagal", "ditolak")]
         else:
             filtered = [i for i in filtered if i.modul.lower() == m_clean]
 
@@ -153,9 +145,7 @@ def get_audit_log_detail(
         row = session.get(AuditLog, int(cleaned))
     if row is None:
         row = session.exec(
-            select(AuditLog).where(
-                func.lower(AuditLog.kode_audit) == cleaned.lower()
-            )
+            select(AuditLog).where(func.lower(AuditLog.kode_audit) == cleaned.lower())
         ).first()
     if row is None:
         raise HTTPException(
@@ -186,4 +176,3 @@ def create_audit_log_entry(
         ip_address=payload.ip_address,
     )
     return AuditLogPublic.from_model(row)
-

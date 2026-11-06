@@ -2,6 +2,7 @@
 State Manajemen Finansial (Pembelian, Invoice, Tagihan Berulang) ITAM Pro (Tahap 9).
 Dioptimalkan dengan @rx.var(cache=True), filter guards, dan parser nominal Rupiah yang aman.
 """
+
 import math
 import re
 from datetime import date
@@ -294,9 +295,7 @@ class FinanceState(rx.State):
         self.selected_purchase_id = purchase_id
         for p in self.purchases:
             if p.get("id_pembelian") == purchase_id:
-                self.selected_purchase_title = (
-                    f"{p.get('produk', '')} ({p.get('pcs', 1)} unit)"
-                )
+                self.selected_purchase_title = f"{p.get('produk', '')} ({p.get('pcs', 1)} unit)"
                 break
         self.asset_form_kategori = "PC"
         self.asset_form_lokasi = "Kantor Pusat"

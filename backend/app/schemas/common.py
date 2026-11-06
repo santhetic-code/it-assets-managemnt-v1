@@ -10,4 +10,3 @@ class Page[T](BaseModel):
     total: int
     page: int
     page_size: int
-

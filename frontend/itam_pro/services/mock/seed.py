@@ -3,6 +3,7 @@ Unified Mock Database ITAM Pro (Tahap 6c-1).
 Seluruh aset disimpan dalam satu tabel `MOCK_ASSETS` dengan field `attributes` (dict JSON)
 dan `parent_asset_id`.
 """
+
 import csv
 import os
 from copy import deepcopy
@@ -50,6 +51,8 @@ def format_ukuran_layar(val: Any) -> str:
     if not s or s == "—":
         return "—"
     return f'{s}"'
+
+
 SEED_IDS: dict[str, str] = {
     "PC_IT_TIO": "PC-0001",
     "PC_FIN_01": "PC-0002",
@@ -400,18 +403,13 @@ def _load_server_csv() -> list[dict[str, Any]]:
                             "vga": row.get("GPU", "") or row.get("KARTU GRAFIS (GPU)", ""),
                             "ram": row.get("RAM", "") or row.get("KONFIGURASI RAM", ""),
                             "hdd_ssd": (
-                                row.get("Penyimpanan", "")
-                                or row.get("KONFIGURASI PENYIMPANAN", "")
+                                row.get("Penyimpanan", "") or row.get("KONFIGURASI PENYIMPANAN", "")
                             ),
                             "tdp_total_w": (
-                                row.get("TOTAL (W)")
-                                or row.get("TOTAL TDP (W)")
-                                or "0"
+                                row.get("TOTAL (W)") or row.get("TOTAL TDP (W)") or "0"
                             ).replace(",", "."),
                             "psu_min_w": (
-                                row.get("PSU (Min)")
-                                or row.get("PSU MINIMUM (W)")
-                                or "0"
+                                row.get("PSU (Min)") or row.get("PSU MINIMUM (W)") or "0"
                             ).replace(",", "."),
                             "psu_rekomendasi_w": (
                                 row.get("PSU (Rekomendasi)")
@@ -480,12 +478,8 @@ def flatten_asset_row(asset: dict[str, Any]) -> dict[str, Any]:
     row["sn_pid"] = row.get("sn_pid") or "—"
     row["digunakan_oleh"] = row.get("digunakan_oleh") or "—"
     row["catatan"] = row.get("catatan") or "—"
-    row["tanggal_masuk_display"] = format_tanggal_id(
-        str(row.get("tanggal_masuk_gudang", ""))
-    )
-    row["tanggal_keluar_display"] = format_tanggal_id(
-        str(row.get("tanggal_keluar_gudang", ""))
-    )
+    row["tanggal_masuk_display"] = format_tanggal_id(str(row.get("tanggal_masuk_gudang", "")))
+    row["tanggal_keluar_display"] = format_tanggal_id(str(row.get("tanggal_keluar_gudang", "")))
     if "ukuran_layar" in attrs:
         row["ukuran_layar_display"] = format_ukuran_layar(attrs.get("ukuran_layar"))
     else:
@@ -545,9 +539,7 @@ def query_mock_assets(
             if opt == "Semua":
                 tab_counts[opt] = len(base_items)
             else:
-                tab_counts[opt] = sum(
-                    1 for item in base_items if str(item.get(t_field, "")) == opt
-                )
+                tab_counts[opt] = sum(1 for item in base_items if str(item.get(t_field, "")) == opt)
 
     filtered: list[dict[str, Any]] = []
     for item in base_items:
@@ -698,9 +690,7 @@ def update_mock_asset(
                     payload.get("tanggal_masuk_gudang", item.get("tanggal_masuk_gudang", ""))
                 ).strip(),
                 "tanggal_keluar_gudang": str(
-                    payload.get(
-                        "tanggal_keluar_gudang", item.get("tanggal_keluar_gudang", "")
-                    )
+                    payload.get("tanggal_keluar_gudang", item.get("tanggal_keluar_gudang", ""))
                 ).strip(),
                 "kepemilikan": str(
                     payload.get("kepemilikan", item.get("kepemilikan", "XML"))

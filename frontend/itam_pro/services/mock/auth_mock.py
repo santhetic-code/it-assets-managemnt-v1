@@ -1,4 +1,5 @@
 """Data Mock Autentikasi untuk pengembangan Frontend (USE_MOCK=true)."""
+
 from typing import Any
 
 MOCK_CREDENTIAL_PERMISSIONS: dict[str, dict[str, str]] = {

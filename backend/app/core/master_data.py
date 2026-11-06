@@ -141,4 +141,3 @@ def get_master_data_payload() -> dict[str, Any]:
         "category_prefixes": CATEGORY_PREFIXES,
         "category_fields": CATEGORY_SPEC_FIELDS,
     }
-

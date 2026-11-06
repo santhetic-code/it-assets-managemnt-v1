@@ -37,9 +37,7 @@ CRD_CODE_PATTERN = re.compile(r"^CRD-(\d+)$")
 def generate_next_credential_code(session: Session) -> str:
     """Menghasilkan kode otomatis CRD-001, CRD-002, dst."""
     existing = session.exec(
-        select(Credential.kode_kredensial).where(
-            col(Credential.kode_kredensial).like("CRD-%")
-        )
+        select(Credential.kode_kredensial).where(col(Credential.kode_kredensial).like("CRD-%"))
     ).all()
     max_num = 0
     for code in existing:
@@ -56,9 +54,7 @@ def _find_credential(session: Session, identifier: str) -> Credential:
         row = session.get(Credential, int(cleaned))
     if row is None:
         row = session.exec(
-            select(Credential).where(
-                func.lower(Credential.kode_kredensial) == cleaned.lower()
-            )
+            select(Credential).where(func.lower(Credential.kode_kredensial) == cleaned.lower())
         ).first()
     if row is None:
         raise HTTPException(
@@ -93,8 +89,7 @@ def _compute_credential_summary(
     admin_only_count = sum(
         1
         for r in all_rows
-        if is_admin_only_type(r.jenis_kredensial)
-        or r.allowed_roles == ["Administrator"]
+        if is_admin_only_type(r.jenis_kredensial) or r.allowed_roles == ["Administrator"]
     )
     operational_count = total_all - admin_only_count
     revealable_count = sum(
@@ -144,9 +139,7 @@ def get_credential_config(_: CurrentUserDep) -> dict[str, Any]:
         "types": list(CREDENTIAL_TYPE_PERMISSIONS.keys()),
         "permissions": CREDENTIAL_TYPE_PERMISSIONS,
         "admin_only_types": [
-            k
-            for k, roles in CREDENTIAL_TYPE_PERMISSIONS.items()
-            if roles == ["Administrator"]
+            k for k, roles in CREDENTIAL_TYPE_PERMISSIONS.items() if roles == ["Administrator"]
         ],
     }
 
@@ -169,16 +162,11 @@ def list_credentials(
 ) -> CredentialPageResponse:
     """Mengambil daftar kredensial berhalaman (password selalu disamarkan)."""
     all_rows = list(
-        session.exec(
-            select(Credential).order_by(col(Credential.kode_kredensial).asc())
-        ).all()
+        session.exec(select(Credential).order_by(col(Credential.kode_kredensial).asc())).all()
     )
     tab_counts, summary = _compute_credential_summary(all_rows, current_user.role)
 
-    all_public = [
-        CredentialPublic.from_model(r, viewer_role=current_user.role)
-        for r in all_rows
-    ]
+    all_public = [CredentialPublic.from_model(r, viewer_role=current_user.role) for r in all_rows]
     filtered = all_public
 
     keyword = (search or q or "").strip().lower()
@@ -210,9 +198,7 @@ def list_credentials(
         elif active_tab in ("akun online", "akun"):
             filtered = [i for i in filtered if i.jenis_key == "akun"]
         else:
-            filtered = [
-                i for i in filtered if i.jenis_kredensial.lower() == active_tab
-            ]
+            filtered = [i for i in filtered if i.jenis_kredensial.lower() == active_tab]
 
     if lokasi and lokasi.strip().lower() not in ("semua", "all", ""):
         loc_clean = lokasi.strip().lower()
@@ -274,9 +260,7 @@ def _perform_reveal(
     try:
         plain_pwd = decrypt_secret(row.password_encrypted)
         plain_extra = (
-            decrypt_secret(row.secret_extra_encrypted)
-            if row.secret_extra_encrypted
-            else ""
+            decrypt_secret(row.secret_extra_encrypted) if row.secret_extra_encrypted else ""
         )
     except ValueError as exc:
         raise HTTPException(
@@ -351,9 +335,7 @@ def create_credential(
     if payload.kode_kredensial and payload.kode_kredensial.strip():
         final_code = payload.kode_kredensial.strip().upper()
         dup = session.exec(
-            select(Credential).where(
-                func.lower(Credential.kode_kredensial) == final_code.lower()
-            )
+            select(Credential).where(func.lower(Credential.kode_kredensial) == final_code.lower())
         ).first()
         if dup is not None:
             raise HTTPException(
@@ -364,9 +346,7 @@ def create_credential(
         final_code = generate_next_credential_code(session)
 
     encrypted_pwd = encrypt_secret(payload.password)
-    encrypted_extra = (
-        encrypt_secret(payload.secret_extra) if payload.secret_extra else ""
-    )
+    encrypted_extra = encrypt_secret(payload.secret_extra) if payload.secret_extra else ""
 
     row = Credential(
         kode_kredensial=final_code,
@@ -381,8 +361,7 @@ def create_credential(
         password_encrypted=encrypted_pwd,
         secret_extra_encrypted=encrypted_extra,
         level_akses=payload.level_akses or "Administrator",
-        allowed_roles=payload.allowed_roles
-        or default_roles_for_type(payload.jenis_kredensial),
+        allowed_roles=payload.allowed_roles or default_roles_for_type(payload.jenis_kredensial),
         status=payload.status.strip(),
         terakhir_diubah_oleh=current_user.username,
         catatan=payload.catatan.strip(),
@@ -463,9 +442,7 @@ def _apply_credential_update(
 
     new_extra = data.pop("secret_extra", None)
     if new_extra is not None and new_extra.strip() != MASKED_SECRET_DISPLAY:
-        row.secret_extra_encrypted = (
-            encrypt_secret(new_extra) if new_extra.strip() else ""
-        )
+        row.secret_extra_encrypted = encrypt_secret(new_extra) if new_extra.strip() else ""
 
     if "port" in data and data["port"] is not None:
         row.port = str(data.pop("port")).strip()
@@ -519,4 +496,3 @@ def delete_credential(
     session.delete(row)
     session.commit()
     return {"status": "ok", "id": deleted_id, "kode_kredensial": deleted_code}
-

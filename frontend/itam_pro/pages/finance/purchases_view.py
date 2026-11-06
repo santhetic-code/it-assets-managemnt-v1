@@ -1,6 +1,7 @@
 """
 Halaman View Rekap Pembelian & Invoice ITAM Pro (Tahap 9).
 """
+
 import reflex as rx
 
 from itam_pro.components.layout.base_layout import base_layout
@@ -316,9 +317,7 @@ def _invoice_tab() -> rx.Component:
     return rx.vstack(
         rx.grid(
             stat_card("Total Invoice", FinanceState.invoices_summary["total_invoice"], "file-text"),
-            stat_card(
-                "Sudah ditautkan", FinanceState.invoices_summary["sudah_ditautkan"], "link"
-            ),
+            stat_card("Sudah ditautkan", FinanceState.invoices_summary["sudah_ditautkan"], "link"),
             stat_card(
                 "Belum ditautkan",
                 FinanceState.invoices_summary["belum_ditautkan"],
@@ -398,9 +397,7 @@ def _bills_tab() -> rx.Component:
                 "clock",
                 tone="warning",
             ),
-            stat_card(
-                "Tagihan aktif", FinanceState.bills_summary["tagihan_aktif"], "circle-check"
-            ),
+            stat_card("Tagihan aktif", FinanceState.bills_summary["tagihan_aktif"], "circle-check"),
             stat_card(
                 "Perlu dibayar ≤ 30 hari",
                 FinanceState.bills_perlu_dibayar_display,

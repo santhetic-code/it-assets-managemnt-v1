@@ -21,7 +21,7 @@ def health() -> dict[str, str]:
 def health_db(session: SessionDep) -> dict[str, str]:
     """Readiness: database dapat dijangkau."""
     try:
-        session.execute(text("SELECT 1"))
+        session.execute(text("SELECT 1"))  # type: ignore[deprecated]
     except Exception as exc:
         logger.error("Health check database gagal: %s", type(exc).__name__)
         raise HTTPException(
@@ -29,4 +29,3 @@ def health_db(session: SessionDep) -> dict[str, str]:
             detail="Database tidak dapat dijangkau",
         ) from exc
     return {"status": "ok", "database": "ok"}
-

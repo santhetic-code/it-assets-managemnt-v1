@@ -78,4 +78,3 @@ def test_page_params_defaults_and_offset() -> None:
 @pytest.mark.parametrize("qs", ["page=0", "page_size=0", "page_size=101", "page=abc"])
 def test_page_params_rejects_invalid(qs: str) -> None:
     assert TestClient(_paging_app()).get(f"/p?{qs}").status_code == 422
-

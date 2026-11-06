@@ -1,6 +1,7 @@
 """
 Data Mock Ringkasan Dashboard ITAM Pro (USE_MOCK=true).
 """
+
 from typing import Any
 
 from itam_pro.services.dashboard_service import calculate_dashboard_metrics

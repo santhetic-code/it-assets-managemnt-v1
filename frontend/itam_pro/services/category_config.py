@@ -2,6 +2,7 @@
 Pusat Konfigurasi Kategori Aset ITAM Pro (Single Source of Truth).
 Mengatur slug, prefix ID, field atribut khusus, kolom tabel, tab, dan menu sidebar.
 """
+
 from typing import Literal, NotRequired, Required, TypedDict
 
 from itam_pro.components.tables.data_table import ColumnDef
@@ -19,6 +20,7 @@ FieldType = Literal["text", "number", "select", "multiselect", "date"]
 
 class CategoryFieldDef(TypedDict, total=False):
     key: Required[str]
+    name: NotRequired[str]
     label: Required[str]
     type: Required[FieldType]
     unit: NotRequired[str]

@@ -70,6 +70,7 @@ class Color:
     WARNING_BAR = "#F59E0B"
     DANGER_FG = "#B91C1C"
     DANGER_BG = "#FEE2E2"
+    DANGER_BORDER = "#FECACA"
     DANGER_BAR = "#DC2626"
     NEUTRAL_FG = "#475569"
     NEUTRAL_BG = "#F1F5F9"

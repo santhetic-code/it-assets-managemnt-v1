@@ -1,6 +1,7 @@
 """
 Unit tests (pytest) untuk Modul Finansial (Pembelian, Invoice, Tagihan Berulang) ITAM Pro.
 """
+
 import datetime
 from copy import deepcopy
 
@@ -101,9 +102,17 @@ def test_action_jadikan_aset_generates_n_physical_assets() -> None:
 
 def _bill(due: datetime.date, **kw: object) -> dict[str, object]:
     base: dict[str, object] = {
-        "id": "BILL-T", "nama": "Tagihan Uji", "vendor": "V", "kategori": "Lainnya",
-        "periode": "Bulanan", "nominal": 100000, "jatuh_tempo": due.isoformat(),
-        "pengingat_hari": 7, "pembayar": "X", "aktif": True, "anchor_day": due.day,
+        "id": "BILL-T",
+        "nama": "Tagihan Uji",
+        "vendor": "V",
+        "kategori": "Lainnya",
+        "periode": "Bulanan",
+        "nominal": 100000,
+        "jatuh_tempo": due.isoformat(),
+        "pengingat_hari": 7,
+        "pembayar": "X",
+        "aktif": True,
+        "anchor_day": due.day,
     }
     base.update(kw)
     return base
@@ -159,7 +168,8 @@ def test_calculate_bill_status_boundaries() -> None:
     """7. Status: Terlambat / Segera (<= pengingat) / Terjadwal."""
     today = datetime.date(2026, 10, 24)
     assert calculate_bill_status("2026-10-19", 14, today) == {
-        "status": "Terlambat", "label": "Terlambat 5 hari",
+        "status": "Terlambat",
+        "label": "Terlambat 5 hari",
     }
     assert calculate_bill_status("2026-10-24", 7, today)["status"] == "Segera"
     assert calculate_bill_status("2026-10-31", 7, today)["status"] == "Segera"
@@ -217,9 +227,7 @@ def test_query_invoices_summary_and_filters() -> None:
     assert s["sudah_ditautkan"] == 2
     assert s["belum_ditautkan"] == 1
     linked = {
-        i["terkait_id"]
-        for i in finance_mock.MOCK_INVOICES
-        if i["terkait_tipe"] == "pembelian"
+        i["terkait_id"] for i in finance_mock.MOCK_INVOICES if i["terkait_tipe"] == "pembelian"
     }
     assert s["tanpa_bukti"] == len([p for p in MOCK_PURCHASES if p["id_pembelian"] not in linked])
     assert res["items"][0]["total_display"] == "Rp1.250.000"  # terbaru: NOTA-0187

@@ -2,6 +2,7 @@
 Halaman Login ITAM Pro (/login).
 Menggunakan desain Kartu Tengah (1040x640) dengan animasi geser Welcome -> Form.
 """
+
 import reflex as rx
 
 from itam_pro.components.ui import app_checkbox, form_input_field, primary_button
@@ -276,9 +277,7 @@ def _blue_sliding_panel() -> rx.Component:
                         "display": "flex",
                         "flex_direction": rx.cond(AuthState.is_form_state, "column", "row"),
                         "flex_wrap": "wrap",
-                        "justify_content": rx.cond(
-                            AuthState.is_form_state, "flex-start", "center"
-                        ),
+                        "justify_content": rx.cond(AuthState.is_form_state, "flex-start", "center"),
                         "align_items": rx.cond(AuthState.is_form_state, "flex-start", "center"),
                         "gap": rx.cond(AuthState.is_form_state, "12px", "22px"),
                     }

@@ -186,4 +186,3 @@ def test_maintenance_validation_and_rbac(
 
     assert client.delete(f"/api/v1/maintenance/{mnt_code}", headers=member_h).status_code == 403
     assert client.delete(f"/api/v1/maintenance/{mnt_code}", headers=admin_h).status_code == 200
-

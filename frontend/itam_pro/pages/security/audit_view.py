@@ -1,4 +1,5 @@
 """Halaman Security -> Audit Log (/audit-log)."""
+
 import reflex as rx
 
 from itam_pro.components.layout.base_layout import base_layout
@@ -99,4 +100,3 @@ def audit_view_page() -> rx.Component:
 
 
 __all__ = ["audit_view_page"]
-

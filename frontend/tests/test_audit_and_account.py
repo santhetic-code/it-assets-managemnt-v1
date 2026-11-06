@@ -1,4 +1,5 @@
 """Pengujian Modul Audit Log dan Pengaturan Akun."""
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

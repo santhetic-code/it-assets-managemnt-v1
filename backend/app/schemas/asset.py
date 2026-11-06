@@ -83,9 +83,9 @@ _MONTH_SHORT_ID = {
 
 def format_date_id(iso_date: str | None) -> str:
     """Konversi 'YYYY-MM-DD' menjadi 'DD MMM YYYY' (mis. '10 Jan 2025')."""
-    if not iso_date or not str(iso_date).strip() or str(iso_date).strip() in ("—", "-"):
+    if not iso_date or not iso_date.strip() or iso_date.strip() in ("—", "-"):
         return "—"
-    raw = str(iso_date).strip()
+    raw = iso_date.strip()
     parts = raw.split("-")
     if len(parts) != 3:
         return raw
@@ -399,11 +399,7 @@ class AssetPublic(BaseModel):
         tgl_keluar = str(extra.get("tanggal_keluar_gudang") or "")
         sn_val = asset.serial_number or str(extra.get("sn_pid") or "-")
         kepemilikan_val = str(extra.get("kepemilikan") or "XML")
-        pemakai_val = (
-            asset.penanggung_jawab
-            or str(extra.get("digunakan_oleh") or "")
-            or "—"
-        )
+        pemakai_val = asset.penanggung_jawab or str(extra.get("digunakan_oleh") or "") or "—"
         jenis_val = _derive_asset_jenis(asset, extra)
         cpu_val = asset.processor or str(extra.get("cpu") or "—")
         mb_val = asset.motherboard or str(extra.get("mainboard") or "—")
@@ -426,9 +422,7 @@ class AssetPublic(BaseModel):
         if isinstance(raw_kon, list):
             konektivitas_list = [str(x).strip() for x in raw_kon if str(x).strip()]
         elif asset.port_display:
-            konektivitas_list = [
-                p.strip() for p in asset.port_display.split(",") if p.strip()
-            ]
+            konektivitas_list = [p.strip() for p in asset.port_display.split(",") if p.strip()]
         else:
             konektivitas_list = []
 
@@ -523,4 +517,3 @@ class AssetPageResponse(BaseModel):
     tab_counts: dict[str, int]
     category_counts: dict[str, int] = Field(default_factory=dict)
     summary: dict[str, int]
-

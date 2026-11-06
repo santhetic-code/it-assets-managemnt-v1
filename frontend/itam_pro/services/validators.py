@@ -2,6 +2,7 @@
 Fungsi Validasi Logika Bisnis Murni ITAM Pro.
 Digunakan oleh State Reflex dan diuji langsung melalui pytest.
 """
+
 from typing import Any
 
 

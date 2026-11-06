@@ -114,9 +114,7 @@ class ServerPowerItem(BaseModel):
         extra = dict(asset.extra_specs or {})
         tdp_w = int(asset.watt or extra.get("tdp_total_w") or 0)
         psu_min = int(
-            extra.get("psu_min_w")
-            or extra.get("psu_minimum_watt")
-            or round(tdp_w * 1.25)
+            extra.get("psu_min_w") or extra.get("psu_minimum_watt") or round(tdp_w * 1.25)
         )
         psu_rek = int(
             extra.get("psu_rekomendasi_w")

@@ -1,6 +1,7 @@
 """
 Pemeriksaan Kesehatan Pra-Booting ITAM Pro (0.2).
 """
+
 import os
 import sys
 
@@ -46,11 +47,7 @@ def validate_production_env() -> None:
 
     fernet_key = os.getenv("FERNET_MASTER_KEY", "").strip()
     # Kunci fernet yang valid adalah URL-safe base64-encoded sepanjang 32 byte (44 karakter teks)
-    if (
-        not fernet_key
-        or fernet_key == "rahasia_ganti_di_produksi"
-        or len(fernet_key) != 44
-    ):
+    if not fernet_key or fernet_key == "rahasia_ganti_di_produksi" or len(fernet_key) != 44:
         print(
             format_fatal_message(
                 "FERNET_MASTER_KEY tidak valid (harus kunci Fernet 44-karakter "
@@ -63,13 +60,10 @@ def validate_production_env() -> None:
     db_pass = os.getenv("POSTGRES_PASSWORD", "").strip()
     if not db_pass or db_pass == "rahasia":
         print(
-            format_fatal_message(
-                "POSTGRES_PASSWORD masih menggunakan nilai bawaan (rahasia)."
-            ),
+            format_fatal_message("POSTGRES_PASSWORD masih menggunakan nilai bawaan (rahasia)."),
             file=sys.stderr,
         )
         sys.exit(1)
 
 
 __all__ = ["format_fatal_message", "validate_production_env"]
-

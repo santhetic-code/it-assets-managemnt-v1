@@ -61,25 +61,17 @@ def get_dashboard_overview(
 
     # 3. Keuangan
     all_purchases = list(
-        session.exec(
-            select(Purchase).order_by(col(Purchase.tanggal_jatuh_tempo).asc())
-        ).all()
+        session.exec(select(Purchase).order_by(col(Purchase.tanggal_jatuh_tempo).asc())).all()
     )
     _, fin_sum = compute_finance_summary(all_purchases, today=today)
-    all_purchases_pub = [
-        PurchasePublic.from_model(p, today=today) for p in all_purchases
-    ]
+    all_purchases_pub = [PurchasePublic.from_model(p, today=today) for p in all_purchases]
     upcoming_bills = [
-        p
-        for p in all_purchases_pub
-        if p.status.lower() not in ("lunas", "dibatalkan")
+        p for p in all_purchases_pub if p.status.lower() not in ("lunas", "dibatalkan")
     ][:5]
 
     # 4. Maintenance
     all_mnt = list(
-        session.exec(
-            select(Maintenance).order_by(col(Maintenance.tanggal_jadwal).asc())
-        ).all()
+        session.exec(select(Maintenance).order_by(col(Maintenance.tanggal_jadwal).asc())).all()
     )
     _, mnt_sum = compute_maintenance_summary(all_mnt, today=today)
     all_mnt_pub = [MaintenancePublic.from_model(m, today=today) for m in all_mnt]
@@ -111,9 +103,7 @@ def get_dashboard_overview(
             "label": k,
             "jumlah": v,
             "total": v,
-            "persentase": round((v / total_asset_count) * 100.0, 1)
-            if all_assets
-            else 0.0,
+            "persentase": round((v / total_asset_count) * 100.0, 1) if all_assets else 0.0,
         }
         for k, v in cat_counts.items()
         if v > 0 or k in ("PC", "Server", "Monitor", "UPS", "Jaringan", "CCTV")
@@ -124,9 +114,7 @@ def get_dashboard_overview(
             "label": k,
             "jumlah": v,
             "total": v,
-            "persentase": round((v / total_asset_count) * 100.0, 1)
-            if all_assets
-            else 0.0,
+            "persentase": round((v / total_asset_count) * 100.0, 1) if all_assets else 0.0,
         }
         for k, v in loc_counts.items()
     ]
@@ -208,14 +196,8 @@ def get_dashboard_overview(
 
     total_assets_val = asset_sum["total"]
     in_use_val = asset_sum["aktif"]
-    in_use_pct = (
-        round((in_use_val / total_assets_val) * 100.0, 1)
-        if total_assets_val > 0
-        else 0.0
-    )
-    server_watt_only = sum(
-        a.watt for a in all_assets if (a.kategori or "").lower() == "server"
-    )
+    in_use_pct = round((in_use_val / total_assets_val) * 100.0, 1) if total_assets_val > 0 else 0.0
+    server_watt_only = sum(a.watt for a in all_assets if (a.kategori or "").lower() == "server")
     server_kw = round(server_watt_only / 1000.0, 2)
     server_kwh_month = round((server_watt_only * 24 * 30) / 1000.0)
 
@@ -328,11 +310,7 @@ def get_dashboard_overview(
             }
         )
     for b in upcoming_bills[:2]:
-        desc_bill = (
-            f"Jatuh tempo: {b.tanggal_jatuh_tempo} · Rp {b.total_harga:,}".replace(
-                ",", "."
-            )
-        )
+        desc_bill = f"Jatuh tempo: {b.tanggal_jatuh_tempo} · Rp {b.total_harga:,}".replace(",", ".")
         attention_items_fe.append(
             {
                 "title": f"{b.nama_item} ({b.vendor})",

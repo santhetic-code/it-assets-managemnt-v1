@@ -1,4 +1,5 @@
 """Halaman Admin -> Pengaturan Akun (/account-settings)."""
+
 import reflex as rx
 
 from itam_pro.components.layout.base_layout import base_layout
@@ -379,4 +380,3 @@ def account_settings_page() -> rx.Component:
 
 
 __all__ = ["account_settings_page"]
-

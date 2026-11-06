@@ -63,4 +63,3 @@ class Credential(TimestampMixin, SQLModel, table=True):
     status: str = Field(default="Aktif", index=True, max_length=30, nullable=False)
     terakhir_diubah_oleh: str = Field(default="admin", max_length=80, nullable=False)
     catatan: str = Field(default="", max_length=500, nullable=False)
-

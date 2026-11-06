@@ -4,6 +4,7 @@ Menangani halaman `/assets` (Semua Aset) dan `/assets/c/[slug]` (View Kategori)
 berdasarkan konfigurasi di `services/category_config.py`.
 Dioptimalkan dengan @rx.var(cache=True) & O(1) short-circuit lookup.
 """
+
 import json
 import math
 from typing import Any
@@ -449,8 +450,7 @@ class AssetState(rx.State):
                 "event": f"Aset {code} terdaftar di sistem",
                 "date": tgl if tgl != "—" else "10 Jan 2025",
                 "note": (
-                    f"Lokasi: {item.get('lokasi', '—')} · "
-                    f"Pemilik: {item.get('kepemilikan', '—')}"
+                    f"Lokasi: {item.get('lokasi', '—')} · Pemilik: {item.get('kepemilikan', '—')}"
                 ),
             }
         ]
@@ -702,8 +702,10 @@ class AssetState(rx.State):
 
     def _init_default_attributes(self, kategori: str) -> None:
         if kategori in ("PC", "Server"):
-            jenis_default = "Server" if kategori == "Server" else (
-                self.active_tab if self.active_tab in MASTER_JENIS_PC else "Operasional"
+            jenis_default = (
+                "Server"
+                if kategori == "Server"
+                else (self.active_tab if self.active_tab in MASTER_JENIS_PC else "Operasional")
             )
             self.form_attributes = {
                 "jenis": jenis_default,
@@ -740,9 +742,11 @@ class AssetState(rx.State):
         cfg = get_config_by_slug(self.current_slug)
         if cfg:
             self.form_category_locked = True
-            default_cat = "Server" if (
-                self.current_slug == "pc" and self.active_tab == "Server"
-            ) else cfg["included_categories"][0]
+            default_cat = (
+                "Server"
+                if (self.current_slug == "pc" and self.active_tab == "Server")
+                else cfg["included_categories"][0]
+            )
             self.form_kategori = default_cat
         else:
             self.form_category_locked = False
@@ -756,9 +760,7 @@ class AssetState(rx.State):
         self.form_kepemilikan = "XML"
         self.form_lokasi = "Kantor Blok 14"
         self.form_kondisi = "Baru"
-        self.form_status = (
-            "Backup" if self.active_tab == "Backup" else "Digunakan"
-        )
+        self.form_status = "Backup" if self.active_tab == "Backup" else "Digunakan"
         self.form_digunakan_oleh = ""
         self.form_catatan = ""
         self._init_default_attributes(self.form_kategori)

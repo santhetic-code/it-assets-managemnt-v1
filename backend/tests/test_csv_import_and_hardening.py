@@ -53,18 +53,14 @@ def test_import_real_csv_files_is_idempotent(session: Session) -> None:
     # Verifikasi database Purchases
     purchases = session.exec(select(Purchase)).all()
     assert len(purchases) == 41
-    po_001 = session.exec(
-        select(Purchase).where(col(Purchase.kode_pembelian) == "PO-001")
-    ).first()
+    po_001 = session.exec(select(Purchase).where(col(Purchase.kode_pembelian) == "PO-001")).first()
     assert po_001 is not None
     assert po_001.harga_satuan == 77500
     assert po_001.jumlah == 2
     assert po_001.total_harga == 155000
 
     # Verifikasi audit log tercatat
-    audit = session.exec(
-        select(AuditLog).where(col(AuditLog.aksi) == "Impor CSV")
-    ).first()
+    audit = session.exec(select(AuditLog).where(col(AuditLog.aksi) == "Impor CSV")).first()
     assert audit is not None
     assert "Berhasil mengimpor" in audit.detail
 
@@ -121,7 +117,7 @@ def test_security_headers_and_login_rate_limiting(client: TestClient, session: S
             "/api/v1/auth/login",
             json={"username": "admin_sec", "password": "wrongpassword"},
         )
-        assert fail_resp.status_code == 401, f"Percobaan ke-{i+1} harusnya 401"
+        assert fail_resp.status_code == 401, f"Percobaan ke-{i + 1} harusnya 401"
 
     # Percobaan ke-11 harus diblokir dengan HTTP 429 Too Many Requests
     blocked_resp = client.post(
@@ -242,9 +238,7 @@ def test_location_disambiguation_and_full_contract_after_csv_import(
     assert assets_all["category_counts"]["monitor"] == 4
     assert assets_all["category_counts"]["ups"] == 24
 
-    pc_op = client.get(
-        "/api/v1/assets?slug=pc&tab=Operasional", headers=admin_h
-    ).json()
+    pc_op = client.get("/api/v1/assets?slug=pc&tab=Operasional", headers=admin_h).json()
     assert pc_op["total"] == 33
     assert pc_op["tab_counts"]["Operasional"] == 33
     assert pc_op["tab_counts"]["Server"] == 11
@@ -310,6 +304,3 @@ def test_location_disambiguation_and_full_contract_after_csv_import(
     assert "induk" in crd_res["items"][0]
     rev_res = client.post("/api/v1/credentials/CRD-001/reveal", headers=admin_h).json()
     assert rev_res["value"] != ""
-
-
-

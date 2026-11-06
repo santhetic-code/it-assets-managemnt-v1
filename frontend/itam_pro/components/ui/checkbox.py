@@ -2,6 +2,7 @@
 Komponen Checkbox Reusable ITAM Pro.
 Kotak 18px, accent Color.ACCENT, label teks muted Color.MUTED.
 """
+
 from typing import Any
 
 import reflex as rx

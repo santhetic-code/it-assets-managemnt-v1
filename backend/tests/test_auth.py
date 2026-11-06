@@ -164,4 +164,3 @@ def test_role_permissions_matrix(session: Session) -> None:
     assert c.get("/only-admin", headers={"Authorization": f"Bearer {t_viewer}"}).status_code == 403
     assert c.get("/editor", headers={"Authorization": f"Bearer {t_viewer}"}).status_code == 403
     assert c.get("/viewer", headers={"Authorization": f"Bearer {t_viewer}"}).status_code == 200
-

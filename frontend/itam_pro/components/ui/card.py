@@ -2,6 +2,7 @@
 Komponen Card Standar Reusable ITAM Pro.
 Putih, border Color.BORDER, radius 14px, padding 20px, dengan slot judul + tautan kanan.
 """
+
 from typing import Any
 
 import reflex as rx

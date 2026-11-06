@@ -3,6 +3,7 @@ Data Mock Modul Jadwal Maintenance ITAM Pro (Tahap 10).
 Melebur jadwal fisik (PC/Printer/Server) dan perangkat lunak (Backup Database)
 ke dalam satu ekosistem terpadu menggunakan recurrence engine.
 """
+
 from copy import deepcopy
 from datetime import date, datetime
 from typing import Any
@@ -309,7 +310,7 @@ def query_maintenance_plans(
 
         filtered.append(row)
 
-    filtered.sort(key=lambda x: (x["jadwal_berikutnya"] or "9999-12-31"))
+    filtered.sort(key=lambda x: x["jadwal_berikutnya"] or "9999-12-31")
     start = max(0, (page - 1) * page_size)
 
     return {
@@ -345,9 +346,7 @@ def query_maintenance_logs(
     asset_id = filters.get("asset_id")
     if asset_id:
         filtered = [
-            log_entry
-            for log_entry in filtered
-            if log_entry.get("objek_asset_id") == asset_id
+            log_entry for log_entry in filtered if log_entry.get("objek_asset_id") == asset_id
         ]
 
     start = max(0, (page - 1) * page_size)
@@ -381,7 +380,7 @@ def action_tandai_selesai(
             MOCK_MAINTENANCE_LOGS.insert(
                 0,
                 {
-                    "id": f"MLOG-{len(MOCK_MAINTENANCE_LOGS)+1:03d}",
+                    "id": f"MLOG-{len(MOCK_MAINTENANCE_LOGS) + 1:03d}",
                     "plan_id": plan_id,
                     "objek_asset_id": aid,
                     "objek_display": objek_disp,
@@ -419,7 +418,7 @@ def action_buat_jadwal_massal(
         if asset.get("kategori") == kategori or kategori == "Semua":
             MOCK_MAINTENANCE_PLANS.append(
                 {
-                    "id": f"MP-{len(MOCK_MAINTENANCE_PLANS)+1:03d}",
+                    "id": f"MP-{len(MOCK_MAINTENANCE_PLANS) + 1:03d}",
                     "objek_asset_id": asset.get("id_aset", ""),
                     "objek_teks": "",
                     "kegiatan": kegiatan,

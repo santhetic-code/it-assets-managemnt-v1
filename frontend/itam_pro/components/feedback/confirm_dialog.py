@@ -1,6 +1,7 @@
 """
 Komponen Dialog Konfirmasi Hapus Reusable ITAM Pro.
 """
+
 from typing import Any
 
 import reflex as rx

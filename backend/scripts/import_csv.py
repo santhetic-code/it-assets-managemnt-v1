@@ -4,7 +4,6 @@ Pemakaian:
     python -m scripts.import_csv
 """
 
-
 from sqlmodel import Session
 
 from app.core.csv_importer import import_all_csv_data, resolve_data_dir
@@ -29,4 +28,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,6 +1,7 @@
 """
 Unit tests untuk Layanan Rekap Watt Server ITAM Pro.
 """
+
 import pytest
 
 from itam_pro.pages.infrastructure.watt_server import watt_server_page
@@ -148,4 +149,3 @@ def test_watt_server_page_ui_compilation() -> None:
     """6. Uji kompilasi komponen antarmuka halaman /watt-server."""
     page = watt_server_page()
     assert page is not None
-

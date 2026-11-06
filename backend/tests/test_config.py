@@ -87,4 +87,3 @@ def test_production_accepts_safe_config() -> None:
         postgres_password="kuat-sekali-123",
     )
     assert s.is_production
-

@@ -34,9 +34,7 @@ MNT_CODE_PATTERN = re.compile(r"^MNT-(\d+)$")
 def generate_next_maintenance_code(session: Session) -> str:
     """Menghasilkan kode otomatis MNT-001, MNT-002, dst."""
     existing = session.exec(
-        select(Maintenance.kode_maintenance).where(
-            col(Maintenance.kode_maintenance).like("MNT-%")
-        )
+        select(Maintenance.kode_maintenance).where(col(Maintenance.kode_maintenance).like("MNT-%"))
     ).all()
     max_num = 0
     for code in existing:
@@ -65,9 +63,7 @@ def _find_maintenance(session: Session, identifier: str) -> Maintenance:
         row = session.get(Maintenance, int(cleaned))
     if row is None:
         row = session.exec(
-            select(Maintenance).where(
-                func.lower(Maintenance.kode_maintenance) == cleaned.lower()
-            )
+            select(Maintenance).where(func.lower(Maintenance.kode_maintenance) == cleaned.lower())
         ).first()
     if row is None:
         raise HTTPException(
@@ -87,23 +83,17 @@ def _compute_maintenance_summary(
     total_all = len(public_items)
     jadwal_aktif = sum(1 for i in public_items if not i.is_history)
     terjadwal_count = sum(
-        1
-        for i in public_items
-        if i.status.lower() == "terjadwal" and not i.is_overdue
+        1 for i in public_items if i.status.lower() == "terjadwal" and not i.is_overdue
     )
     proses_count = sum(
-        1
-        for i in public_items
-        if i.status.lower() in ("dalam proses", "sedang dikerjakan")
+        1 for i in public_items if i.status.lower() in ("dalam proses", "sedang dikerjakan")
     )
     overdue_count = sum(1 for i in public_items if i.is_overdue)
     selesai_count = sum(1 for i in public_items if i.status.lower() == "selesai")
     batal_count = sum(1 for i in public_items if i.status.lower() == "dibatalkan")
     riwayat_count = selesai_count + batal_count
     rutin_count = sum(1 for i in public_items if i.is_recurring and not i.is_history)
-    total_biaya = sum(
-        i.biaya for i in public_items if i.status.lower() != "dibatalkan"
-    )
+    total_biaya = sum(i.biaya for i in public_items if i.status.lower() != "dibatalkan")
 
     tab_counts = {
         "Semua": total_all,
@@ -118,13 +108,9 @@ def _compute_maintenance_summary(
     }
 
     segera_count = sum(
-        1
-        for i in public_items
-        if (not i.is_history) and (0 <= i.hari_menuju_jadwal <= 7)
+        1 for i in public_items if (not i.is_history) and (0 <= i.hari_menuju_jadwal <= 7)
     )
-    tindak_lanjut_count = sum(
-        1 for i in public_items if i.hasil == "Perlu Tindak Lanjut"
-    )
+    tindak_lanjut_count = sum(1 for i in public_items if i.hasil == "Perlu Tindak Lanjut")
 
     summary: dict[str, Any] = {
         "total": total_all,
@@ -207,9 +193,7 @@ def list_maintenances(
             filtered = [i for i in filtered if i.is_overdue]
         elif active_tab in ("dalam proses", "proses"):
             filtered = [
-                i
-                for i in filtered
-                if i.status.lower() in ("dalam proses", "sedang dikerjakan")
+                i for i in filtered if i.status.lower() in ("dalam proses", "sedang dikerjakan")
             ]
         elif active_tab in ("rutin", "recurring"):
             filtered = [i for i in filtered if i.is_recurring]
@@ -265,9 +249,7 @@ def list_maintenances(
             "desember": "-12-",
         }
         m_sub = m_map.get(month.strip().lower(), month.strip())
-        filtered = [
-            i for i in filtered if m_sub in (i.tanggal_selesai or i.tanggal_jadwal)
-        ]
+        filtered = [i for i in filtered if m_sub in (i.tanggal_selesai or i.tanggal_jadwal)]
 
     if status_filter and status_filter.strip().lower() not in ("semua", "all", ""):
         st_clean = status_filter.strip().lower()
@@ -326,21 +308,13 @@ def create_bulk_maintenance(
         stmt = stmt.where(func.upper(Asset.id_aset).in_(upper_codes))
     else:
         if payload.only_active_assets:
-            stmt = stmt.where(
-                func.lower(Asset.status).notin_(["rusak", "nonaktif"])
-            )
+            stmt = stmt.where(func.lower(Asset.status).notin_(["rusak", "nonaktif"]))
         if payload.kategori:
-            stmt = stmt.where(
-                func.lower(Asset.kategori) == payload.kategori.strip().lower()
-            )
+            stmt = stmt.where(func.lower(Asset.kategori) == payload.kategori.strip().lower())
         if payload.lokasi:
-            stmt = stmt.where(
-                func.lower(Asset.lokasi) == payload.lokasi.strip().lower()
-            )
+            stmt = stmt.where(func.lower(Asset.lokasi) == payload.lokasi.strip().lower())
 
-    target_assets = list(
-        session.exec(stmt.order_by(col(Asset.id_aset).asc())).all()
-    )
+    target_assets = list(session.exec(stmt.order_by(col(Asset.id_aset).asc())).all())
     if not target_assets:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -639,4 +613,3 @@ def delete_maintenance(
     session.delete(row)
     session.commit()
     return {"status": "ok", "id": deleted_id, "kode_maintenance": deleted_code}
-

@@ -2,6 +2,7 @@
 Halaman Tunggal Generik Inventaris Aset ITAM Pro (Tahap 6c-1).
 Melayani route `/assets` (Semua Aset) dan `/assets/c/[slug]` (View per Kategori).
 """
+
 from typing import cast
 
 import reflex as rx

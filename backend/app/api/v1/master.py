@@ -24,5 +24,3 @@ def import_csv_data(
 ) -> dict[str, Any]:
     """Mengimpor seluruh data CSV operasional ke database (khusus Administrator)."""
     return import_all_csv_data(session, username=current_admin.username)
-
-

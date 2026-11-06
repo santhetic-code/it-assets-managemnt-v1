@@ -2,6 +2,7 @@
 Komponen Tabs Reusable ITAM Pro.
 Menampilkan daftar tab dengan badge jumlah unit di sebelah label.
 """
+
 from typing import Any, TypedDict
 
 import reflex as rx
@@ -98,10 +99,7 @@ def _tab_button(
 
 def app_tabs(
     tabs: (
-        list[TabItemConfig]
-        | rx.Var[list[dict[str, Any]]]
-        | rx.Var[list[TabItemConfig]]
-        | Any
+        list[TabItemConfig] | rx.Var[list[dict[str, Any]]] | rx.Var[list[TabItemConfig]] | Any
     ) = None,
     active_tab: Any = None,
     on_change: Any = None,

@@ -3,6 +3,7 @@
 Menguji master config, keamanan mock (prefix CONTOH-, pembuangan secret asli),
 hak akses permission, audit log, serta integrasi state dan UI.
 """
+
 import pytest
 
 from itam_pro.pages.security.credential_view import credential_view_page

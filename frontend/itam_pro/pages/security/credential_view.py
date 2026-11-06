@@ -2,6 +2,7 @@
 Halaman Credential Manager ITAM Pro (Tahap 12).
 Brankas penyimpanan kredensial terenkripsi dengan proteksi reveal timer 30 detik.
 """
+
 from typing import Any
 
 import reflex as rx
@@ -282,9 +283,7 @@ def _detail_drawer() -> rx.Component:
                                             "Salin",
                                             size="1",
                                             variant="ghost",
-                                            on_click=CredentialState.copy_secret(
-                                                crd_id, "secret"
-                                            ),
+                                            on_click=CredentialState.copy_secret(crd_id, "secret"),
                                         ),
                                         spacing="2",
                                     ),

@@ -36,10 +36,10 @@ MONTHS_ID = [
 
 
 def _ipv4_sort_tuple(ip_str: str) -> tuple[int, int, int, int, str]:
-    parts = str(ip_str).strip().split(".")
+    parts = ip_str.strip().split(".")
     if len(parts) == 4 and all(p.isdigit() for p in parts):
         return (int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), ip_str)
-    return (999, 999, 999, 999, str(ip_str))
+    return (999, 999, 999, 999, ip_str)
 
 
 class IPState(rx.State):

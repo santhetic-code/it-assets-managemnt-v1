@@ -3,6 +3,7 @@ Komponen Detail Drawer Generik ITAM Pro.
 Mendukung grup informasi key-value, seksi chip konektivitas, tab 'Riwayat & Log',
 serta aksi Edit, Duplikat, dan Hapus.
 """
+
 from typing import Any
 
 import reflex as rx

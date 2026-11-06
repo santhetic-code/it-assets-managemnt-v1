@@ -76,10 +76,7 @@ class Settings(BaseSettings):
             return self
 
         problems: list[str] = []
-        if (
-            self.jwt_secret_key.strip() == DEFAULT_SECRET
-            or len(self.jwt_secret_key.strip()) < 32
-        ):
+        if self.jwt_secret_key.strip() == DEFAULT_SECRET or len(self.jwt_secret_key.strip()) < 32:
             problems.append("JWT_SECRET_KEY kosong/bawaan/kurang dari 32 karakter")
         if not _is_valid_fernet_key(self.fernet_master_key):
             problems.append("FERNET_MASTER_KEY bukan kunci Fernet yang valid")
@@ -102,4 +99,3 @@ def _is_valid_fernet_key(key: str) -> bool:
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

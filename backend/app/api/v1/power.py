@@ -51,17 +51,11 @@ def _build_power_analytics(
     dict[str, Any],
 ]:
     """Menghitung seluruh metrik daya, UPS, lokasi, tab_counts, dan KPI dari daftar Asset."""
-    consumers = [
-        a for a in all_assets if _is_power_consumer(a, include_all_consumers)
-    ]
+    consumers = [a for a in all_assets if _is_power_consumer(a, include_all_consumers)]
     ups_assets = [a for a in all_assets if a.kategori.strip().lower() == "ups"]
 
-    active_consumers = [
-        a for a in consumers if a.status.strip().lower() in ("aktif", "digunakan")
-    ]
-    active_ups = [
-        a for a in ups_assets if a.status.strip().lower() in ("aktif", "digunakan")
-    ]
+    active_consumers = [a for a in consumers if a.status.strip().lower() in ("aktif", "digunakan")]
+    active_ups = [a for a in ups_assets if a.status.strip().lower() in ("aktif", "digunakan")]
 
     total_watt = sum(a.watt for a in active_consumers)
     avg_watt = round(total_watt / len(active_consumers)) if active_consumers else 0
@@ -70,9 +64,7 @@ def _build_power_analytics(
     cost_month = round(kwh_month * tarif_per_kwh)
 
     total_va_ups = sum(u.kapasitas_va for u in active_ups)
-    total_watt_ups = sum(
-        effective_ups_watt(u.kapasitas_va, u.kapasitas_watt) for u in active_ups
-    )
+    total_watt_ups = sum(effective_ups_watt(u.kapasitas_va, u.kapasitas_watt) for u in active_ups)
     overall_load_pct = (
         round((total_watt / total_watt_ups) * 100.0, 1) if total_watt_ups > 0 else 0.0
     )
@@ -85,8 +77,7 @@ def _build_power_analytics(
             known_locations.append(a.lokasi)
 
     all_consumer_items = [
-        ServerPowerItem.from_asset(a, tarif_per_kwh=tarif_per_kwh)
-        for a in consumers
+        ServerPowerItem.from_asset(a, tarif_per_kwh=tarif_per_kwh) for a in consumers
     ]
     op_count = sum(1 for it in all_consumer_items if it.grup_server == "Operasional")
     bk_count = sum(1 for it in all_consumer_items if it.grup_server == "Backup")
@@ -103,21 +94,15 @@ def _build_power_analytics(
 
     for loc in known_locations:
         loc_consumers = [a for a in consumers if a.lokasi.lower() == loc.lower()]
-        loc_active_consumers = [
-            a for a in active_consumers if a.lokasi.lower() == loc.lower()
-        ]
+        loc_active_consumers = [a for a in active_consumers if a.lokasi.lower() == loc.lower()]
         loc_ups = [u for u in active_ups if u.lokasi.lower() == loc.lower()]
 
         tab_counts[loc] = len(loc_consumers)
 
         loc_watt = sum(a.watt for a in loc_active_consumers)
         loc_va = sum(u.kapasitas_va for u in loc_ups)
-        loc_ups_watt = sum(
-            effective_ups_watt(u.kapasitas_va, u.kapasitas_watt) for u in loc_ups
-        )
-        loc_load_pct = (
-            round((loc_watt / loc_ups_watt) * 100.0, 1) if loc_ups_watt > 0 else 0.0
-        )
+        loc_ups_watt = sum(effective_ups_watt(u.kapasitas_va, u.kapasitas_watt) for u in loc_ups)
+        loc_load_pct = round((loc_watt / loc_ups_watt) * 100.0, 1) if loc_ups_watt > 0 else 0.0
         loc_kwh_month = round(
             (loc_watt * HOURS_PER_DAY * DAYS_PER_MONTH) / 1000.0,
             2,
@@ -163,9 +148,7 @@ def _build_power_analytics(
         "max_tdp_server": max_item.nama_aset if max_item else "—",
         "estimasi_kwh_hari": kwh_day,
         "estimasi_kwh_bulan": kwh_month,
-        "est_kwh_month": round(
-            (total_tdp_all * HOURS_PER_DAY * DAYS_PER_MONTH) / 1000.0
-        ),
+        "est_kwh_month": round((total_tdp_all * HOURS_PER_DAY * DAYS_PER_MONTH) / 1000.0),
         "estimasi_biaya_bulan": cost_month,
         "tarif_per_kwh": tarif_per_kwh,
         "total_ups": len(ups_assets),
@@ -198,19 +181,14 @@ def get_watt_server_recap(
     tarif_per_kwh: float = Query(default=DEFAULT_TARIF_PER_KWH, gt=0),
 ) -> WattServerPageResponse:
     """Mengambil Rekap Watt Server & UPS yang diturunkan langsung dari tabel assets."""
-    all_assets = list(
-        session.exec(select(Asset).order_by(col(Asset.id_aset).asc())).all()
-    )
+    all_assets = list(session.exec(select(Asset).order_by(col(Asset.id_aset).asc())).all())
     consumers, ups_items, by_location, tab_counts, summary = _build_power_analytics(
         all_assets,
         tarif_per_kwh=tarif_per_kwh,
         include_all_consumers=include_all_consumers,
     )
 
-    all_items = [
-        ServerPowerItem.from_asset(a, tarif_per_kwh=tarif_per_kwh)
-        for a in consumers
-    ]
+    all_items = [ServerPowerItem.from_asset(a, tarif_per_kwh=tarif_per_kwh) for a in consumers]
 
     keyword = (search or q or "").strip().lower()
     if keyword:
@@ -315,9 +293,9 @@ def create_server_power(
     vga_val = (payload.vga or payload.gpu or "").strip()
     ram_val = (payload.ram or "").strip()
     hdd_val = (payload.hdd_ssd or payload.storage or "").strip()
-    tdp_val = int(payload.tdp_total_w or payload.watt or 120)
-    psu_min_val = int(payload.psu_min_w or round(tdp_val * 1.25))
-    psu_rek_val = int(payload.psu_rekomendasi_w or max(450, ((int(tdp_val * 1.6) + 49) // 50) * 50))
+    tdp_val = payload.tdp_total_w or payload.watt or 120
+    psu_min_val = payload.psu_min_w or round(tdp_val * 1.25)
+    psu_rek_val = payload.psu_rekomendasi_w or max(450, ((int(tdp_val * 1.6) + 49) // 50) * 50)
     status_val = "Backup" if "BACKUP" in nama_val.upper() else (payload.status or "Digunakan")
 
     asset = Asset(

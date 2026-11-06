@@ -1,6 +1,7 @@
 """State Controller untuk Halaman Audit Log (/audit-log).
 Dioptimalkan dengan @rx.var(cache=True) dan filter guards.
 """
+
 from typing import Any
 
 import reflex as rx

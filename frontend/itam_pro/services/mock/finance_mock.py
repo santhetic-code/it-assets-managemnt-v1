@@ -1,6 +1,7 @@
 """
 Data Mock Modul Finansial (Pembelian, Invoice, Tagihan Berulang) ITAM Pro.
 """
+
 import csv
 import os
 from copy import deepcopy
@@ -111,39 +112,75 @@ MOCK_INVOICES: list[dict[str, Any]] = [
 
 _BILLS_SEED: list[dict[str, Any]] = [
     {
-        "id": "BILL-001", "nama": "Domain perusahaan (.com)", "vendor": "Registrar",
-        "kategori": "Domain", "periode": "Tahunan", "nominal": 185000,
-        "jatuh_tempo": "2026-10-19", "pengingat_hari": 14, "pembayar": "Ridho",
+        "id": "BILL-001",
+        "nama": "Domain perusahaan (.com)",
+        "vendor": "Registrar",
+        "kategori": "Domain",
+        "periode": "Tahunan",
+        "nominal": 185000,
+        "jatuh_tempo": "2026-10-19",
+        "pengingat_hari": 14,
+        "pembayar": "Ridho",
         "aktif": True,
     },
     {
-        "id": "BILL-002", "nama": "Internet kantor", "vendor": "ISP",
-        "kategori": "Internet", "periode": "Bulanan", "nominal": 1450000,
-        "jatuh_tempo": "2026-10-28", "pengingat_hari": 7, "pembayar": "Surya",
+        "id": "BILL-002",
+        "nama": "Internet kantor",
+        "vendor": "ISP",
+        "kategori": "Internet",
+        "periode": "Bulanan",
+        "nominal": 1450000,
+        "jatuh_tempo": "2026-10-28",
+        "pengingat_hari": 7,
+        "pembayar": "Surya",
         "aktif": True,
     },
     {
-        "id": "BILL-003", "nama": "Cloud backup", "vendor": "Vendor Cloud",
-        "kategori": "Hosting", "periode": "Bulanan", "nominal": 450000,
-        "jatuh_tempo": "2026-11-01", "pengingat_hari": 7, "pembayar": "Ridho",
+        "id": "BILL-003",
+        "nama": "Cloud backup",
+        "vendor": "Vendor Cloud",
+        "kategori": "Hosting",
+        "periode": "Bulanan",
+        "nominal": 450000,
+        "jatuh_tempo": "2026-11-01",
+        "pengingat_hari": 7,
+        "pembayar": "Ridho",
         "aktif": True,
     },
     {
-        "id": "BILL-004", "nama": "Hosting website perusahaan", "vendor": "Vendor Hosting",
-        "kategori": "Hosting", "periode": "Tahunan", "nominal": 1250000,
-        "jatuh_tempo": "2026-11-07", "pengingat_hari": 7, "pembayar": "Ridho",
+        "id": "BILL-004",
+        "nama": "Hosting website perusahaan",
+        "vendor": "Vendor Hosting",
+        "kategori": "Hosting",
+        "periode": "Tahunan",
+        "nominal": 1250000,
+        "jatuh_tempo": "2026-11-07",
+        "pengingat_hari": 7,
+        "pembayar": "Ridho",
         "aktif": True,
     },
     {
-        "id": "BILL-005", "nama": "Lisensi antivirus (20 perangkat)",
-        "vendor": "Vendor Antivirus", "kategori": "Lisensi", "periode": "Tahunan",
-        "nominal": 3200000, "jatuh_tempo": "2026-12-15", "pengingat_hari": 14,
-        "pembayar": "Surya", "aktif": True,
+        "id": "BILL-005",
+        "nama": "Lisensi antivirus (20 perangkat)",
+        "vendor": "Vendor Antivirus",
+        "kategori": "Lisensi",
+        "periode": "Tahunan",
+        "nominal": 3200000,
+        "jatuh_tempo": "2026-12-15",
+        "pengingat_hari": 14,
+        "pembayar": "Surya",
+        "aktif": True,
     },
     {
-        "id": "BILL-006", "nama": "Sertifikat SSL", "vendor": "Vendor SSL",
-        "kategori": "Lainnya", "periode": "Tahunan", "nominal": 650000,
-        "jatuh_tempo": "2027-01-20", "pengingat_hari": 30, "pembayar": "Ridho",
+        "id": "BILL-006",
+        "nama": "Sertifikat SSL",
+        "vendor": "Vendor SSL",
+        "kategori": "Lainnya",
+        "periode": "Tahunan",
+        "nominal": 650000,
+        "jatuh_tempo": "2027-01-20",
+        "pengingat_hari": 30,
+        "pembayar": "Ridho",
         "aktif": True,
     },
 ]
@@ -222,9 +259,7 @@ def query_purchases(
         "summary": {
             "total_belanja": total_belanja_keseluruhan,
             "belanja_terbesar": max((x["total"] for x in filtered), default=0),
-            "belum_dicatat": sum(
-                1 for x in MOCK_PURCHASES if x["aset_status"] == "Belum dicatat"
-            ),
+            "belum_dicatat": sum(1 for x in MOCK_PURCHASES if x["aset_status"] == "Belum dicatat"),
         },
     }
 
@@ -291,9 +326,7 @@ def query_invoices(
     linked_purchase_ids = {
         i["terkait_id"] for i in MOCK_INVOICES if i["terkait_tipe"] == "pembelian"
     }
-    tanpa_bukti = sum(
-        1 for p in MOCK_PURCHASES if p["id_pembelian"] not in linked_purchase_ids
-    )
+    tanpa_bukti = sum(1 for p in MOCK_PURCHASES if p["id_pembelian"] not in linked_purchase_ids)
 
     return {
         "items": _paginate(rows, page, page_size),

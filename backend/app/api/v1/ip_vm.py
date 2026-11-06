@@ -414,7 +414,7 @@ async def preview_ip_import(
 
             text_csv = raw_bytes.decode("utf-8-sig", errors="replace")
             reader = csv.reader(io.StringIO(text_csv))
-            raw_rows = [[str(c).strip() for c in r] for r in reader if any(r)]
+            raw_rows = [[c.strip() for c in r] for r in reader if any(r)]
     except Exception as exc:
         return {
             "valid_count": 0,
@@ -456,7 +456,7 @@ async def preview_ip_import(
     for idx, cols in enumerate(raw_rows[1:], start=2):
         padded = [*cols, "", "", "", "", "", "", "", ""][:8]
         ip_val, nama_val, jenis_val, host_val, status_val, fungsi_val, os_val, ket_val = [
-            str(x).strip() for x in padded
+            x.strip() for x in padded
         ]
         if not any([ip_val, nama_val, jenis_val]):
             continue
@@ -699,7 +699,7 @@ def export_ip_allocations(
         )
 
     # Urutkan berdasarkan IPv4 secara numerik naik
-    stmt = stmt.order_by(IPAllocation.ip_int.asc())
+    stmt = stmt.order_by(col(IPAllocation.ip_int).asc())
     rows = session.exec(stmt).all()
 
     orphan_ids, conflict_ips = _detect_orphan_and_conflict_maps(session, rows)

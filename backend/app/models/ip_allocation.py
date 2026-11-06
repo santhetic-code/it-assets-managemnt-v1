@@ -47,4 +47,3 @@ class IPAllocation(TimestampMixin, SQLModel, table=True):
     mac_address: str = Field(default="", max_length=50, nullable=False)
     pengguna: str = Field(default="", max_length=100, nullable=False)
     keterangan: str = Field(default="", max_length=500, nullable=False)
-

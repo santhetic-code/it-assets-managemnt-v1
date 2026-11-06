@@ -153,4 +153,3 @@ def test_patch_power_updates_underlying_asset_and_rbac(
     assert asset_res.status_code == 200
     assert asset_res.json()["watt"] == 250
     assert asset_res.json()["beban_perangkat"] == "UPS-001"
-

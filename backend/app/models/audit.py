@@ -32,4 +32,3 @@ class AuditLog(TimestampMixin, SQLModel, table=True):
     level_risiko: str = Field(default="Rendah", index=True, max_length=30, nullable=False)
     status: str = Field(default="Sukses", index=True, max_length=30, nullable=False)
     ip_address: str = Field(default="127.0.0.1", max_length=45, nullable=False)
-

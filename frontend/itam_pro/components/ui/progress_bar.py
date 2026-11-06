@@ -2,6 +2,7 @@
 Komponen Progress Bar Reusable ITAM Pro.
 Warna otomatis berdasarkan persentase: <70% biru, 70-85% amber, >85% merah.
 """
+
 from typing import Any
 
 import reflex as rx

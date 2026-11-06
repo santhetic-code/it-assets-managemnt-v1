@@ -1,6 +1,7 @@
 """
 Konfigurasi Tipografi ITAM Pro (Plus Jakarta Sans).
 """
+
 from .colors import Color
 
 FONT_FAMILY = "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
@@ -22,15 +23,15 @@ class FontWeight:
 class FontSize:
     GROUP_LABEL = "11px"
     XS = "12px"
-    FOOTER = "12.5px"           # Keterangan bawah KPI & waktu relatif
-    SM = "13px"                 # Label kartu KPI & tautan kartu
+    FOOTER = "12.5px"  # Keterangan bawah KPI & waktu relatif
+    SM = "13px"  # Label kartu KPI & tautan kartu
     BASE = "14px"
     MD = "15px"
-    SUBTITLE = "16px"           # Judul dalam kartu (Card Title)
+    SUBTITLE = "16px"  # Judul dalam kartu (Card Title)
     LOGO = "18px"
-    DONUT_TOTAL = "24px"        # Angka total di tengah donut chart
-    TITLE = "28px"              # Judul halaman
-    KPI_VALUE = "32px"          # Angka utama kartu KPI (weight 800)
+    DONUT_TOTAL = "24px"  # Angka total di tengah donut chart
+    TITLE = "28px"  # Judul halaman
+    KPI_VALUE = "32px"  # Angka utama kartu KPI (weight 800)
     HERO_FORM = "34px"
     HERO_WELCOME = "42px"
 
@@ -50,4 +51,3 @@ BASE_STYLE: dict = {
         "opacity": "0.75",
     },
 }
-

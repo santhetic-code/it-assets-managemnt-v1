@@ -2,6 +2,7 @@
 State Manajemen Jadwal Maintenance ITAM Pro (Tahap 10).
 Dioptimalkan untuk mencegah double-fetch saat pergantian tab dan pencarian.
 """
+
 from datetime import date
 from typing import Any
 

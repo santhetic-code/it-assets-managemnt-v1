@@ -63,17 +63,13 @@ def list_users(
     status_filter: str | None = Query(default=None, alias="status"),
 ) -> UserPageResponse:
     """Mengambil daftar pengguna beserta ringkasan peran dan status."""
-    all_users = list(
-        session.exec(select(User).order_by(col(User.id).asc())).all()
-    )
+    all_users = list(session.exec(select(User).order_by(col(User.id).asc())).all())
     all_public = [UserPublic.from_user(u) for u in all_users]
 
     total_all = len(all_public)
     aktif_count = sum(1 for u in all_public if u.is_active)
     nonaktif_count = total_all - aktif_count
-    admin_count = sum(
-        1 for u in all_public if u.role == UserRole.ADMINISTRATOR
-    )
+    admin_count = sum(1 for u in all_public if u.role == UserRole.ADMINISTRATOR)
     member_count = sum(1 for u in all_public if u.role == UserRole.MEMBER)
     viewer_count = sum(1 for u in all_public if u.role == UserRole.VIEWER)
 
@@ -227,14 +223,10 @@ def _apply_user_update(
         data.pop("status", None)
 
     # Cegah menonaktifkan atau menurunkan peran satu-satunya Administrator aktif
-    was_active_admin = (
-        target.role == UserRole.ADMINISTRATOR.value and target.is_active
-    )
+    was_active_admin = target.role == UserRole.ADMINISTRATOR.value and target.is_active
     new_role = data.get("role", target.role)
     new_active = data.get("is_active", target.is_active)
-    if was_active_admin and (
-        new_role != UserRole.ADMINISTRATOR.value or not new_active
-    ):
+    if was_active_admin and (new_role != UserRole.ADMINISTRATOR.value or not new_active):
         if _count_active_admins(session) <= 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -262,8 +254,7 @@ def _apply_user_update(
         modul="Pengguna",
         target_id=target.username,
         detail=(
-            f"Memperbarui akun '{target.username}' "
-            f"(role={target.role}, aktif={target.is_active})"
+            f"Memperbarui akun '{target.username}' (role={target.role}, aktif={target.is_active})"
         ),
         level_risiko="Sedang",
         commit=False,
@@ -372,4 +363,3 @@ def import_csv_data_users_alias(
 ) -> dict[str, Any]:
     """Alias endpoint impor data CSV operasional ke database (khusus Administrator)."""
     return import_all_csv_data(session, username=current_admin.username)
-

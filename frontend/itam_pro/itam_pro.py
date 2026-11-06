@@ -1,6 +1,7 @@
 """
 Entry Point & Routing Utama ITAM Pro.
 """
+
 import reflex as rx
 
 from itam_pro.config import APP_ENV, USE_MOCK  # noqa: F401

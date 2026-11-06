@@ -21,22 +21,22 @@ class Size:
     SIDEBAR_W = "248px"
     TOPBAR_HEIGHT = "68px"
     SEARCH_WIDTH = "340px"
-    FILTER_SEARCH_W = "320px"   # Lebar kotak pencarian pada filter bar
-    DRAWER_WIDTH = "440px"      # Lebar detail drawer kanan
+    FILTER_SEARCH_W = "320px"  # Lebar kotak pencarian pada filter bar
+    DRAWER_WIDTH = "440px"  # Lebar detail drawer kanan
 
     # Control & Box Dimensions
     CONTROL_HEIGHT = "48px"
     TOPBAR_CONTROL_H = "44px"
     BUTTON_MD_H = "42px"
-    FILTER_CONTROL_H = "40px"   # Tinggi pencarian & dropdown di filter bar
+    FILTER_CONTROL_H = "40px"  # Tinggi pencarian & dropdown di filter bar
     NAV_ITEM_HEIGHT = "40px"
     SIDEBAR_LOGO_BOX = "40px"
     AVATAR_BOX = "40px"
     STAT_ICON_CHIP = "36px"
     LOGO_BOX = "44px"
-    TABLE_ROW_H = "52px"        # Tinggi seragam baris tabel
-    TABLE_HEADER_H = "44px"     # Tinggi baris header tabel
-    PAGINATION_BTN = "36px"     # Ukuran tombol nomor halaman
+    TABLE_ROW_H = "52px"  # Tinggi seragam baris tabel
+    TABLE_HEADER_H = "44px"  # Tinggi baris header tabel
+    PAGINATION_BTN = "36px"  # Ukuran tombol nomor halaman
 
     # Icon & Indicator Sizes
     ICON_SM = 16
@@ -56,7 +56,7 @@ class Size:
 class Radius:
     SM = "6px"
     BADGE_KBD = "6px"
-    CONNECTOR_CHIP = "7px"      # Radius chip kecil per konektor monitor
+    CONNECTOR_CHIP = "7px"  # Radius chip kecil per konektor monitor
     CHIP = "10px"
     CONTROL = "10px"
     MD = "10px"

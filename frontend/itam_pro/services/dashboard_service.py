@@ -1,11 +1,12 @@
 """
 Layanan kalkulasi metrik ringkasan Dashboard ITAM Pro.
 """
+
 from collections import defaultdict
 from datetime import date, datetime
 from typing import Any
 
-from dateutil.relativedelta import relativedelta
+from dateutil.relativedelta import relativedelta  # type: ignore[import-untyped]
 
 from itam_pro.services.mock.finance_mock import MOCK_BILLS, MOCK_PURCHASES
 from itam_pro.services.mock.ip_mock import get_ip_conflict_summary
@@ -47,8 +48,7 @@ def calculate_dashboard_metrics() -> dict[str, Any]:
     for a in MOCK_ASSETS:
         cat_counts[a.get("kategori", "Lainnya")] += 1
     assets_by_category = [
-        {"name": k, "count": v, "category_key": k.lower()}
-        for k, v in cat_counts.items()
+        {"name": k, "count": v, "category_key": k.lower()} for k, v in cat_counts.items()
     ]
 
     # 3. Bar (Pembelian 6 Bulan Terakhir)

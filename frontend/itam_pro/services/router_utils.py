@@ -1,6 +1,7 @@
 """
 Utilitas Router ITAM Pro (Bebas DeprecationWarning RouterData.page).
 """
+
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 

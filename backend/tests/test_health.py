@@ -38,4 +38,3 @@ def test_api_v1_prefix_is_mounted(client: TestClient) -> None:
     res = client.get("/api/v1/tidak-ada")
     assert res.status_code == 404
     assert res.json() == {"detail": "Not Found"}
-

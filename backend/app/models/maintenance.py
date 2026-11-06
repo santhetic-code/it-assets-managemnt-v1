@@ -61,4 +61,3 @@ class Maintenance(TimestampMixin, SQLModel, table=True):
     siklus: str = Field(default="Sekali", max_length=30, nullable=False)
 
     catatan: str = Field(default="", max_length=500, nullable=False)
-

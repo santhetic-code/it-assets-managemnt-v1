@@ -54,8 +54,8 @@ def _pick(row: dict[str, str], *keys: str, default: str = "") -> str:
     """Mengambil nilai pertama yang tidak kosong dari beberapa variasi nama kolom CSV."""
     for k in keys:
         for row_k, row_v in row.items():
-            if row_k.strip().lower() == k.strip().lower() and str(row_v).strip():
-                return str(row_v).strip()
+            if row_k.strip().lower() == k.strip().lower() and row_v.strip():
+                return row_v.strip()
     return default
 
 
@@ -88,52 +88,54 @@ def _read_csv_rows(file_path: Path) -> list[dict[str, str]]:
             # 1. Server
             if len(row) > 1 and row[1].strip():
                 server_name = row[0].strip()
-                os_srv = (
-                    "Proxmox VE 8.2"
-                    if "VM" in server_name.upper()
-                    else "Windows Server 2022"
+                os_srv = "Proxmox VE 8.2" if "VM" in server_name.upper() else "Windows Server 2022"
+                extracted.append(
+                    {
+                        "ip": row[1].strip(),
+                        "nama_perangkat": server_name if server_name else "Server",
+                        "tipe": "Fisik",
+                        "grup": "Operasional",
+                        "os": os_srv,
+                        "keterangan": f"Server Produksi ({server_name})",
+                        "pengguna": "IT Server",
+                        "lokasi": "Head Office (Office Blok 14)",
+                        "source_block": "SERVER",
+                    }
                 )
-                extracted.append({
-                    "ip": row[1].strip(),
-                    "nama_perangkat": server_name if server_name else "Server",
-                    "tipe": "Fisik",
-                    "grup": "Operasional",
-                    "os": os_srv,
-                    "keterangan": f"Server Produksi ({server_name})",
-                    "pengguna": "IT Server",
-                    "lokasi": "Head Office (Office Blok 14)",
-                    "source_block": "SERVER",
-                })
             # 2. Addon / VM
             if len(row) > 5 and row[5].strip():
                 addon_host = row[3].strip()
                 rincian = row[4].strip().replace("\n", ", ")
-                extracted.append({
-                    "ip": row[5].strip(),
-                    "nama_perangkat": f"ADDON {addon_host}".strip() if addon_host else "Addon",
-                    "tipe": "VM",
-                    "grup": "Addon (VM)",
-                    "os": "Windows 10 Pro",
-                    "host_name": addon_host,
-                    "keterangan": rincian or f"Worker Addon {addon_host}",
-                    "pengguna": "IT System",
-                    "lokasi": "Head Office (Office Blok 14)",
-                    "source_block": "ADDON",
-                })
+                extracted.append(
+                    {
+                        "ip": row[5].strip(),
+                        "nama_perangkat": f"ADDON {addon_host}".strip() if addon_host else "Addon",
+                        "tipe": "VM",
+                        "grup": "Addon (VM)",
+                        "os": "Windows 10 Pro",
+                        "host_name": addon_host,
+                        "keterangan": rincian or f"Worker Addon {addon_host}",
+                        "pengguna": "IT System",
+                        "lokasi": "Head Office (Office Blok 14)",
+                        "source_block": "ADDON",
+                    }
+                )
             # 3. Operasional
             if len(row) > 8 and row[8].strip():
                 user_name = row[7].strip()
-                extracted.append({
-                    "ip": row[8].strip(),
-                    "nama_perangkat": f"PC {user_name}".strip() if user_name else "PC User",
-                    "tipe": "Fisik",
-                    "grup": "Operasional",
-                    "os": "Windows 11 Pro",
-                    "pengguna": user_name,
-                    "keterangan": f"Workstation Operasional ({user_name})",
-                    "lokasi": "Head Office (Office Blok 14)",
-                    "source_block": "OPERASIONAL",
-                })
+                extracted.append(
+                    {
+                        "ip": row[8].strip(),
+                        "nama_perangkat": f"PC {user_name}".strip() if user_name else "PC User",
+                        "tipe": "Fisik",
+                        "grup": "Operasional",
+                        "os": "Windows 11 Pro",
+                        "pengguna": user_name,
+                        "keterangan": f"Workstation Operasional ({user_name})",
+                        "lokasi": "Head Office (Office Blok 14)",
+                        "source_block": "OPERASIONAL",
+                    }
+                )
         return extracted
 
     # Untuk file CSV tabel biasa:
@@ -267,12 +269,12 @@ def import_ups_csv(session: Session, file_path: Path) -> int:
         keterangan = row.get("KETERANGAN", "").strip()
 
         is_digunakan = status_ops == "DIGUNAKAN"
-        status_aset = "Digunakan" if is_digunakan else (
-            "Backup" if status_ops == "BACKUP" else "Digunakan"
+        status_aset = (
+            "Digunakan" if is_digunakan else ("Backup" if status_ops == "BACKUP" else "Digunakan")
         )
         beban = id_server if id_server and id_server != "BACKUP" else ""
-        jumlah_aki = 2 if "DUAL" in kategori_aki.upper() else (
-            1 if "SATU" in kategori_aki.upper() else 0
+        jumlah_aki = (
+            2 if "DUAL" in kategori_aki.upper() else (1 if "SATU" in kategori_aki.upper() else 0)
         )
         nama_aset = (
             f"UPS {merk} {kapasitas_val}VA ({kategori_aki})"
@@ -337,9 +339,7 @@ def import_watt_server_csv(session: Session, file_path: Path) -> int:
             continue
 
         # Cek idempotensi berdasarkan nama aset
-        existing = session.exec(
-            select(Asset).where(col(Asset.nama_aset) == id_server_raw)
-        ).first()
+        existing = session.exec(select(Asset).where(col(Asset.nama_aset) == id_server_raw)).first()
         if existing is not None:
             continue
 
@@ -355,17 +355,9 @@ def import_watt_server_csv(session: Session, file_path: Path) -> int:
         psu_rek = _parse_int(row.get("PSU REKOMENDASI (W)", "0"))
 
         is_backup = "BACKUP" in id_server_raw.upper()
-        os_val = (
-            "Proxmox VE 8.2"
-            if "VM" in id_server_raw.upper()
-            else "Windows Server 2022"
-        )
+        os_val = "Proxmox VE 8.2" if "VM" in id_server_raw.upper() else "Windows Server 2022"
         status_srv = "Backup" if is_backup else "Digunakan"
-        pemakai = (
-            "Cadangan Server Room"
-            if is_backup
-            else f"Server Produksi ({id_server_raw})"
-        )
+        pemakai = "Cadangan Server Room" if is_backup else f"Server Produksi ({id_server_raw})"
 
         asset = Asset(
             id_aset=new_id_aset,
@@ -481,9 +473,7 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
     server_assets = [a for a in all_assets if a.kategori.lower() == "server"]
 
     # Hitung nomor urut PC tertinggi untuk membuat aset PC Operasional dari ip_list_xml.csv
-    existing_pcs = session.exec(
-        select(Asset.id_aset).where(col(Asset.id_aset).like("PC-%"))
-    ).all()
+    existing_pcs = session.exec(select(Asset.id_aset).where(col(Asset.id_aset).like("PC-%"))).all()
     max_pc_num = 0
     for pc_id in existing_pcs:
         m = re.match(r"^PC-(\d+)$", pc_id)
@@ -515,11 +505,7 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
         tipe_raw = _pick(r, "tipe", "kategori", "jenis", default="Fisik")
         host_raw = _pick(r, "host_name", "host", "induk", "server_host")
         source_block = r.get("source_block", "")
-        is_vm = (
-            "vm" in tipe_raw.lower()
-            or "virtual" in tipe_raw.lower()
-            or bool(host_raw)
-        )
+        is_vm = "vm" in tipe_raw.lower() or "virtual" in tipe_raw.lower() or bool(host_raw)
 
         lokasi = _normalize_loc(_pick(r, "lokasi", "cabang", "site", "ruangan"))
         ket = _pick(r, "keterangan", "catatan", "deskripsi", "fungsi")
@@ -559,7 +545,7 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
                     "ram": "16GB DDR4",
                     "hdd_ssd": "SSD NVMe 512GB",
                     "mainboard": "ASUS Prime H610M",
-                    "monitor": "24\" FHD",
+                    "monitor": '24" FHD',
                     "keyboard": "Logitech K120",
                     "mouse": "Logitech B100",
                     "kepemilikan": "XML",
@@ -582,8 +568,7 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
                 (
                     a
                     for a in all_assets
-                    if a.nama_aset.lower() in nama.lower()
-                    or nama.lower() in a.nama_aset.lower()
+                    if a.nama_aset.lower() in nama.lower() or nama.lower() in a.nama_aset.lower()
                 ),
                 None,
             )
@@ -657,8 +642,7 @@ def _classify_purchase_category(produk: str) -> str:
     if any(k in p for k in ("ram", "ssd", "hdd", "vga", "prosesor", "fan", "psu", "thermal")):
         return "Komponen PC"
     if any(
-        k in p
-        for k in ("keyboard", "mouse", "logitech", "kabel", "tie", "organizer", "baterai")
+        k in p for k in ("keyboard", "mouse", "logitech", "kabel", "tie", "organizer", "baterai")
     ):
         return "Periferal"
     if "printer" in p or "tinta" in p:
@@ -732,13 +716,11 @@ def import_purchases_csv(session: Session, file_path: Path) -> int:
                 is_backup_mon = unit_idx == (jumlah - 1) and jumlah > 1
                 st_mon = "Backup" if is_backup_mon else "Digunakan"
                 pemakai_mon = (
-                    "Cadangan Gudang IT"
-                    if is_backup_mon
-                    else (dibeli_oleh or "Operasional Office")
+                    "Cadangan Gudang IT" if is_backup_mon else (dibeli_oleh or "Operasional Office")
                 )
                 mon_asset = Asset(
                     id_aset=mon_code,
-                    nama_aset=f"{merk_mon} {tipe_mon} 24\"",
+                    nama_aset=f'{merk_mon} {tipe_mon} 24"',
                     kategori="Monitor",
                     merek=merk_mon,
                     model=tipe_mon,

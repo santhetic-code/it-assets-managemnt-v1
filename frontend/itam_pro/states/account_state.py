@@ -1,4 +1,5 @@
 """State Controller untuk Halaman Pengaturan Akun (/account-settings)."""
+
 import secrets
 from typing import Any
 
@@ -68,8 +69,7 @@ class AccountState(rx.State):
                         "full_name": str(u.get("full_name", "")),
                         "role": str(u.get("role", "Member")),
                         "status": str(
-                            u.get("status")
-                            or ("Aktif" if u.get("is_active", True) else "Nonaktif")
+                            u.get("status") or ("Aktif" if u.get("is_active", True) else "Nonaktif")
                         ),
                     }
                     for u in items
@@ -253,4 +253,3 @@ class AccountState(rx.State):
 
 
 __all__ = ["AccountState"]
-

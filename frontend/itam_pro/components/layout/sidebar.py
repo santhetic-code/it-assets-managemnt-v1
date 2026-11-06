@@ -2,6 +2,7 @@
 Komponen Sidebar Navigasi Utama ITAM Pro (248px).
 Dioptimalkan dengan rx.link (SPA Client-Side Routing) untuk perpindahan halaman instan.
 """
+
 from typing import Any
 
 import reflex as rx
@@ -81,9 +82,7 @@ def _nav_link_item(
         ),
         _hover=rx.Style(
             {
-                "background_color": rx.cond(
-                    is_active, Color.ACCENT_BRIGHT, Color.SIDEBAR_HOVER
-                ),
+                "background_color": rx.cond(is_active, Color.ACCENT_BRIGHT, Color.SIDEBAR_HOVER),
             }
         ),
         **link_props,
@@ -154,9 +153,7 @@ def sidebar_content(is_mobile: bool = False) -> rx.Component:
         rx.vstack(
             _sidebar_group(
                 "Overview",
-                _nav_link_item(
-                    "Dashboard", "/dashboard", "layout-dashboard", is_mobile=is_mobile
-                ),
+                _nav_link_item("Dashboard", "/dashboard", "layout-dashboard", is_mobile=is_mobile),
             ),
             _sidebar_group(
                 "Inventory",
@@ -183,9 +180,7 @@ def sidebar_content(is_mobile: bool = False) -> rx.Component:
                 _nav_link_item(
                     "IP & Server (VM)", "/infrastructure/ip", "network", is_mobile=is_mobile
                 ),
-                _nav_link_item(
-                    "Rekap Watt Server", "/watt-server", "zap", is_mobile=is_mobile
-                ),
+                _nav_link_item("Rekap Watt Server", "/watt-server", "zap", is_mobile=is_mobile),
             ),
             _sidebar_group(
                 "Operations",
@@ -213,9 +208,7 @@ def sidebar_content(is_mobile: bool = False) -> rx.Component:
                     "key-round",
                     is_mobile=is_mobile,
                 ),
-                _nav_link_item(
-                    "Audit Log", "/audit-log", "scroll-text", is_mobile=is_mobile
-                ),
+                _nav_link_item("Audit Log", "/audit-log", "scroll-text", is_mobile=is_mobile),
             ),
             _sidebar_group(
                 "Admin",

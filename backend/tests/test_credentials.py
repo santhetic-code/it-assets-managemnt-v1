@@ -62,9 +62,7 @@ def test_fernet_encryption_roundtrip_and_db_storage(
     assert "SSH-Passphrase-77" not in res.text
 
     # Pastikan di dalam tabel database tersimpan sebagai ciphertext Fernet
-    db_row = session.exec(
-        select(Credential).where(Credential.kode_kredensial == "CRD-001")
-    ).one()
+    db_row = session.exec(select(Credential).where(Credential.kode_kredensial == "CRD-001")).one()
     assert db_row.password_encrypted != "WinBoxPassword!99"
     assert db_row.password_encrypted.startswith("gAAAAA")
     assert decrypt_secret(db_row.password_encrypted) == "WinBoxPassword!99"
@@ -152,12 +150,10 @@ def test_credential_reveal_and_per_type_permissions(
 
     # 6. Uji Reveal oleh Viewer: ditolak (403) baik untuk CCTV maupun Server
     assert (
-        client.post(f"/api/v1/credentials/{cctv_code}/reveal", headers=viewer_h).status_code
-        == 403
+        client.post(f"/api/v1/credentials/{cctv_code}/reveal", headers=viewer_h).status_code == 403
     )
     assert (
-        client.post(f"/api/v1/credentials/{srv_code}/reveal", headers=viewer_h).status_code
-        == 403
+        client.post(f"/api/v1/credentials/{srv_code}/reveal", headers=viewer_h).status_code == 403
     )
 
 
@@ -202,4 +198,3 @@ def test_credential_update_preserves_or_rotates_secret_and_delete_rbac(
     # Member tidak boleh DELETE (403), Administrator boleh DELETE (200)
     assert client.delete(f"/api/v1/credentials/{code}", headers=member_h).status_code == 403
     assert client.delete(f"/api/v1/credentials/{code}", headers=admin_h).status_code == 200
-

@@ -13,9 +13,7 @@ def _validate_role(val: str) -> str:
     for role in UserRole:
         if role.value.lower() == cleaned.lower():
             return role.value
-    raise ValueError(
-        f"Peran '{cleaned}' tidak valid (pilih Administrator, Member, atau Viewer)"
-    )
+    raise ValueError(f"Peran '{cleaned}' tidak valid (pilih Administrator, Member, atau Viewer)")
 
 
 class UserCreateRequest(BaseModel):
@@ -96,4 +94,3 @@ class UserPageResponse(BaseModel):
     tab_counts: dict[str, int]
     summary: dict[str, Any]
     kpi: dict[str, Any]
-

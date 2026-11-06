@@ -61,9 +61,7 @@ def test_user_management_crud_and_last_admin_protection(
     assert r_dup.status_code == 409
 
     # 3. Satu-satunya Administrator aktif tidak boleh menghapus atau menonaktifkan dirinya sendiri
-    assert (
-        client.delete("/api/v1/users/admin_main", headers=admin_h).status_code == 400
-    )
+    assert client.delete("/api/v1/users/admin_main", headers=admin_h).status_code == 400
     assert (
         client.patch(
             "/api/v1/users/admin_main",
@@ -166,4 +164,3 @@ def test_dashboard_real_aggregation(
     assert dash["kpi"]["total_watt"] == 350
     assert dash["kpi"]["total_pengeluaran"] == 3000000
     assert len(dash["asset_by_location"]) >= 5
-

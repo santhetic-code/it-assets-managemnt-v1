@@ -37,4 +37,3 @@ class TimestampMixin(SQLModel):
         sa_column_kwargs={"onupdate": utcnow},
         nullable=False,
     )
-

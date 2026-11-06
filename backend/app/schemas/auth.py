@@ -46,4 +46,3 @@ class TokenResponse(BaseModel):
     full_name: str
     nama_lengkap: str
     role: UserRole
-

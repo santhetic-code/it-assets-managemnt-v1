@@ -216,8 +216,10 @@ def ip_form_modal() -> rx.Component:
                             color=Color.TEXT,
                         ),
                         rx.text(
-                            ("Subnet /24 diturunkan otomatis dari IPv4. "
-                            "Kredensial dikelola di Credential Manager."),
+                            (
+                                "Subnet /24 diturunkan otomatis dari IPv4. "
+                                "Kredensial dikelola di Credential Manager."
+                            ),
                             font_size=FontSize.SM,
                             color=Color.MUTED,
                         ),

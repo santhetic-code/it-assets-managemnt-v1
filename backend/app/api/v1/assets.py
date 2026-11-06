@@ -49,9 +49,7 @@ def _check_duplicate_sn(
     if not serial_number:
         return
 
-    stmt = select(Asset).where(
-        func.lower(Asset.serial_number) == serial_number.lower()
-    )
+    stmt = select(Asset).where(func.lower(Asset.serial_number) == serial_number.lower())
     if exclude_asset_id is not None:
         stmt = stmt.where(Asset.id != exclude_asset_id)
 
@@ -60,8 +58,7 @@ def _check_duplicate_sn(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Serial number '{serial_number}' sudah terdaftar "
-                f"pada aset {conflict.id_aset}"
+                f"Serial number '{serial_number}' sudah terdaftar pada aset {conflict.id_aset}"
             ),
         )
 
@@ -186,17 +183,13 @@ def list_assets(
 
     # Hitung sub-tab counts untuk slug == "pc" atau slug == "monitor"
     if slug_clean == "pc":
-        pc_rows = session.exec(
-            select(Asset).where(col(Asset.kategori).in_(["PC", "Server"]))
-        ).all()
+        pc_rows = session.exec(select(Asset).where(col(Asset.kategori).in_(["PC", "Server"]))).all()
         pc_public = [AssetPublic.from_asset(r) for r in pc_rows]
         tab_counts["Operasional"] = sum(1 for item in pc_public if item.jenis == "Operasional")
         tab_counts["Server"] = sum(1 for item in pc_public if item.jenis == "Server")
         tab_counts["Backup"] = sum(1 for item in pc_public if item.jenis == "Backup")
     elif slug_clean == "monitor":
-        mon_rows = session.exec(
-            select(Asset).where(func.lower(Asset.kategori) == "monitor")
-        ).all()
+        mon_rows = session.exec(select(Asset).where(func.lower(Asset.kategori) == "monitor")).all()
         tab_counts["Semua"] = len(mon_rows)
         tab_counts["Digunakan"] = sum(
             1 for r in mon_rows if (r.status or "").lower() in ("digunakan", "aktif")
@@ -215,19 +208,13 @@ def list_assets(
     # Filter atribut spesifik kategori
     if attr_os and attr_os.strip().lower() not in ("semua", "all", ""):
         v_low = attr_os.strip().lower()
-        public_items = [
-            it for it in public_items if (it.os or "").strip().lower() == v_low
-        ]
+        public_items = [it for it in public_items if (it.os or "").strip().lower() == v_low]
     if attr_ram and attr_ram.strip().lower() not in ("semua", "all", ""):
         v_low = attr_ram.strip().lower()
-        public_items = [
-            it for it in public_items if (it.ram or "").strip().lower() == v_low
-        ]
+        public_items = [it for it in public_items if (it.ram or "").strip().lower() == v_low]
     if attr_merk and attr_merk.strip().lower() not in ("semua", "all", ""):
         v_low = attr_merk.strip().lower()
-        public_items = [
-            it for it in public_items if (it.merk or "").strip().lower() == v_low
-        ]
+        public_items = [it for it in public_items if (it.merk or "").strip().lower() == v_low]
     if attr_ukuran_layar and attr_ukuran_layar.strip().lower() not in ("semua", "all", ""):
         v_low = attr_ukuran_layar.strip().lower().replace('"', "")
         public_items = [
@@ -243,9 +230,7 @@ def list_assets(
     if attr_konektivitas and attr_konektivitas.strip().lower() not in ("semua", "all", ""):
         v_low = attr_konektivitas.strip().lower()
         public_items = [
-            it
-            for it in public_items
-            if any(v_low in k.lower() for k in it.konektivitas)
+            it for it in public_items if any(v_low in k.lower() for k in it.konektivitas)
         ]
 
     # Filter sub-tab
@@ -258,9 +243,7 @@ def list_assets(
         elif slug_clean == "monitor":
             if tab_clean.lower() == "digunakan":
                 public_items = [
-                    it
-                    for it in public_items
-                    if (it.status or "").lower() in ("digunakan", "aktif")
+                    it for it in public_items if (it.status or "").lower() in ("digunakan", "aktif")
                 ]
             elif tab_clean.lower() == "backup":
                 public_items = [
@@ -355,9 +338,7 @@ def create_assets_bulk(
             extra_raw["kepemilikan"] = parsed.kepemilikan
         if parsed.tanggal_keluar_gudang:
             extra_raw["tanggal_keluar_gudang"] = parsed.tanggal_keluar_gudang
-        clean_extra = {
-            k: v for k, v in extra_raw.items() if k.lower() not in FORBIDDEN_FIELDS
-        }
+        clean_extra = {k: v for k, v in extra_raw.items() if k.lower() not in FORBIDDEN_FIELDS}
 
         asset = Asset(
             id_aset=final_id_aset,
@@ -431,9 +412,7 @@ def create_asset(
         extra_raw["kepemilikan"] = payload.kepemilikan
     if payload.tanggal_keluar_gudang:
         extra_raw["tanggal_keluar_gudang"] = payload.tanggal_keluar_gudang
-    clean_extra = {
-        k: v for k, v in extra_raw.items() if k.lower() not in FORBIDDEN_FIELDS
-    }
+    clean_extra = {k: v for k, v in extra_raw.items() if k.lower() not in FORBIDDEN_FIELDS}
 
     asset = Asset(
         id_aset=final_id_aset,
@@ -587,4 +566,3 @@ def delete_asset(
     session.delete(asset)
     session.commit()
     return {"status": "ok", "id_aset": deleted_code}
-

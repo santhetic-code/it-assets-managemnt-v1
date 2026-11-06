@@ -4,6 +4,7 @@ Menyesuaikan seksi Spesifikasi secara otomatis berdasarkan kategori yang dipilih
 mengunci kategori saat dibuka dari `/assets/c/[slug]`, dan menampilkan peringatan
 non-blocking bila SN/PID sudah digunakan oleh aset lain.
 """
+
 from typing import Any
 
 import reflex as rx
@@ -93,9 +94,7 @@ def _text_input(
                 "width": "100%",
                 "height": Size.FILTER_CONTROL_H,
                 "padding": "0 12px",
-                "background_color": rx.cond(
-                    disabled, Color.TABLE_HEADER_BG, Color.SURFACE
-                ),
+                "background_color": rx.cond(disabled, Color.TABLE_HEADER_BG, Color.SURFACE),
                 "color": rx.cond(disabled, Color.MUTED, Color.TEXT),
                 "border": f"1px solid {Color.INPUT_BORDER}",
                 "border_radius": Radius.CONTROL,
@@ -128,9 +127,7 @@ def _select_input(
                     "width": "100%",
                     "height": Size.FILTER_CONTROL_H,
                     "padding": "0 32px 0 12px",
-                    "background_color": rx.cond(
-                        disabled, Color.TABLE_HEADER_BG, Color.SURFACE
-                    ),
+                    "background_color": rx.cond(disabled, Color.TABLE_HEADER_BG, Color.SURFACE),
                     "color": rx.cond(disabled, Color.MUTED, Color.TEXT),
                     "border": f"1px solid {Color.INPUT_BORDER}",
                     "border_radius": Radius.CONTROL,
@@ -193,9 +190,7 @@ def _connector_checkbox_chip(port: Any) -> rx.Component:
         style=rx.Style(
             {
                 "padding": "8px 14px",
-                "background_color": rx.cond(
-                    is_checked, Color.INFO_BG, Color.TABLE_HEADER_BG
-                ),
+                "background_color": rx.cond(is_checked, Color.INFO_BG, Color.TABLE_HEADER_BG),
                 "border": rx.cond(
                     is_checked,
                     f"1px solid {Color.ACCENT}",

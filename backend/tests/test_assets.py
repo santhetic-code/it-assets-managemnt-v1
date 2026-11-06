@@ -198,4 +198,3 @@ def test_rbac_permissions_on_assets(client: TestClient, session: Session) -> Non
     # Administrator boleh DELETE (200)
     assert client.delete(f"/api/v1/assets/{code}", headers=admin_h).status_code == 200
     assert client.get(f"/api/v1/assets/{code}", headers=viewer_h).status_code == 404
-

@@ -42,4 +42,3 @@ class DashboardResponse(BaseModel):
     aktivitas_terbaru: list[AuditLogPublic]
     alerts: list[DashboardAlertItem]
     peringatan: list[DashboardAlertItem]
-

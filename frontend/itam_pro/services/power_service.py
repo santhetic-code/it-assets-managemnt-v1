@@ -1,6 +1,7 @@
 """
 Layanan kalkulasi konsumsi daya (Thermal Design Power / TDP) server ITAM Pro.
 """
+
 from copy import deepcopy
 from typing import Any
 
@@ -118,9 +119,7 @@ def query_server_power(
     sort_dir = str(filters.get("sort_dir", "asc")).strip().lower()
 
     all_servers: list[dict[str, Any]] = [
-        enrich_server_power_row(a)
-        for a in MOCK_ASSETS
-        if str(a.get("kategori", "")) == "Server"
+        enrich_server_power_row(a) for a in MOCK_ASSETS if str(a.get("kategori", "")) == "Server"
     ]
 
     tab_counts = {

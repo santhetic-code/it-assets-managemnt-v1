@@ -1,6 +1,7 @@
 """
 Konfigurasi Lingkungan Global ITAM Pro.
 """
+
 import os
 
 from dotenv import load_dotenv
