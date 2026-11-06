@@ -24,6 +24,7 @@ class IPAllocation(TimestampMixin, SQLModel, table=True):
     nama_perangkat: str = Field(index=True, max_length=150, nullable=False)
     hostname: str = Field(default="", max_length=150, nullable=False)
     tipe: str = Field(default="Fisik", index=True, max_length=30, nullable=False)
+    kategori: str = Field(default="IP Operasional", index=True, max_length=50, nullable=False)
     status: str = Field(default="Aktif", index=True, max_length=30, nullable=False)
 
     lokasi: str = Field(

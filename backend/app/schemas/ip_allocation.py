@@ -45,13 +45,14 @@ class IPAllocationCreate(BaseModel):
     gateway: str = Field(default="", max_length=45)
 
     nama_perangkat: str = Field(default="", max_length=150)
+    pengguna: str = Field(default="", max_length=150)
     nama: str | None = Field(default=None, max_length=150)
     hostname: str = Field(default="", max_length=150)
     nama_vm: str | None = Field(default=None, max_length=150)
     tipe: str = Field(default="Fisik", max_length=30)
     jenis: str | None = Field(default=None, max_length=30)
     grup: str | None = Field(default="", max_length=50)
-    kategori: str | None = Field(default=None, max_length=30)
+    kategori: str = Field(default="IP Operasional", max_length=50)
     status: str = Field(default="Aktif", max_length=30)
 
     lokasi: str = Field(default="Head Office (Office Blok 14)", max_length=100)
@@ -72,7 +73,6 @@ class IPAllocationCreate(BaseModel):
     port_servis: str = Field(default="", max_length=120)
 
     mac_address: str = Field(default="", max_length=50)
-    pengguna: str = Field(default="", max_length=100)
     penanggung_jawab: str | None = Field(default=None, max_length=100)
     keterangan: str = Field(default="", max_length=500)
     fungsi: str | None = Field(default=None, max_length=500)
@@ -90,24 +90,36 @@ class IPAllocationCreate(BaseModel):
         return _normalize_location_optional(v)
 
     @model_validator(mode="after")
-    def _normalize_and_validate_vm(self) -> "IPAllocationCreate":
+    def _normalize(self) -> "IPAllocationCreate":
+        if self.pengguna:
+            self.nama_perangkat = self.pengguna.strip()
+            self.pengguna = self.nama_perangkat
+        elif self.nama:
+            self.nama_perangkat = self.nama.strip()
+            self.pengguna = self.nama_perangkat
+        elif self.nama_perangkat:
+            self.nama_perangkat = self.nama_perangkat.strip()
+            self.pengguna = self.nama_perangkat
+        elif self.nama_vm:
+            self.nama_perangkat = self.nama_vm.strip()
+            self.pengguna = self.nama_perangkat
+        elif self.hostname:
+            self.nama_perangkat = self.hostname.strip()
+            self.pengguna = self.nama_perangkat
+
         if not self.nama_perangkat:
-            if self.nama:
-                self.nama_perangkat = self.nama.strip()
-            elif self.nama_vm:
-                self.nama_perangkat = self.nama_vm.strip()
-            elif self.hostname:
-                self.nama_perangkat = self.hostname.strip()
-        self.nama_perangkat = self.nama_perangkat.strip()
-        if not self.nama_perangkat:
-            raise ValueError("Nama perangkat atau VM wajib diisi")
+            raise ValueError("Pengguna wajib diisi")
 
         if not self.hostname:
             self.hostname = self.nama_perangkat
 
-        if self.jenis and self.tipe == "Fisik":
+        if self.jenis:
             self.tipe = self.jenis.strip()
-        elif self.kategori and self.tipe == "Fisik":
+        elif (
+            self.kategori
+            and self.kategori.strip().upper() in ("VM", "FISIK")
+            and self.tipe == "Fisik"
+        ):
             self.tipe = self.kategori.strip()
 
         if self.is_vm is None:
@@ -126,10 +138,16 @@ class IPAllocationCreate(BaseModel):
             self.tipe = "Fisik"
             self.jenis = "Fisik"
             self.is_vm = False
+            self.host_asset_id = None
             self.id_aset_host = None
             self.host_name = ""
             if not self.grup:
                 self.grup = "Operasional"
+
+        if not self.kategori or self.kategori.strip().upper() in ("VM", "FISIK"):
+            self.kategori = "IP VM" if self.is_vm else "IP Operasional"
+        else:
+            self.kategori = self.kategori.strip()
 
         # Turunkan subnet /24 otomatis dari 3 oktet pertama IPv4
         parts = self.ip_address.strip().split(".")
@@ -191,6 +209,7 @@ class IPAllocationUpdate(BaseModel):
     tipe: str | None = None
     jenis: str | None = None
     grup: str | None = None
+    kategori: str | None = None
     status: str | None = None
     lokasi: str | None = None
     id_aset: str | None = None
@@ -249,6 +268,7 @@ class IPAllocationPublic(BaseModel):
     tipe: str
     jenis: str = "Fisik"
     grup: str = "Operasional"
+    kategori: str = "IP Operasional"
     status: str
     lokasi: str
     id_aset: str | None
@@ -324,6 +344,7 @@ class IPAllocationPublic(BaseModel):
             tipe=row.tipe,
             jenis=jenis_val,
             grup=grup_val,
+            kategori=row.kategori or ("IP VM" if row.is_vm else "IP Operasional"),
             status="Konflik" if is_conflict else row.status,
             lokasi=row.lokasi,
             id_aset=row.id_aset,
@@ -345,7 +366,7 @@ class IPAllocationPublic(BaseModel):
             storage=row.storage,
             port_servis=row.port_servis,
             mac_address=row.mac_address,
-            pengguna=row.pengguna,
+            pengguna=row.pengguna or row.nama_perangkat,
             keterangan=row.keterangan,
             fungsi=fungsi_val,
         )

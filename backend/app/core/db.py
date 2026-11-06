@@ -10,4 +10,6 @@ from app.core.config import get_settings
 
 @lru_cache
 def get_engine() -> Engine:
-    return create_engine(get_settings().sqlalchemy_url, pool_pre_ping=True)
+    url = get_settings().sqlalchemy_url
+    connect_args = {"check_same_thread": False} if str(url).startswith("sqlite") else {}
+    return create_engine(url, pool_pre_ping=True, connect_args=connect_args)

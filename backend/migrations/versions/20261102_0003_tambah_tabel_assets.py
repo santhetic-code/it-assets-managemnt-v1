@@ -8,7 +8,7 @@ Create Date: 2026-11-02 08:03:36.094709
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-import sqlmodel  # noqa: F401 (dibutuhkan bila migrasi memuat tipe sqlmodel)
+import sqlmodel.sql.sqltypes  # noqa: F401 (dibutuhkan bila migrasi memuat tipe sqlmodel)
 from alembic import op
 
 

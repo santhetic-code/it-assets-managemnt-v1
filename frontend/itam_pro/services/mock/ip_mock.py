@@ -48,6 +48,8 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "id": "IP-0001",
         "ip_address": "192.168.10.1",
         "nama": "GW-CORE-BLOK14",
+        "pengguna": "Admin Jaringan",
+        "kategori": "IP Operasional",
         "jenis": "Fisik",
         "asset_id": SEED_IDS["RTR_CORE_01"],
         "host_asset_id": "",
@@ -61,6 +63,8 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "id": "IP-0002",
         "ip_address": "192.168.10.2",
         "nama": "SRV-PROXMOX-01",
+        "pengguna": "SRV-PROXMOX-01",
+        "kategori": "IP Server",
         "jenis": "Fisik",
         "asset_id": SEED_IDS["SRV_PROXMOX_01"],
         "host_asset_id": "",
@@ -74,6 +78,8 @@ MOCK_IP_ENTRIES: list[dict[str, Any]] = [
         "id": "IP-0003",
         "ip_address": "192.168.10.3",
         "nama": "SRV-ZABBIX-MON",
+        "pengguna": "SRV-ZABBIX-MON",
+        "kategori": "IP Server",
         "jenis": "Fisik",
         "asset_id": SEED_IDS["SRV_ZABBIX_02"],
         "host_asset_id": "",
@@ -474,6 +480,8 @@ def enrich_ip_entry(
             base_sub = "Tanpa host"
             row["host_label"] = "Tanpa host"
 
+    row["pengguna"] = row.get("pengguna") or row.get("nama") or "—"
+    row["kategori"] = row.get("kategori") or "IP Operasional"
     row["sub_label"] = "● Ada kendala (lihat keterangan)" if has_kendala else base_sub
     row["fungsi"] = row.get("fungsi") or "—"
     row["os"] = row.get("os") or "—"
@@ -514,6 +522,7 @@ def query_mock_ip_entries(
     search = str(filters.get("search", "")).strip().lower()
     f_jenis = str(filters.get("jenis", "")).strip()
     f_host = str(filters.get("host", "")).strip()
+    f_kategori = str(filters.get("kategori", "")).strip()
     f_subnet = str(filters.get("subnet", "")).strip()
     f_status = str(filters.get("status", "")).strip()
     only_conflict = bool(filters.get("only_conflict", False))
@@ -543,6 +552,8 @@ def query_mock_ip_entries(
                 continue
             elif host_code != "Tanpa" and str(item.get("host_asset_id", "")) != host_code:
                 continue
+        if f_kategori and item.get("kategori") != f_kategori:
+            continue
         if f_subnet and item.get("subnet") != f_subnet:
             continue
         if f_status and item.get("status") != f_status:
@@ -552,6 +563,8 @@ def query_mock_ip_entries(
                 [
                     str(item.get("ip_address", "")),
                     str(item.get("nama", "")),
+                    str(item.get("pengguna", "")),
+                    str(item.get("kategori", "")),
                     str(item.get("fungsi", "")),
                     str(item.get("os", "")),
                     str(item.get("asset_id", "")),
@@ -619,10 +632,14 @@ def create_mock_ip_entry(payload: dict[str, Any]) -> dict[str, Any]:
     global _IP_COUNTER
     _IP_COUNTER += 1
     jenis = str(payload.get("jenis", "Fisik")).strip()
+    pengguna_val = str(payload.get("pengguna") or payload.get("nama") or "").strip()
+    nama_val = str(payload.get("nama") or pengguna_val).strip()
     record: dict[str, Any] = {
         "id": f"IP-{_IP_COUNTER:04d}",
         "ip_address": str(payload.get("ip_address", "")).strip(),
-        "nama": str(payload.get("nama", "")).strip(),
+        "nama": nama_val,
+        "pengguna": pengguna_val,
+        "kategori": str(payload.get("kategori") or "IP Operasional").strip(),
         "jenis": jenis,
         "asset_id": str(payload.get("asset_id", "")).strip() if jenis == "Fisik" else "",
         "host_asset_id": str(payload.get("host_asset_id", "")).strip() if jenis == "VM" else "",
@@ -643,10 +660,21 @@ def update_mock_ip_entry(entry_id: str, payload: dict[str, Any]) -> dict[str, An
     for idx, item in enumerate(MOCK_IP_ENTRIES):
         if item.get("id") == entry_id:
             jenis = str(payload.get("jenis", item.get("jenis", "Fisik"))).strip()
+            pengguna_val = str(
+                payload.get("pengguna")
+                or payload.get("nama")
+                or item.get("pengguna")
+                or item.get("nama", "")
+            ).strip()
+            nama_val = str(payload.get("nama") or pengguna_val or item.get("nama", "")).strip()
             updated: dict[str, Any] = {
                 **item,
                 "ip_address": str(payload.get("ip_address", item["ip_address"])).strip(),
-                "nama": str(payload.get("nama", item["nama"])).strip(),
+                "nama": nama_val,
+                "pengguna": pengguna_val,
+                "kategori": str(
+                    payload.get("kategori") or item.get("kategori") or "IP Operasional"
+                ).strip(),
                 "jenis": jenis,
                 "asset_id": (str(payload.get("asset_id", "")).strip() if jenis == "Fisik" else ""),
                 "host_asset_id": (

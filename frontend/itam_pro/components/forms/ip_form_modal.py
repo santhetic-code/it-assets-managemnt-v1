@@ -1,49 +1,21 @@
-"""
-Komponen Modal Form Tambah / Edit IP & Server (VM) (660px).
-Sesuai Desain Baru:
-- Tanpa field Grup.
-- Jika Jenis == Fisik: Host Server Fisik disembunyikan dan nilainya dikosongkan.
-- Jika Jenis == VM: Host Server Fisik muncul di sebelah kanan Jenis dan wajib diisi.
-"""
+"""Komponen Form Modal Tambah / Edit IP & Server (VM)."""
 
 from typing import Any
 
 import reflex as rx
 
 from itam_pro.states.ip_state import IPState
-from itam_pro.styles import (
-    FONT_FAMILY,
-    Color,
-    FontSize,
-    FontWeight,
-    Radius,
-    Shadow,
-    Size,
-    Space,
-)
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Size, Space
 
 
 def _field_label(text: str, required: bool = False, optional: bool = False) -> rx.Component:
     return rx.hstack(
-        rx.text(
-            text,
-            font_size=FontSize.SM,
-            font_weight=FontWeight.BOLD,
-            color=Color.TEXT,
-        ),
-        rx.text(
-            "*",
-            font_size=FontSize.SM,
-            font_weight=FontWeight.BOLD,
-            color=Color.DANGER_FG,
-        )
+        rx.text(text, font_size=FontSize.SM, font_weight=FontWeight.BOLD, color=Color.TEXT),
+        rx.text("*", font_size=FontSize.SM, font_weight=FontWeight.BOLD, color=Color.DANGER_FG)
         if required
         else rx.fragment(),
         rx.text(
-            "(opsional)",
-            font_size=FontSize.SM,
-            font_weight=FontWeight.REGULAR,
-            color=Color.MUTED,
+            "(opsional)", font_size=FontSize.SM, font_weight=FontWeight.REGULAR, color=Color.MUTED
         )
         if optional
         else rx.fragment(),
@@ -82,20 +54,13 @@ def _text_input(
                 "font_family": font_fam,
                 "font_size": FontSize.SM,
                 "outline": "none",
-                "&:focus": {
-                    "border_color": Color.ACCENT,
-                    "box_shadow": Color.FOCUS_RING,
-                },
+                "&:focus": {"border_color": Color.ACCENT, "box_shadow": Color.FOCUS_RING},
             }
         ),
     )
 
 
-def _textarea_input(
-    value: Any,
-    on_change: Any,
-    placeholder: str = "",
-) -> rx.Component:
+def _textarea_input(value: Any, on_change: Any, placeholder: str = "") -> rx.Component:
     return rx.el.textarea(
         value=value,
         on_change=on_change,
@@ -114,10 +79,7 @@ def _textarea_input(
                 "font_size": FontSize.SM,
                 "outline": "none",
                 "resize": "vertical",
-                "&:focus": {
-                    "border_color": Color.ACCENT,
-                    "box_shadow": Color.FOCUS_RING,
-                },
+                "&:focus": {"border_color": Color.ACCENT, "box_shadow": Color.FOCUS_RING},
             }
         ),
     )
@@ -151,10 +113,7 @@ def _select_input(
                     "cursor": "pointer",
                     "appearance": "none",
                     "-webkit-appearance": "none",
-                    "&:focus": {
-                        "border_color": Color.ACCENT,
-                        "box_shadow": Color.FOCUS_RING,
-                    },
+                    "&:focus": {"border_color": Color.ACCENT, "box_shadow": Color.FOCUS_RING},
                 }
             ),
         ),
@@ -177,18 +136,13 @@ def _select_input(
 
 
 def ip_form_modal() -> rx.Component:
-    """Modal 640px untuk Tambah / Edit entri IP & Server (VM)."""
     return rx.cond(
         IPState.form_modal_open,
         rx.box(
             rx.el.datalist(
-                rx.foreach(
-                    IPState.os_suggestions,
-                    lambda o: rx.el.option(value=o),
-                ),
+                rx.foreach(IPState.os_suggestions, lambda o: rx.el.option(value=o)),
                 id="ip-os-suggestions-datalist",
             ),
-            # Scrim
             rx.box(
                 on_click=IPState.close_form_modal,
                 style=rx.Style(
@@ -200,15 +154,13 @@ def ip_form_modal() -> rx.Component:
                     }
                 ),
             ),
-            # Kartu Modal
             rx.box(
-                # Header
                 rx.hstack(
                     rx.vstack(
                         rx.heading(
                             rx.cond(
                                 IPState.form_mode == "edit",
-                                f"Edit IP & Server (VM) · {IPState.form_ip_address}",
+                                f"Edit IP · {IPState.form_ip_address}",
                                 "Tambah IP & Server (VM)",
                             ),
                             font_size="20px",
@@ -216,10 +168,7 @@ def ip_form_modal() -> rx.Component:
                             color=Color.TEXT,
                         ),
                         rx.text(
-                            (
-                                "Subnet /24 diturunkan otomatis dari IPv4. "
-                                "Kredensial dikelola di Credential Manager."
-                            ),
+                            "Subnet /24 otomatis. Kredensial dikelola di Credential Manager.",
                             font_size=FontSize.SM,
                             color=Color.MUTED,
                         ),
@@ -250,7 +199,6 @@ def ip_form_modal() -> rx.Component:
                     padding="22px 24px 16px 24px",
                     style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
                 ),
-                # Body
                 rx.box(
                     rx.vstack(
                         rx.cond(
@@ -275,14 +223,13 @@ def ip_form_modal() -> rx.Component:
                                 ),
                             ),
                         ),
-                        # Baris 1: IP Address (IPv4) * & Nama Server / VM *
                         rx.box(
                             rx.vstack(
                                 _field_label("IP Address (IPv4)", required=True),
                                 _text_input(
                                     value=IPState.form_ip_address,
                                     on_change=IPState.set_form_ip_address,
-                                    placeholder="Contoh: 192.168.1.30",
+                                    placeholder="192.168.1.30",
                                     monospace=True,
                                 ),
                                 spacing="1",
@@ -290,11 +237,11 @@ def ip_form_modal() -> rx.Component:
                                 width="100%",
                             ),
                             rx.vstack(
-                                _field_label("Nama Server / VM", required=True),
+                                _field_label("Pengguna", required=True),
                                 _text_input(
-                                    value=IPState.form_nama,
-                                    on_change=IPState.set_form_nama,
-                                    placeholder="Contoh: PC CS RETAIL",
+                                    value=IPState.form_pengguna,
+                                    on_change=IPState.set_form_pengguna,
+                                    placeholder="Nama pengguna/sistem...",
                                 ),
                                 spacing="1",
                                 align="start",
@@ -309,7 +256,6 @@ def ip_form_modal() -> rx.Component:
                                 }
                             ),
                         ),
-                        # Baris 2: Jenis * (dan Host Server Fisik * HANYA jika Jenis == VM)
                         rx.cond(
                             IPState.is_form_vm,
                             rx.box(
@@ -357,8 +303,18 @@ def ip_form_modal() -> rx.Component:
                                 width="100%",
                             ),
                         ),
-                        # Baris 3: Status * & Operating System (opsional)
                         rx.box(
+                            rx.vstack(
+                                _field_label("Kategori", required=True),
+                                _select_input(
+                                    options=IPState.kategori_options,
+                                    value=IPState.form_kategori,
+                                    on_change=IPState.set_form_kategori,
+                                ),
+                                spacing="1",
+                                align="start",
+                                width="100%",
+                            ),
                             rx.vstack(
                                 _field_label("Status", required=True),
                                 _select_input(
@@ -370,12 +326,33 @@ def ip_form_modal() -> rx.Component:
                                 align="start",
                                 width="100%",
                             ),
+                            style=rx.Style(
+                                {
+                                    "width": "100%",
+                                    "display": "grid",
+                                    "grid_template_columns": "1.2fr 0.8fr",
+                                    "gap": Space.S4,
+                                }
+                            ),
+                        ),
+                        rx.box(
+                            rx.vstack(
+                                _field_label("Fungsi", optional=True),
+                                _text_input(
+                                    value=IPState.form_fungsi,
+                                    on_change=IPState.set_form_fungsi,
+                                    placeholder="Fungsi sistem...",
+                                ),
+                                spacing="1",
+                                align="start",
+                                width="100%",
+                            ),
                             rx.vstack(
                                 _field_label("Operating System", optional=True),
                                 _text_input(
                                     value=IPState.form_os,
                                     on_change=IPState.set_form_os,
-                                    placeholder="Contoh: Windows 11 Pro",
+                                    placeholder="Windows 11...",
                                     list_id="ip-os-suggestions-datalist",
                                 ),
                                 spacing="1",
@@ -391,25 +368,12 @@ def ip_form_modal() -> rx.Component:
                                 }
                             ),
                         ),
-                        # Baris 4: Fungsi (opsional)
-                        rx.vstack(
-                            _field_label("Fungsi", optional=True),
-                            _text_input(
-                                value=IPState.form_fungsi,
-                                on_change=IPState.set_form_fungsi,
-                                placeholder="Fungsi atau isi dari PC / server ini",
-                            ),
-                            spacing="1",
-                            align="start",
-                            width="100%",
-                        ),
-                        # Baris 5: Keterangan (opsional) - Textarea
                         rx.vstack(
                             _field_label("Keterangan", optional=True),
                             _textarea_input(
                                 value=IPState.form_keterangan,
                                 on_change=IPState.set_form_keterangan,
-                                placeholder="Catat masalah atau kendala yang perlu diperbaiki...",
+                                placeholder="Catat kendala...",
                             ),
                             spacing="1",
                             align="start",
@@ -426,7 +390,6 @@ def ip_form_modal() -> rx.Component:
                         }
                     ),
                 ),
-                # Footer (Batal / Simpan & tambah lagi / Simpan di kanan)
                 rx.hstack(
                     rx.el.button(
                         "Batal",

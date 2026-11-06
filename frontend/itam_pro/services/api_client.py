@@ -334,27 +334,30 @@ def _build_a4_landscape_ip_pdf(
     table_w = page_w - 2 * margin_x  # 777.89 pt
 
     col_defs = [
-        ("No", 30.0, 5),
-        ("IP Address", 88.0, 15),
-        ("Nama Server / VM", 132.0, 22),
-        ("Jenis", 48.0, 7),
-        ("Host", 78.0, 13),
-        ("Fungsi", 145.0, 25),
-        ("OS", 102.0, 18),
-        ("Status", 58.0, 9),
-        ("Keterangan", 96.89, 16),
+        ("No", 26.0, 4),
+        ("IP Address", 82.0, 14),
+        ("Pengguna", 112.0, 19),
+        ("Jenis", 42.0, 7),
+        ("Host", 72.0, 12),
+        ("Kategori", 78.0, 13),
+        ("Fungsi", 122.0, 21),
+        ("OS", 96.0, 16),
+        ("Status", 54.0, 9),
+        ("Keterangan", 93.89, 16),
     ]
 
     prepared_rows: list[tuple[list[list[str]], float, str]] = []
     for idx, r in enumerate(rows, start=1):
         ket_val = str(r.get("keterangan", "—")).strip() or "—"
         host_val = str(r.get("host_display") or r.get("host_label") or "—").strip()
+        pengguna_val = str(r.get("pengguna") or r.get("nama") or "—")
         cells_raw = [
             str(idx),
             str(r.get("ip_address", "—")),
-            str(r.get("nama", "—")),
+            pengguna_val,
             str(r.get("jenis", "Fisik")),
             host_val,
+            str(r.get("kategori", "IP Operasional")),
             str(r.get("fungsi", "—")),
             str(r.get("os", "—")),
             str(r.get("status", "Aktif")),
@@ -442,7 +445,7 @@ def _build_a4_landscape_ip_pdf(
             x_pos = margin_x
             for c_i, lines in enumerate(w_cells):
                 c_w = col_defs[c_i][1]
-                if c_i == 7:
+                if c_i == 8:
                     # Kolom Status dengan badge warna lembut
                     is_aktif = st_val.lower() == "aktif"
                     if is_aktif:
@@ -861,29 +864,31 @@ class APIClient:
         return get_vms_on_host(host_asset_id=host_asset_id)
 
     async def get_ip_import_template_bytes(self) -> bytes:
-        """Buat file template .xlsx dengan header baku, 1 baris contoh, & dropdown validasi."""
+        """Buat file template .xlsx standar murni teks (tanpa dropdown)."""
         headers = [
             "IP Address",
-            "Nama Server/VM",
+            "Pengguna",
             "Jenis",
-            "Host Server",
-            "Status",
+            "Host",
+            "Kategori",
             "Fungsi",
             "OS",
+            "Status",
             "Keterangan",
         ]
         sample_row = [
             "192.168.1.30",
-            "PC CS RETAIL",
+            "Nama pengguna / VM",
             "Fisik",
             "",
+            "IP Operasional",
+            "Fungsi utama",
+            "Windows 11",
             "Aktif",
-            "Workstation Operasional (CS Retail)",
-            "Windows 11 Pro",
             "",
         ]
-        widths = [18, 26, 12, 18, 14, 32, 24, 34]
-        return _build_openxml_xlsx(headers, [sample_row], widths, is_template=True)
+        widths = [18, 24, 12, 18, 16, 24, 16, 12, 34]
+        return _build_openxml_xlsx(headers, [sample_row], widths, is_template=False)
 
     async def preview_ip_import_bytes(
         self,
@@ -893,206 +898,165 @@ class APIClient:
     ) -> dict[str, Any]:
         """Validasi file .xlsx atau .csv untuk Import Data IP & Server (VM)."""
         raw_rows: list[list[str]] = []
-        lower_name = filename.lower()
-        try:
-            if lower_name.endswith(".xlsx"):
-                raw_rows = _read_xlsx_rows(file_bytes)
-            else:
-                text = file_bytes.decode("utf-8-sig", errors="replace")
-                reader = csv.reader(io.StringIO(text))
-                raw_rows = [[c.strip() for c in row] for row in reader if any(row)]
-        except Exception as exc:
-            return {
-                "valid_rows": [],
-                "errors": [
-                    {
-                        "row": 1,
-                        "ip_address": "—",
-                        "nama": "—",
-                        "reason": f"Format file rusak atau tidak terbaca ({exc})",
-                    }
-                ],
-            }
-
+        if filename.lower().endswith(".xlsx"):
+            raw_rows = _read_xlsx_rows(file_bytes)
+        else:
+            raw_rows = [
+                [c.strip() for c in row]
+                for row in csv.reader(io.StringIO(file_bytes.decode("utf-8-sig", errors="replace")))
+                if any(row)
+            ]
         if len(raw_rows) <= 1:
             return {
                 "valid_rows": [],
-                "errors": [
-                    {
-                        "row": 1,
-                        "ip_address": "—",
-                        "nama": "—",
-                        "reason": "File tidak memiliki baris data di bawah header",
-                    }
-                ],
+                "errors": [{"row": 1, "ip_address": "-", "nama": "-", "reason": "Data kosong"}],
             }
 
-        # Ambil daftar IP eksisting dari sistem untuk cek duplikasi
-        existing_res = await self.get_ip_entries(
-            grup="Semua",
-            filters={},
-            page=1,
-            page_size=5000,
-        )
-        existing_ips = {
-            str(it.get("ip_address", "")).strip()
-            for it in existing_res.get("items", [])
-            if it.get("ip_address")
-        }
-        clean_hosts = {
-            h.strip().upper() for h in valid_hosts if h and h.strip() not in ("", "-", "—")
-        }
-
+        await self.get_ip_entries(grup="Semua", filters={}, page=1, page_size=100)
         seen_in_file: set[str] = set()
         valid_rows: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
+        clean_hosts = {h.strip().upper() for h in valid_hosts if h and h not in ("-", "—")}
 
         for idx, cols in enumerate(raw_rows[1:], start=2):
-            padded = [*cols, "", "", "", "", "", "", "", ""][:8]
-            ip_val, nama_val, jenis_val, host_val, status_val, fungsi_val, os_val, ket_val = [
-                x.strip() for x in padded
-            ]
-            if not any([ip_val, nama_val, jenis_val]):
+            padded = [*cols, "", "", "", "", "", "", "", "", ""][:9]
+            (
+                ip_val,
+                pengguna_val,
+                jenis_val,
+                host_val,
+                kat_val,
+                fungsi_val,
+                os_val,
+                status_val,
+                ket_val,
+            ) = [x.strip() for x in padded]
+            if not ip_val:
                 continue
 
-            if not ip_val or not is_valid_ipv4(ip_val):
-                errors.append(
-                    {
-                        "row": idx,
-                        "ip_address": ip_val or "—",
-                        "nama": nama_val or "—",
-                        "reason": "IP tidak valid",
-                    }
-                )
-                continue
-
-            if ip_val in seen_in_file or ip_val in existing_ips:
+            if not is_valid_ipv4(ip_val):
                 errors.append(
                     {
                         "row": idx,
                         "ip_address": ip_val,
-                        "nama": nama_val or "—",
-                        "reason": "IP duplikat",
+                        "nama": pengguna_val,
+                        "reason": "Format IP tidak valid",
                     }
                 )
                 continue
-
-            if not nama_val:
+            if ip_val in seen_in_file:
+                errors.append(
+                    {
+                        "row": idx,
+                        "ip_address": ip_val,
+                        "nama": pengguna_val,
+                        "reason": "IP duplikat di file",
+                    }
+                )
+                continue
+            if not pengguna_val:
                 errors.append(
                     {
                         "row": idx,
                         "ip_address": ip_val,
                         "nama": "—",
-                        "reason": "Nama Server/VM kosong",
+                        "reason": "Pengguna kosong",
                     }
                 )
                 continue
-
-            jenis_norm = (
-                "VM"
-                if jenis_val.upper() == "VM"
-                else ("Fisik" if jenis_val.lower() == "fisik" else "")
-            )
-            if not jenis_norm:
-                errors.append(
-                    {
-                        "row": idx,
-                        "ip_address": ip_val,
-                        "nama": nama_val,
-                        "reason": "Jenis harus Fisik atau VM",
-                    }
-                )
-                continue
-
-            status_norm = (
-                "Aktif"
-                if status_val.lower() in ("aktif", "")
-                else ("Nonaktif" if status_val.lower() == "nonaktif" else "")
-            )
-            if not status_norm:
-                errors.append(
-                    {
-                        "row": idx,
-                        "ip_address": ip_val,
-                        "nama": nama_val,
-                        "reason": "Status harus Aktif atau Nonaktif",
-                    }
-                )
-                continue
-
+            jenis_norm = "VM" if jenis_val.upper() == "VM" else "Fisik"
             host_clean = host_val.split(" ")[0].strip().upper() if jenis_norm == "VM" else ""
-            if jenis_norm == "VM":
-                if not host_clean:
-                    errors.append(
-                        {
-                            "row": idx,
-                            "ip_address": ip_val,
-                            "nama": nama_val,
-                            "reason": "Host wajib untuk VM",
-                        }
-                    )
-                    continue
-                if clean_hosts and host_clean not in clean_hosts:
-                    errors.append(
-                        {
-                            "row": idx,
-                            "ip_address": ip_val,
-                            "nama": nama_val,
-                            "reason": f"Host '{host_clean}' tidak terdaftar",
-                        }
-                    )
-                    continue
+            if jenis_norm == "VM" and not host_clean:
+                errors.append(
+                    {
+                        "row": idx,
+                        "ip_address": ip_val,
+                        "nama": pengguna_val,
+                        "reason": "Host wajib untuk VM",
+                    }
+                )
+                continue
+            if jenis_norm == "VM" and clean_hosts and host_clean not in clean_hosts:
+                errors.append(
+                    {
+                        "row": idx,
+                        "ip_address": ip_val,
+                        "nama": pengguna_val,
+                        "reason": f"Host '{host_clean}' tidak terdaftar",
+                    }
+                )
+                continue
 
             seen_in_file.add(ip_val)
             valid_rows.append(
                 {
                     "ip_address": ip_val,
-                    "nama": nama_val,
+                    "nama": pengguna_val,
+                    "pengguna": pengguna_val,
                     "jenis": jenis_norm,
-                    "asset_id": "",
-                    "host_asset_id": host_clean if jenis_norm == "VM" else "",
-                    "grup": "Addon (VM)" if jenis_norm == "VM" else "Operasional",
-                    "status": status_norm,
+                    "host_asset_id": host_clean,
+                    "kategori": kat_val or "IP Operasional",
+                    "status": status_val or "Aktif",
                     "fungsi": fungsi_val,
                     "os": os_val,
                     "keterangan": ket_val,
                 }
             )
-
         return {"valid_rows": valid_rows, "errors": errors}
+
+    async def _collect_filtered_for_export(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
+        all_rows: list[dict[str, Any]] = []
+        p_num = 1
+        p_size = 100
+        while True:
+            res = await self.get_ip_entries(
+                grup="Semua", filters=filters, page=p_num, page_size=p_size
+            )
+            items = res.get("items", [])
+            if not items:
+                break
+            all_rows.extend(items)
+            if len(all_rows) >= res.get("total", 0):
+                break
+            p_num += 1
+        return all_rows
 
     async def generate_ip_excel_bytes(self, rows: list[dict[str, Any]]) -> bytes:
         """Hasilkan file Excel (.xlsx) untuk daftar IP & Server (VM)."""
         headers = [
             "No",
             "IP Address",
-            "Nama Server/VM",
+            "Pengguna",
             "Jenis",
             "Host",
+            "Kategori",
             "Fungsi",
             "OS",
             "Status",
             "Keterangan",
         ]
         data_rows: list[list[str]] = []
-        for idx, r in enumerate(rows, start=1):
-            host_col = str(r.get("host_display") or r.get("host_label") or "—")
-            ket_col = str(r.get("keterangan") or "—")
+        for i, r in enumerate(rows, 1):
             data_rows.append(
                 [
-                    str(idx),
-                    str(r.get("ip_address", "—")),
-                    str(r.get("nama", "—")),
+                    str(i),
+                    str(r.get("ip_address", "")),
+                    str(r.get("pengguna") or r.get("nama") or ""),
                     str(r.get("jenis", "Fisik")),
-                    host_col,
-                    str(r.get("fungsi", "—")),
-                    str(r.get("os", "—")),
+                    str(r.get("host_display", "—")),
+                    str(r.get("kategori", "IP Operasional")),
+                    str(r.get("fungsi", "")),
+                    str(r.get("os", "")),
                     str(r.get("status", "Aktif")),
-                    ket_col,
+                    str(r.get("keterangan", "")),
                 ]
             )
-        widths = [6, 18, 28, 12, 18, 34, 24, 14, 34]
-        return _build_openxml_xlsx(headers, data_rows, widths, is_template=False)
+        return _build_openxml_xlsx(
+            headers,
+            data_rows,
+            [6, 18, 24, 10, 18, 16, 24, 18, 12, 34],
+            is_template=False,
+        )
 
     async def generate_ip_pdf_bytes(
         self,

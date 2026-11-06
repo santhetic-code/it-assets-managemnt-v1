@@ -172,6 +172,7 @@ def list_ip_allocations(
     tipe: str | None = Query(default=None),
     jenis: str | None = Query(default=None),
     grup: str | None = Query(default=None),
+    kategori: str | None = Query(default=None),
     host: str | None = Query(default=None),
     subnet: str | None = Query(default=None),
     lokasi: str | None = Query(default=None),
@@ -197,15 +198,19 @@ def list_ip_allocations(
             or_(
                 col(IPAllocation.ip_address).ilike(pattern),
                 col(IPAllocation.nama_perangkat).ilike(pattern),
+                col(IPAllocation.pengguna).ilike(pattern),
+                col(IPAllocation.kategori).ilike(pattern),
+                col(IPAllocation.os).ilike(pattern),
                 col(IPAllocation.hostname).ilike(pattern),
                 col(IPAllocation.host_name).ilike(pattern),
                 col(IPAllocation.id_aset).ilike(pattern),
                 col(IPAllocation.id_aset_host).ilike(pattern),
-                col(IPAllocation.os).ilike(pattern),
-                col(IPAllocation.pengguna).ilike(pattern),
                 col(IPAllocation.keterangan).ilike(pattern),
             )
         )
+
+    if kategori and kategori.strip().lower() not in ("semua", "all", ""):
+        stmt = stmt.where(func.lower(IPAllocation.kategori) == kategori.strip().lower())
 
     if lokasi and lokasi.strip().lower() not in ("semua", "all", ""):
         stmt = stmt.where(func.lower(IPAllocation.lokasi) == lokasi.strip().lower())
@@ -628,7 +633,8 @@ def commit_ip_import(
             storage=str(item.get("storage", "")),
             port_servis=str(item.get("port_servis", "")),
             mac_address=str(item.get("mac_address", "")),
-            pengguna=str(item.get("pengguna", "")),
+            pengguna=str(item.get("pengguna") or item.get("nama_perangkat", "")),
+            kategori=str(item.get("kategori", "IP Operasional")),
             keterangan=str(item.get("keterangan", "")),
         )
         session.add(row)
@@ -657,6 +663,7 @@ def export_ip_allocations(
     tipe: str | None = Query(default=None),
     jenis: str | None = Query(default=None),
     grup: str | None = Query(default=None),
+    kategori: str | None = Query(default=None),
     host: str | None = Query(default=None),
     subnet: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
@@ -858,6 +865,7 @@ def create_ip_allocation(
         port_servis=payload.port_servis.strip(),
         mac_address=payload.mac_address.strip(),
         pengguna=payload.pengguna.strip(),
+        kategori=payload.kategori.strip(),
         keterangan=payload.keterangan.strip(),
     )
     session.add(row)
@@ -885,6 +893,8 @@ def _apply_ip_update(
         )
 
     data = payload.model_dump(exclude_unset=True)
+    if "pengguna" in data and data["pengguna"] and "nama_perangkat" not in data:
+        data["nama_perangkat"] = str(data["pengguna"]).strip()
     if "nama" in data and "nama_perangkat" not in data:
         data["nama_perangkat"] = data.pop("nama") or ""
     else:
