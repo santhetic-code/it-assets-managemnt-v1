@@ -38,6 +38,7 @@ from app.schemas.ip_allocation import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+HTTP_422_STATUS = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
 
 # Sesi cache in-memory untuk transaksi impor 2-fase (TTL 1 jam)
 _IMPORT_SESSIONS: dict[str, dict[str, Any]] = {}
@@ -92,7 +93,7 @@ def _validate_ip_in_registered_subnets(
     if not is_ip_in_subnets(canonical_ip, cidrs):
         label = ", ".join(cidrs) if cidrs else DEFAULT_REGISTERED_SUBNET
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail=f"IP di luar subnet terdaftar ({label})",
         )
 
@@ -138,12 +139,12 @@ def _validate_and_resolve_host(
     ).first()
     if host_asset is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail=f"Host aset '{id_aset_host}' tidak ditemukan di inventaris aset",
         )
     if host_asset.status.lower() in ("rusak", "nonaktif"):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail=(
                 f"Host aset '{host_asset.id_aset}' berstatus {host_asset.status} "
                 "dan tidak dapat menampung VM"
@@ -623,7 +624,7 @@ def get_ip_map(
 
     if matched_subnet is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail=f"Subnet '{subnet}' tidak terdaftar pada ip_subnets",
         )
 
@@ -1714,7 +1715,7 @@ def _apply_ip_update(
 
     if row.is_vm and not row.host_name and not row.id_aset_host:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail="VM wajib memiliki host induk (host_name atau id_aset_host)",
         )
 
