@@ -257,47 +257,56 @@ def build_a4_landscape_ip_pdf(
     rows: list[dict[str, Any]],
     export_date_label: str,
     exporter_name: str,
+    selected_columns: list[str] | None = None,
 ) -> bytes:
-    """
-    Generator PDF A4 Landscape (841.89 x 595.28 pt):
-    - Judul 'Daftar IP & Server (VM)', tanggal ekspor, jumlah entri,
-      nama pengekspor, brand 'ITAM Pro'.
-    - Header tabel latar Navy (#0F172A) teks putih diulang di setiap halaman.
-    - Baris tidak terpotong antar halaman, teks panjang otomatis membungkus.
-    - Status berwarna lembut (Aktif hijau, Nonaktif merah).
-    - Footer halaman 'Halaman X dari Y'.
-    """
+    """Generator PDF A4 Landscape dengan dukungan pemilihan kolom dinamis (B2)."""
     page_w, page_h = 841.89, 595.28
     margin_x = 32.0
     table_w = page_w - 2 * margin_x  # 777.89 pt
 
-    col_defs = [
-        ("No", 30.0, 5),
-        ("IP Address", 88.0, 15),
-        ("Nama Server / VM", 132.0, 22),
-        ("Jenis", 48.0, 7),
-        ("Host", 78.0, 13),
-        ("Fungsi", 145.0, 25),
-        ("OS", 102.0, 18),
-        ("Status", 58.0, 9),
-        ("Keterangan", 96.89, 16),
+    all_col_specs = [
+        ("no", "No", 30.0, 5),
+        ("ip_address", "IP Address", 88.0, 15),
+        ("pengguna", "Nama Server / VM", 132.0, 22),
+        ("jenis", "Jenis", 48.0, 7),
+        ("host", "Host", 78.0, 13),
+        ("fungsi", "Fungsi", 145.0, 25),
+        ("os", "OS", 102.0, 18),
+        ("status", "Status", 58.0, 9),
+        ("keterangan", "Keterangan", 96.89, 16),
     ]
+
+    if selected_columns:
+        norm_sel = {c.strip().lower() for c in selected_columns}
+        norm_sel.add("no")
+        filtered_specs = [s for s in all_col_specs if s[0] in norm_sel]
+        if not filtered_specs:
+            filtered_specs = all_col_specs
+    else:
+        filtered_specs = all_col_specs
+
+    raw_total_w = sum(s[2] for s in filtered_specs) or table_w
+    scale = table_w / raw_total_w
+    col_defs = [(s[1], s[2] * scale, max(5, int(s[3] * scale))) for s in filtered_specs]
+    col_keys = [s[0] for s in filtered_specs]
+    status_col_idx = col_keys.index("status") if "status" in col_keys else -1
 
     prepared_rows: list[tuple[list[list[str]], float, str]] = []
     for idx, r in enumerate(rows, start=1):
-        ket_val = str(r.get("keterangan", "—")).strip() or "—"
+        ket_val = str(r.get("keterangan") or "—").strip() or "—"
         host_val = str(r.get("host_display") or r.get("host_label") or "—").strip()
-        cells_raw = [
-            str(idx),
-            str(r.get("ip_address", "—")),
-            str(r.get("nama", "—")),
-            str(r.get("jenis", "Fisik")),
-            host_val,
-            str(r.get("fungsi", "—")),
-            str(r.get("os", "—")),
-            str(r.get("status", "Aktif")),
-            ket_val,
-        ]
+        val_map = {
+            "no": str(idx),
+            "ip_address": str(r.get("ip_address") or "—"),
+            "pengguna": str(r.get("nama") or r.get("pengguna") or "—"),
+            "jenis": str(r.get("jenis") or "Fisik"),
+            "host": host_val,
+            "fungsi": str(r.get("fungsi") or "—"),
+            "os": str(r.get("os") or "—"),
+            "status": str(r.get("status") or "Aktif"),
+            "keterangan": ket_val,
+        }
+        cells_raw = [val_map[k] for k in col_keys]
         wrapped_cells: list[list[str]] = []
         max_lines = 1
         for c_i, raw_txt in enumerate(cells_raw):
@@ -306,7 +315,7 @@ def build_a4_landscape_ip_pdf(
             wrapped_cells.append(lines[:3])
             max_lines = max(max_lines, len(lines[:3]))
         row_h = max(24.0, 10.0 + max_lines * 11.5)
-        prepared_rows.append((wrapped_cells, row_h, str(r.get("status", "Aktif"))))
+        prepared_rows.append((wrapped_cells, row_h, str(r.get("status") or "Aktif")))
 
     pages_data: list[list[tuple[list[list[str]], float, str, int]]] = []
     current_page: list[tuple[list[list[str]], float, str, int]] = []
@@ -373,7 +382,7 @@ def build_a4_landscape_ip_pdf(
             x_pos = margin_x
             for c_i, lines in enumerate(w_cells):
                 c_w = col_defs[c_i][1]
-                if c_i == 7:
+                if c_i == status_col_idx:
                     is_aktif = st_val.lower() == "aktif"
                     if is_aktif:
                         cmds.append("0.863 0.988 0.906 rg")

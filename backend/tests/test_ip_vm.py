@@ -25,12 +25,12 @@ def _auth_headers(session: Session, username: str, role: UserRole) -> dict[str, 
 def test_ip_numeric_sorting(client: TestClient, session: Session) -> None:
     headers = _auth_headers(session, "admin_ip", UserRole.ADMINISTRATOR)
 
-    # Masukkan IP secara acak (jika urut string, .100 dan .10 akan muncul sebelum .2)
+    # Masukkan IP secara acak di subnet terdaftar 192.168.1.0/24
     for ip, name in [
         ("192.168.1.100", "PC-Seratus"),
         ("192.168.1.2", "Router-Gateway"),
         ("192.168.1.10", "Server-Sepuluh"),
-        ("10.0.0.5", "MikroTik-Core"),
+        ("192.168.1.20", "Switch-DuaPuluh"),
     ]:
         res = client.post(
             "/api/v1/ip-allocations",
@@ -44,13 +44,27 @@ def test_ip_numeric_sorting(client: TestClient, session: Session) -> None:
         )
         assert res.status_code == 201
 
+    # B4: IP di luar subnet terdaftar (192.168.1.0/24) harus ditolak
+    out_of_subnet = client.post(
+        "/api/v1/ip-allocations",
+        headers=headers,
+        json={
+            "ip_address": "10.0.0.5",
+            "nama_perangkat": "MikroTik-Luar-Subnet",
+            "tipe": "Fisik",
+            "lokasi": "Head Office (Office Blok 14)",
+        },
+    )
+    assert out_of_subnet.status_code == 422
+    assert "di luar subnet terdaftar" in out_of_subnet.json()["detail"]
+
     list_res = client.get("/api/v1/ip-allocations", headers=headers)
     assert list_res.status_code == 200
     returned_ips = [item["ip_address"] for item in list_res.json()["items"]]
     assert returned_ips == [
-        "10.0.0.5",
         "192.168.1.2",
         "192.168.1.10",
+        "192.168.1.20",
         "192.168.1.100",
     ]
 
@@ -240,3 +254,128 @@ def test_ip_import_preview_and_commit(client: TestClient, session: Session) -> N
     ips = [it["ip_address"] for it in list_res.json()["items"]]
     assert "192.168.1.55" in ips
     assert "192.168.1.56" in ips
+
+
+def test_ip_import_skip_update_and_rollback_on_failure(
+    client: TestClient, session: Session
+) -> None:
+    """A1.6: Uji 2 baris valid (mode skip & update tanpa ip_int) dan rollback saat gagal."""
+    headers = _auth_headers(session, "admin_a1", UserRole.ADMINISTRATOR)
+
+    csv_data = (
+        "IP Address,Nama Server/VM,Jenis,Host Server,Status,Fungsi,OS,Keterangan\n"
+        "192.168.1.61,PC Finance 1,Fisik,,Aktif,Operasional Akuntansi,Windows 11,\n"
+        "192.168.1.62,PC Finance 2,Fisik,,Aktif,Operasional Pajak,Windows 11,NIC sering putus\n"
+    )
+    files = {"file": ("import_a1.csv", io.BytesIO(csv_data.encode("utf-8")), "text/csv")}
+    prev_res = client.post("/api/v1/ip-allocations/import-preview", headers=headers, files=files)
+    assert prev_res.status_code == 200
+    valid_rows = prev_res.json()["valid_rows"]
+    assert len(valid_rows) == 2
+
+    # Hapus ip_int dari payload client untuk memastikan server menghitung ulang ip_int sendiri
+    client_rows = [{k: v for k, v in r.items() if k != "ip_int"} for r in valid_rows]
+
+    # 1. Commit mode "skip" (Lewati)
+    commit_skip = client.post(
+        "/api/v1/ip-allocations/import-commit",
+        headers=headers,
+        json={"valid_rows": client_rows, "duplicate_mode": "skip"},
+    )
+    assert commit_skip.status_code == 200
+    assert commit_skip.json()["imported_count"] == 2
+
+    # Ulangi commit mode "skip" -> keduanya dilewati
+    commit_skip_again = client.post(
+        "/api/v1/ip-allocations/import-commit",
+        headers=headers,
+        json={"valid_rows": client_rows, "duplicate_mode": "skip"},
+    )
+    assert commit_skip_again.status_code == 200
+    assert commit_skip_again.json()["skipped_count"] == 2
+
+    # 2. Commit mode "update" (Perbarui)
+    updated_payload = [
+        {**client_rows[0], "nama_perangkat": "PC Finance 1 Updated", "os": "Ubuntu 24.04"},
+        {**client_rows[1], "keterangan": ""},
+    ]
+    commit_upd = client.post(
+        "/api/v1/ip-allocations/import-commit",
+        headers=headers,
+        json={"valid_rows": updated_payload, "duplicate_mode": "update"},
+    )
+    assert commit_upd.status_code == 200
+    assert commit_upd.json()["updated_count"] == 2
+
+    # 3. Semua gagal -> Rollback, tabel tidak berubah, kode error ERR-xxxx
+    bad_rows = [
+        {"ip_address": "192.168.1.63", "nama_perangkat": "PC Baru Valid", "tipe": "Fisik"},
+        {"ip_address": "999.999.999.999", "nama_perangkat": "PC Rusak", "tipe": "Fisik"},
+    ]
+    fail_res = client.post(
+        "/api/v1/ip-allocations/import-commit",
+        headers=headers,
+        json={"valid_rows": bad_rows, "duplicate_mode": "skip"},
+    )
+    assert fail_res.status_code == 400
+    assert fail_res.json()["detail"].startswith("Import gagal. Kode: ERR-")
+
+    list_res = client.get("/api/v1/ip-allocations", headers=headers)
+    ips = {it["ip_address"]: it for it in list_res.json()["items"]}
+    assert "192.168.1.63" not in ips  # Rollback berhasil, baris pertama batal disimpan
+    assert ips["192.168.1.61"]["nama_perangkat"] == "PC Finance 1 Updated"
+    assert ips["192.168.1.61"]["has_kendala"] is False
+    assert ips["192.168.1.61"]["keterangan"] is None
+
+
+def test_kendala_helper_host_options_map_and_print(client: TestClient, session: Session) -> None:
+    """A2, A3, A4, B2, B4: Uji has_kendala, host_options VM count, /map bentrok=0, & /print-data."""
+    headers = _auth_headers(session, "admin_all", UserRole.ADMINISTRATOR)
+
+    srv = Asset(
+        id_aset="SRV-002",
+        nama_aset="SERVER OTO RETAIL",
+        kategori="Server",
+        status="Digunakan",
+        lokasi="Head Office (Office Blok 14)",
+    )
+    session.add(srv)
+    session.commit()
+
+    # Buat VM dengan fungsi terisi & keterangan kosong -> has_kendala False & keterangan None
+    vm_res = client.post(
+        "/api/v1/ip-allocations",
+        headers=headers,
+        json={
+            "ip_address": "192.168.1.70",
+            "pengguna": "ADDON RETAIL 1",
+            "jenis": "VM",
+            "id_aset_host": "SRV-002",
+            "fungsi": "Worker Transaksi Retail",
+            "keterangan": "   ",
+        },
+    )
+    assert vm_res.status_code == 201
+    vm_body = vm_res.json()
+    assert vm_body["keterangan"] is None
+    assert vm_body["has_kendala"] is False
+    assert "Ada kendala" not in vm_body["sub_label"]
+
+    # Cek host_options di GET /api/v1/ip-allocations (A3)
+    list_res = client.get("/api/v1/ip-allocations", headers=headers)
+    assert list_res.status_code == 200
+    host_opts = list_res.json()["host_options"]
+    assert host_opts == ["Semua host", "SRV-002 (SERVER OTO RETAIL) · 1 VM"]
+
+    # Cek Peta IP (A4 & B4): bentrok tidak boleh undefined, subnet tidak terdaftar ditolak
+    map_res = client.get("/api/v1/ip-allocations/map?subnet=1", headers=headers)
+    assert map_res.status_code == 200
+    assert map_res.json()["stats"]["bentrok"] == 0
+
+    bad_map = client.get("/api/v1/ip-allocations/map?subnet=10.0.0.0/24", headers=headers)
+    assert bad_map.status_code == 422
+
+    # Cek Print Data & Audit Log (B2)
+    print_res = client.get("/api/v1/ip-allocations/print-data", headers=headers)
+    assert print_res.status_code == 200
+    assert print_res.json()["total"] == 1

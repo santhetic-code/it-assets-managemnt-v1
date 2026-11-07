@@ -25,7 +25,7 @@ from app.models.finance import Purchase
 from app.models.ip_allocation import IPAllocation
 from app.models.maintenance import Maintenance
 from app.schemas.audit import record_audit_log
-from app.schemas.ip_allocation import parse_and_validate_ipv4
+from app.schemas.ip_allocation import normalize_keterangan, parse_and_validate_ipv4
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,8 @@ def _read_csv_rows(file_path: Path) -> list[dict[str, str]]:
                         "tipe": "Fisik",
                         "grup": "Operasional",
                         "os": os_srv,
-                        "keterangan": f"Server Produksi ({server_name})",
+                        "fungsi": f"Server Produksi ({server_name})",
+                        "keterangan": "",
                         "pengguna": "IT Server",
                         "lokasi": "Head Office (Office Blok 14)",
                         "source_block": "SERVER",
@@ -114,7 +115,8 @@ def _read_csv_rows(file_path: Path) -> list[dict[str, str]]:
                         "grup": "Addon (VM)",
                         "os": "Windows 10 Pro",
                         "host_name": addon_host,
-                        "keterangan": rincian or f"Worker Addon {addon_host}",
+                        "fungsi": rincian or f"Worker Addon {addon_host}",
+                        "keterangan": "",
                         "pengguna": "IT System",
                         "lokasi": "Head Office (Office Blok 14)",
                         "source_block": "ADDON",
@@ -131,7 +133,8 @@ def _read_csv_rows(file_path: Path) -> list[dict[str, str]]:
                         "grup": "Operasional",
                         "os": "Windows 11 Pro",
                         "pengguna": user_name,
-                        "keterangan": f"Workstation Operasional ({user_name})",
+                        "fungsi": f"Workstation Operasional ({user_name})",
+                        "keterangan": "",
                         "lokasi": "Head Office (Office Blok 14)",
                         "source_block": "OPERASIONAL",
                     }
@@ -508,7 +511,9 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
         is_vm = "vm" in tipe_raw.lower() or "virtual" in tipe_raw.lower() or bool(host_raw)
 
         lokasi = _normalize_loc(_pick(r, "lokasi", "cabang", "site", "ruangan"))
-        ket = _pick(r, "keterangan", "catatan", "deskripsi", "fungsi")
+        fungsi_val = _pick(r, "fungsi", "port_servis", default="Operasional")
+        ket_raw = _pick(r, "keterangan", "catatan", "deskripsi")
+        ket_norm = normalize_keterangan(ket_raw, fungsi_val)
         pengguna = _pick(r, "pengguna", "user", "pic", "penanggung_jawab")
         os_val = _pick(r, "os", "sistem_operasi")
 
@@ -618,8 +623,9 @@ def import_ip_list_csv(session: Session, file_path: Path) -> int:
                 host_name=host_raw[:150] if is_vm else "",
                 id_aset_host=linked_host_id,
                 os=os_val[:80],
+                port_servis=fungsi_val[:120],
                 pengguna=pengguna[:100],
-                keterangan=ket[:500],
+                keterangan=ket_norm[:500] if ket_norm else None,
             )
             session.add(row)
             session.flush()

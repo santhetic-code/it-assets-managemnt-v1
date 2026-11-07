@@ -1,6 +1,7 @@
 """Skema Pydantic untuk validasi dan kontrak respons modul IP & VM."""
 
 import ipaddress
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -9,18 +10,88 @@ from app.core.master_data import LOCATION_ALIASES, LOCATIONS
 from app.models.ip_allocation import IPAllocation
 
 VALID_IP_STATUSES = {"Aktif", "Digunakan", "Bebas", "Tersedia", "Reserved", "Konflik", "Nonaktif"}
+DEFAULT_REGISTERED_SUBNET = "192.168.1.0/24"
+
+
+def ipv4_to_int(ip_str: str) -> int:
+    """Satu fungsi terpusat konversi IPv4 string ke integer 32-bit (A1)."""
+    cleaned = (ip_str or "").strip()
+    if "/" in cleaned:
+        cleaned = cleaned.split("/", 1)[0].strip()
+    try:
+        return int(ipaddress.IPv4Address(cleaned))
+    except (ipaddress.AddressValueError, ValueError) as exc:
+        raise ValueError(f"Format alamat IPv4 '{ip_str}' tidak valid") from exc
+
+
+ipv4ToInt = ipv4_to_int
 
 
 def parse_and_validate_ipv4(ip_str: str) -> tuple[str, int]:
     """Memvalidasi string IPv4 dan mengembalikan (ip_canonical, ip_int)."""
-    cleaned = ip_str.strip()
-    if "/" in cleaned:
-        cleaned = cleaned.split("/", 1)[0].strip()
+    ip_int = ipv4_to_int(ip_str)
+    return str(ipaddress.IPv4Address(ip_int)), ip_int
+
+
+def is_ip_in_subnets(
+    ip_str: str,
+    allowed_cidrs: Sequence[str] = (DEFAULT_REGISTERED_SUBNET,),
+) -> bool:
+    """Mengecek apakah IPv4 berada di dalam daftar subnet CIDR terdaftar (B4)."""
     try:
-        addr = ipaddress.IPv4Address(cleaned)
-    except (ipaddress.AddressValueError, ValueError) as exc:
-        raise ValueError(f"Format alamat IPv4 '{ip_str}' tidak valid") from exc
-    return str(addr), int(addr)
+        addr = ipaddress.IPv4Address(ip_str.strip().split("/")[0])
+    except (ipaddress.AddressValueError, ValueError):
+        return False
+    for cidr in allowed_cidrs:
+        try:
+            net = ipaddress.IPv4Network(cidr.strip(), strict=False)
+            if addr in net:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def normalize_keterangan(
+    keterangan: str | None,
+    fungsi: str | None = None,
+) -> str | None:
+    """Normalisasi Keterangan: simpan kosong/spasi/strip atau identik Fungsi sebagai None (A2)."""
+    if keterangan is None:
+        return None
+    ket_clean = str(keterangan).strip()
+    if not ket_clean or ket_clean in ("-", "—"):
+        return None
+    fungsi_clean = (fungsi or "").strip()
+    if fungsi_clean and ket_clean.lower() == fungsi_clean.lower():
+        return None
+    return ket_clean
+
+
+def has_kendala(
+    entry_or_keterangan: Any,
+    fungsi: str | None = None,
+) -> bool:
+    """True hanya jika keterangan.trim() tidak kosong dan tidak sama dengan Fungsi (A2)."""
+    if isinstance(entry_or_keterangan, dict):
+        ket_val = entry_or_keterangan.get("keterangan")
+        fn_val = fungsi if fungsi is not None else entry_or_keterangan.get("fungsi")
+        return normalize_keterangan(ket_val, fn_val) is not None
+    if hasattr(entry_or_keterangan, "keterangan"):
+        ket_val = getattr(entry_or_keterangan, "keterangan", None)
+        fn_val = (
+            fungsi
+            if fungsi is not None
+            else (
+                getattr(entry_or_keterangan, "fungsi", None)
+                or getattr(entry_or_keterangan, "port_servis", None)
+            )
+        )
+        return normalize_keterangan(ket_val, fn_val) is not None
+    return normalize_keterangan(entry_or_keterangan, fungsi) is not None
+
+
+hasKendala = has_kendala
 
 
 def _normalize_location_optional(val: str) -> str:
@@ -74,7 +145,7 @@ class IPAllocationCreate(BaseModel):
 
     mac_address: str = Field(default="", max_length=50)
     penanggung_jawab: str | None = Field(default=None, max_length=100)
-    keterangan: str = Field(default="", max_length=500)
+    keterangan: str | None = Field(default=None, max_length=500)
     fungsi: str | None = Field(default=None, max_length=500)
     catatan: str | None = Field(default=None, max_length=500)
 
@@ -174,10 +245,13 @@ class IPAllocationCreate(BaseModel):
 
         if not self.pengguna and self.penanggung_jawab:
             self.pengguna = self.penanggung_jawab.strip()
-        if not self.keterangan and self.fungsi:
-            self.keterangan = self.fungsi.strip()
-        elif not self.keterangan and self.catatan:
-            self.keterangan = self.catatan.strip()
+
+        # Simpan fungsi di port_servis; JANGAN menyalin fungsi otomatis ke keterangan (A2)
+        if self.fungsi and self.fungsi.strip() and not self.port_servis.strip():
+            self.port_servis = self.fungsi.strip()[:120]
+
+        raw_ket = self.keterangan if self.keterangan is not None else self.catatan
+        self.keterangan = normalize_keterangan(raw_ket, self.fungsi or self.port_servis)
 
         # Validasi status
         matched_status = next(
@@ -285,6 +359,8 @@ class IPAllocationPublic(BaseModel):
     is_orphan_vm: bool
     konflik_ip: bool
     is_conflict: bool = False
+    has_kendala: bool = False
+    is_outside_subnet: bool = False
 
     os: str
     vcpu: int
@@ -293,7 +369,7 @@ class IPAllocationPublic(BaseModel):
     port_servis: str
     mac_address: str
     pengguna: str
-    keterangan: str
+    keterangan: str | None = None
     fungsi: str = ""
 
     @classmethod
@@ -303,16 +379,23 @@ class IPAllocationPublic(BaseModel):
         *,
         is_orphan: bool = False,
         is_conflict: bool = False,
+        allowed_subnets: Sequence[str] = (DEFAULT_REGISTERED_SUBNET,),
     ) -> "IPAllocationPublic":
         host_display = row.host_name or (row.id_aset_host or "-")
         jenis_val = "VM" if row.is_vm else "Fisik"
         grup_val = "Addon (VM)" if row.is_vm else "Operasional"
         asset_id_str = (row.id_aset or "").strip()
         host_asset_id_str = (row.id_aset_host or "").strip()
-        ket_raw = (row.keterangan or "").strip()
-        has_kendala = bool(ket_raw and ket_raw not in ("—", "-"))
-        if has_kendala:
+
+        fungsi_val = (row.port_servis or "Operasional").strip()
+        ket_norm = normalize_keterangan(row.keterangan, fungsi_val)
+        kendala = has_kendala(ket_norm, fungsi_val)
+        outside_subnet = not is_ip_in_subnets(row.ip_address, allowed_subnets)
+
+        if kendala:
             sub_lbl = "● Ada kendala (lihat keterangan)"
+        elif outside_subnet:
+            sub_lbl = "⚠ Di luar subnet terdaftar"
         elif row.is_vm:
             sub_lbl = f"Host: {host_asset_id_str}" if host_asset_id_str else "Tanpa host"
         else:
@@ -328,7 +411,6 @@ class IPAllocationPublic(BaseModel):
         else:
             host_lbl = "—"
 
-        fungsi_val = (row.keterangan or row.port_servis or "Operasional").strip()
         subnet_cidr = _compute_cidr_subnet(row.ip_address, row.subnet)
 
         return cls(
@@ -360,6 +442,8 @@ class IPAllocationPublic(BaseModel):
             is_orphan_vm=is_orphan,
             konflik_ip=is_conflict,
             is_conflict=is_conflict,
+            has_kendala=kendala,
+            is_outside_subnet=outside_subnet,
             os=row.os or "—",
             vcpu=row.vcpu,
             ram=row.ram,
@@ -367,7 +451,7 @@ class IPAllocationPublic(BaseModel):
             port_servis=row.port_servis,
             mac_address=row.mac_address,
             pengguna=row.pengguna or row.nama_perangkat,
-            keterangan=row.keterangan,
+            keterangan=ket_norm,
             fungsi=fungsi_val,
         )
 
@@ -383,7 +467,9 @@ class IPAllocationPageResponse(BaseModel):
     summary: dict[str, Any]
     kpi: dict[str, int] = {}
     conflict_banner: str = ""
-    subnet_options: list[str] = ["Semua"]
-    host_options: list[str] = ["Semua"]
+    subnet_options: list[str] = ["192.168.1.0/24"]
+    subnets: list[dict[str, Any]] = []
+    host_options: list[str] = ["Semua host"]
+    host_server_options: list[str] = []
     server_asset_ids: list[str] = ["—"]
     os_suggestions: list[str] = []

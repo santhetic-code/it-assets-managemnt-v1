@@ -40,9 +40,7 @@ def login(payload: LoginRequest, session: SessionDep, request: Request) -> Token
             detail="Terlalu banyak percobaan login gagal. Silakan coba lagi dalam beberapa saat.",
         )
 
-    user = session.exec(
-        select(User).where(func.lower(User.username) == username.lower())
-    ).first()
+    user = session.exec(select(User).where(func.lower(User.username) == username.lower())).first()
 
     if user is None or not verify_password(payload.password, user.password_hash):
         record_failed_login(client_ip, username)

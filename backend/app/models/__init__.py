@@ -5,7 +5,7 @@ from app.models.audit import AuditLog
 from app.models.base import NAMING_CONVENTION, TimestampMixin, utcnow
 from app.models.credential import Credential
 from app.models.finance import Purchase
-from app.models.ip_allocation import IPAllocation
+from app.models.ip_allocation import IPAllocation, IPSubnet
 from app.models.maintenance import Maintenance
 from app.models.user import User, UserRole
 
@@ -15,6 +15,7 @@ __all__ = [
     "AuditLog",
     "Credential",
     "IPAllocation",
+    "IPSubnet",
     "Maintenance",
     "Purchase",
     "TimestampMixin",
