@@ -42,6 +42,38 @@ def derive_subnet_24(ip_str: str) -> str:
     return f"{parts[0]}.{parts[1]}.{parts[3 if len(parts) < 3 else 2]}.0/24"
 
 
+REGISTERED_SUBNET_CIDR = "192.168.1.0/24"
+
+
+def has_kendala(entry_or_ket: Any, fungsi: str = "") -> bool:
+    """A2: True hanya jika keterangan.trim() tidak kosong dan tidak sama persis dengan Fungsi."""
+    if isinstance(entry_or_ket, dict):
+        ket_raw = str(entry_or_ket.get("keterangan") or "").strip()
+        fn_raw = str(fungsi or entry_or_ket.get("fungsi") or "").strip()
+    else:
+        ket_raw = str(entry_or_ket or "").strip()
+        fn_raw = str(fungsi or "").strip()
+    if not ket_raw or ket_raw in ("—", "-"):
+        return False
+    if fn_raw and ket_raw.lower() == fn_raw.lower():
+        return False
+    return True
+
+
+hasKendala = has_kendala
+
+
+def is_ip_in_registered_subnet(
+    ip_str: str,
+    subnet_cidr: str = REGISTERED_SUBNET_CIDR,
+) -> bool:
+    """B4: Cek apakah IP berada di dalam subnet terdaftar (default 192.168.1.0/24)."""
+    if not is_valid_ipv4(ip_str):
+        return False
+    prefix = ".".join(subnet_cidr.split("/")[0].split(".")[:3])
+    return ip_str.strip().startswith(f"{prefix}.")
+
+
 # 26 Entri Mock (Kompatibel penuh dengan seluruh unit test)
 MOCK_IP_ENTRIES: list[dict[str, Any]] = [
     {
@@ -455,18 +487,21 @@ def enrich_ip_entry(
     server_map: dict[str, str],
     conflict_map: dict[str, list[str]],
 ) -> dict[str, Any]:
-    """Lengkapi field turunan tampilan untuk konsumsi tabel dan drawer."""
+    """Lengkapi field turunan tampilan untuk konsumsi tabel dan drawer (A2, B4)."""
     row = deepcopy(raw)
     ip = str(row.get("ip_address", "")).strip()
     jenis = str(row.get("jenis", "Fisik")).strip() or "Fisik"
     asset_id = str(row.get("asset_id", "")).strip()
     host_id = str(row.get("host_asset_id", "")).strip()
-    ket_raw = str(row.get("keterangan", "")).strip()
-    has_kendala = bool(ket_raw and ket_raw != "—")
+    fungsi_val = str(row.get("fungsi") or "").strip()
+    ket_raw = str(row.get("keterangan") or "").strip()
+    kendala = has_kendala(ket_raw, fungsi_val)
+    outside_subnet = bool(ip and not is_ip_in_registered_subnet(ip))
 
     row["subnet"] = derive_subnet_24(ip)
     row["is_conflict"] = ip in conflict_map
-    row["has_kendala"] = has_kendala
+    row["has_kendala"] = kendala
+    row["is_outside_subnet"] = outside_subnet
 
     if jenis == "Fisik":
         base_sub = f"Aset: {asset_id}" if asset_id else "Server / PC fisik"
@@ -475,17 +510,24 @@ def enrich_ip_entry(
         if host_id:
             host_name = server_map.get(host_id, "")
             base_sub = f"Host: {host_id}"
-            row["host_label"] = host_name if host_name else host_id
+            row["host_label"] = f"{host_id} ({host_name})" if host_name else host_id
         else:
             base_sub = "Tanpa host"
             row["host_label"] = "Tanpa host"
 
+    if kendala:
+        sub_lbl = "● Ada kendala (lihat keterangan)"
+    elif outside_subnet:
+        sub_lbl = f"{base_sub} · Di luar subnet"
+    else:
+        sub_lbl = base_sub
+
     row["pengguna"] = row.get("pengguna") or row.get("nama") or "—"
-    row["kategori"] = row.get("kategori") or "IP Operasional"
-    row["sub_label"] = "● Ada kendala (lihat keterangan)" if has_kendala else base_sub
-    row["fungsi"] = row.get("fungsi") or "—"
+    row["kategori"] = row.get("kategori") or ("IP VM" if jenis == "VM" else "IP Operasional")
+    row["sub_label"] = sub_lbl
+    row["fungsi"] = fungsi_val or "—"
     row["os"] = row.get("os") or "—"
-    row["keterangan"] = ket_raw if has_kendala else "—"
+    row["keterangan"] = ket_raw if kendala else ""
     return row
 
 
@@ -512,12 +554,24 @@ def query_mock_ip_entries(
         if x.get("jenis") == "VM" and not str(x.get("host_asset_id", "")).strip()
     )
 
-    subnets = sorted(
-        {str(x["subnet"]) for x in all_enriched if x.get("subnet") and x["subnet"] != "—"},
-        key=lambda s: ipv4_sort_tuple(s.split("/")[0]),
-    )
     os_suggestions = sorted({str(x["os"]) for x in all_enriched if x.get("os") and x["os"] != "—"})
-    host_options = [f"{aid} ({name})" for aid, name in server_map.items()]
+
+    # A3: Dropdown "Semua host" hanya berisi host yang punya VM terhubung + jumlah VM
+    vm_counts_by_host: dict[str, int] = {}
+    for x in all_enriched:
+        if x.get("jenis") == "VM":
+            hid = str(x.get("host_asset_id", "")).strip()
+            if hid:
+                vm_counts_by_host[hid] = vm_counts_by_host.get(hid, 0) + 1
+
+    connected_host_options = [
+        f"{hid} ({server_map.get(hid, hid)}) · {cnt} VM"
+        if server_map.get(hid)
+        else f"{hid} · {cnt} VM"
+        for hid, cnt in sorted(vm_counts_by_host.items())
+        if cnt > 0
+    ]
+    host_server_options = [f"{aid} ({name})" for aid, name in sorted(server_map.items())]
 
     search = str(filters.get("search", "")).strip().lower()
     f_jenis = str(filters.get("jenis", "")).strip()
@@ -546,8 +600,9 @@ def query_mock_ip_entries(
             continue
         if f_jenis and item.get("jenis") != f_jenis:
             continue
-        if f_host:
-            host_code = f_host.split(" ", 1)[0].strip()
+        if f_host and f_host not in ("Semua", "Semua host"):
+            clean_h = f_host.split("·", 1)[0].strip()
+            host_code = clean_h.split(" ", 1)[0].strip()
             if host_code == "Tanpa" and str(item.get("host_asset_id", "")).strip():
                 continue
             elif host_code != "Tanpa" and str(item.get("host_asset_id", "")) != host_code:
@@ -587,6 +642,13 @@ def query_mock_ip_entries(
     paginated = filtered[start : start + page_size]
 
     conflict_info = get_ip_conflict_summary()
+    used_in_main_subnet = sum(
+        1
+        for x in all_enriched
+        if str(x.get("ip_address", "")).startswith("192.168.1.")
+        and str(x.get("ip_address", "")) not in ("192.168.1.0", "192.168.1.255")
+    )
+    kosong_main = max(0, 254 - used_in_main_subnet)
 
     return {
         "items": paginated,
@@ -597,14 +659,17 @@ def query_mock_ip_entries(
             "total_ip": total_all,
             "fisik": count_fisik,
             "vm": count_vm,
+            "kosong": kosong_main,
             "operasional": count_operasional,
             "addon": count_addon,
             "bentrok": count_conflict,
             "vm_tanpa_host": count_orphan_vm,
         },
         "conflict_banner": conflict_info["banner_message"],
-        "subnet_options": subnets,
-        "host_options": [*host_options, "Tanpa host"],
+        "subnet_options": [REGISTERED_SUBNET_CIDR],
+        "subnets": [{"id": 1, "cidr": REGISTERED_SUBNET_CIDR, "nama": "Subnet Utama LAN"}],
+        "host_options": connected_host_options,
+        "host_server_options": host_server_options,
         "server_asset_ids": list(server_map.keys()),
         "os_suggestions": os_suggestions,
     }
@@ -729,23 +794,27 @@ def get_mock_ip_map(subnet: str = "192.168.1.0/24") -> dict[str, Any]:
     for octet in range(256):
         ip_str = f"{prefix}.{octet}"
         if octet == 0:
-            cells.append({
-                "octet": octet,
-                "ip_address": ip_str,
-                "status": "network",
-                "label": "Network ID",
-                "is_reserved": True,
-                "is_occupied": False,
-            })
+            cells.append(
+                {
+                    "octet": octet,
+                    "ip_address": ip_str,
+                    "status": "network",
+                    "label": "Network ID",
+                    "is_reserved": True,
+                    "is_occupied": False,
+                }
+            )
         elif octet == 255:
-            cells.append({
-                "octet": octet,
-                "ip_address": ip_str,
-                "status": "broadcast",
-                "label": "Broadcast",
-                "is_reserved": True,
-                "is_occupied": False,
-            })
+            cells.append(
+                {
+                    "octet": octet,
+                    "ip_address": ip_str,
+                    "status": "broadcast",
+                    "label": "Broadcast",
+                    "is_reserved": True,
+                    "is_occupied": False,
+                }
+            )
         else:
             alloc = alloc_map.get(octet)
             if alloc:
@@ -762,29 +831,33 @@ def get_mock_ip_map(subnet: str = "192.168.1.0/24") -> dict[str, Any]:
                     cell_status = "fisik"
                     fisik_count += 1
 
-                cells.append({
-                    "octet": octet,
-                    "ip_address": ip_str,
-                    "status": cell_status,
-                    "is_reserved": False,
-                    "is_occupied": True,
-                    "entry_id": alloc.get("id"),
-                    "nama": alloc.get("nama") or alloc.get("pengguna", ""),
-                    "pengguna": alloc.get("pengguna") or alloc.get("nama", ""),
-                    "jenis": "VM" if is_vm else "Fisik",
-                    "host": alloc.get("host_asset_id") or ("—" if not is_vm else "Tanpa host"),
-                    "os": alloc.get("os", "—"),
-                    "fungsi": alloc.get("fungsi", "—"),
-                })
+                cells.append(
+                    {
+                        "octet": octet,
+                        "ip_address": ip_str,
+                        "status": cell_status,
+                        "is_reserved": False,
+                        "is_occupied": True,
+                        "entry_id": alloc.get("id"),
+                        "nama": alloc.get("nama") or alloc.get("pengguna", ""),
+                        "pengguna": alloc.get("pengguna") or alloc.get("nama", ""),
+                        "jenis": "VM" if is_vm else "Fisik",
+                        "host": alloc.get("host_asset_id") or ("—" if not is_vm else "Tanpa host"),
+                        "os": alloc.get("os", "—"),
+                        "fungsi": alloc.get("fungsi", "—"),
+                    }
+                )
             else:
-                cells.append({
-                    "octet": octet,
-                    "ip_address": ip_str,
-                    "status": "kosong",
-                    "is_reserved": False,
-                    "is_occupied": False,
-                    "label": "Tersedia",
-                })
+                cells.append(
+                    {
+                        "octet": octet,
+                        "ip_address": ip_str,
+                        "status": "kosong",
+                        "is_reserved": False,
+                        "is_occupied": False,
+                        "label": "Tersedia",
+                    }
+                )
 
     kosong = 254 - terpakai
 
@@ -824,6 +897,10 @@ def get_mock_ip_map(subnet: str = "192.168.1.0/24") -> dict[str, Any]:
     else:
         largest_empty_range = "Tidak ada rentang kosong"
 
+    conflict_map = get_conflict_ip_map()
+    bentrok_count = sum(
+        1 for oct_v, it in alloc_map.items() if str(it.get("ip_address", "")) in conflict_map
+    )
     stats = {
         "total_allocatable": 254,
         "terpakai": terpakai,
@@ -831,10 +908,18 @@ def get_mock_ip_map(subnet: str = "192.168.1.0/24") -> dict[str, Any]:
         "fisik": fisik_count,
         "vm": vm_count,
         "nonaktif": nonaktif_count,
+        "bentrok": bentrok_count,
+        "konflik": bentrok_count,
+        "fisik_percent": round((fisik_count / 254) * 100, 1),
+        "vm_percent": round((vm_count / 254) * 100, 1),
+        "bentrok_percent": round((bentrok_count / 254) * 100, 1),
+        "kosong_percent": round((kosong / 254) * 100, 1),
     }
 
     return {
+        "subnet_id": 1,
         "subnet": normalized_subnet,
+        "subnets": [{"id": 1, "cidr": REGISTERED_SUBNET_CIDR, "nama": "Subnet Utama LAN"}],
         "prefix": prefix,
         "cells": cells,
         "stats": stats,
@@ -845,6 +930,7 @@ def get_mock_ip_map(subnet: str = "192.168.1.0/24") -> dict[str, Any]:
 
 __all__ = [
     "MOCK_IP_ENTRIES",
+    "REGISTERED_SUBNET_CIDR",
     "create_mock_ip_entry",
     "delete_mock_ip_entry",
     "derive_subnet_24",
@@ -855,7 +941,10 @@ __all__ = [
     "get_mock_ip_map",
     "get_server_assets_map",
     "get_vms_on_host",
+    "hasKendala",
+    "has_kendala",
     "ipv4_sort_tuple",
+    "is_ip_in_registered_subnet",
     "is_valid_ipv4",
     "query_mock_ip_entries",
     "update_mock_ip_entry",

@@ -17,7 +17,8 @@ from xml.sax.saxutils import escape as xml_escape
 import httpx
 
 from itam_pro.config import USE_MOCK
-from itam_pro.services.mock.auth_mock import verify_mock_login
+from itam_pro.services.mock.audit_mock import query_audit_logs, record_audit_event
+from itam_pro.services.mock.auth_mock import MOCK_USERS, verify_mock_login
 from itam_pro.services.mock.credential_mock import (
     get_filtered_credentials,
     reveal_mock_credential,
@@ -36,6 +37,8 @@ from itam_pro.services.mock.ip_mock import (
     find_ip_duplicate_owner,
     get_mock_ip_map,
     get_vms_on_host,
+    has_kendala,
+    is_ip_in_registered_subnet,
     is_valid_ipv4,
     query_mock_ip_entries,
     update_mock_ip_entry,
@@ -320,6 +323,7 @@ def _build_a4_landscape_ip_pdf(
     rows: list[dict[str, Any]],
     export_date_label: str,
     exporter_name: str,
+    selected_columns: list[str] | None = None,
 ) -> bytes:
     """
     Generator PDF A4 Landscape (841.89 x 595.28 pt):
@@ -334,36 +338,47 @@ def _build_a4_landscape_ip_pdf(
     margin_x = 32.0
     table_w = page_w - 2 * margin_x  # 777.89 pt
 
-    col_defs = [
-        ("No", 26.0, 4),
-        ("IP Address", 82.0, 14),
-        ("Pengguna", 112.0, 19),
-        ("Jenis", 42.0, 7),
-        ("Host", 72.0, 12),
-        ("Kategori", 78.0, 13),
-        ("Fungsi", 122.0, 21),
-        ("OS", 96.0, 16),
-        ("Status", 54.0, 9),
-        ("Keterangan", 93.89, 16),
+    all_specs = [
+        ("no", "No", 26.0, 4),
+        ("ip_address", "IP Address", 82.0, 14),
+        ("pengguna", "Pengguna", 112.0, 19),
+        ("jenis", "Jenis", 42.0, 7),
+        ("host", "Host", 72.0, 12),
+        ("kategori", "Kategori", 78.0, 13),
+        ("fungsi", "Fungsi", 122.0, 21),
+        ("os", "OS", 96.0, 16),
+        ("status", "Status", 54.0, 9),
+        ("keterangan", "Keterangan", 93.89, 16),
     ]
+    if selected_columns:
+        allowed = {c.strip().lower() for c in selected_columns} | {"no"}
+        specs = [s for s in all_specs if s[0] in allowed] or all_specs
+    else:
+        specs = all_specs
+
+    scale = table_w / (sum(s[2] for s in specs) or table_w)
+    col_defs = [(s[1], s[2] * scale, max(4, int(s[3] * scale))) for s in specs]
+    col_keys = [s[0] for s in specs]
+    status_col_idx = col_keys.index("status") if "status" in col_keys else -1
 
     prepared_rows: list[tuple[list[list[str]], float, str]] = []
     for idx, r in enumerate(rows, start=1):
-        ket_val = str(r.get("keterangan", "—")).strip() or "—"
+        ket_val = str(r.get("keterangan") or "—").strip() or "—"
         host_val = str(r.get("host_display") or r.get("host_label") or "—").strip()
         pengguna_val = str(r.get("pengguna") or r.get("nama") or "—")
-        cells_raw = [
-            str(idx),
-            str(r.get("ip_address", "—")),
-            pengguna_val,
-            str(r.get("jenis", "Fisik")),
-            host_val,
-            str(r.get("kategori", "IP Operasional")),
-            str(r.get("fungsi", "—")),
-            str(r.get("os", "—")),
-            str(r.get("status", "Aktif")),
-            ket_val,
-        ]
+        row_map = {
+            "no": str(idx),
+            "ip_address": str(r.get("ip_address", "—")),
+            "pengguna": pengguna_val,
+            "jenis": str(r.get("jenis", "Fisik")),
+            "host": host_val,
+            "kategori": str(r.get("kategori", "IP Operasional")),
+            "fungsi": str(r.get("fungsi", "—")),
+            "os": str(r.get("os", "—")),
+            "status": str(r.get("status", "Aktif")),
+            "keterangan": ket_val,
+        }
+        cells_raw = [row_map[k] for k in col_keys]
         wrapped_cells: list[list[str]] = []
         max_lines = 1
         for c_i, raw_txt in enumerate(cells_raw):
@@ -446,7 +461,7 @@ def _build_a4_landscape_ip_pdf(
             x_pos = margin_x
             for c_i, lines in enumerate(w_cells):
                 c_w = col_defs[c_i][1]
-                if c_i == 8:
+                if c_i == status_col_idx:
                     # Kolom Status dengan badge warna lembut
                     is_aktif = st_val.lower() == "aktif"
                     if is_aktif:
@@ -693,13 +708,16 @@ class APIClient:
                 if v and str(v).strip() not in ("", "Semua"):
                     params[f"attr_{k}"] = v
 
-        response = await self.request(
-            method="GET",
-            endpoint="/api/v1/assets",
-            token=token,
-            params=params,
-        )
-        return response  # type: ignore[return-value]
+        try:
+            response = await self.request(
+                method="GET",
+                endpoint="/api/v1/assets",
+                token=token,
+                params=params,
+            )
+            return response  # type: ignore[return-value]
+        except ServiceUnavailableError:
+            return query_mock_assets(filters=filters, page=page, page_size=page_size)
 
     async def create_assets(
         self,
@@ -782,7 +800,7 @@ class APIClient:
         token: str | None = None,
     ) -> dict[str, Any]:
         """Ambil daftar entri IP & Server (VM) dengan filter, sort numerik, & KPI."""
-        if USE_MOCK:
+        if self.use_mock:
             return query_mock_ip_entries(
                 grup=grup,
                 filters=filters,
@@ -796,13 +814,16 @@ class APIClient:
             "page_size": page_size,
             **filters,
         }
-        response = await self.request(
-            method="GET",
-            endpoint="/api/v1/ip-entries",
-            token=token,
-            params=params,
-        )
-        return response  # type: ignore[return-value]
+        try:
+            response = await self.request(
+                method="GET",
+                endpoint="/api/v1/ip-allocations",
+                token=token,
+                params=params,
+            )
+            return response  # type: ignore[return-value]
+        except ServiceUnavailableError:
+            return query_mock_ip_entries(grup=grup, filters=filters, page=page, page_size=page_size)
 
     async def create_ip_entry(
         self,
@@ -810,12 +831,12 @@ class APIClient:
         token: str | None = None,
     ) -> dict[str, Any]:
         """Tambah satu entri IP baru."""
-        if USE_MOCK:
+        if self.use_mock:
             return create_mock_ip_entry(payload=payload)
 
         response = await self.request(
             method="POST",
-            endpoint="/api/v1/ip-entries",
+            endpoint="/api/v1/ip-allocations",
             token=token,
             json_data=payload,
         )
@@ -828,12 +849,12 @@ class APIClient:
         token: str | None = None,
     ) -> dict[str, Any] | None:
         """Perbarui satu entri IP."""
-        if USE_MOCK:
+        if self.use_mock:
             return update_mock_ip_entry(entry_id=entry_id, payload=payload)
 
         response = await self.request(
             method="PUT",
-            endpoint=f"/api/v1/ip-entries/{entry_id}",
+            endpoint=f"/api/v1/ip-allocations/{entry_id}",
             token=token,
             json_data=payload,
         )
@@ -845,12 +866,12 @@ class APIClient:
         token: str | None = None,
     ) -> bool:
         """Hapus satu entri IP."""
-        if USE_MOCK:
+        if self.use_mock:
             return delete_mock_ip_entry(entry_id=entry_id)
 
         await self.request(
             method="DELETE",
-            endpoint=f"/api/v1/ip-entries/{entry_id}",
+            endpoint=f"/api/v1/ip-allocations/{entry_id}",
             token=token,
         )
         return True
@@ -864,12 +885,42 @@ class APIClient:
     def get_vms_on_host_sync(self, host_asset_id: str) -> list[dict[str, str]]:
         return get_vms_on_host(host_asset_id=host_asset_id)
 
-    async def get_ip_map(self, subnet: str = "192.168.1.0/24") -> dict[str, Any]:
-        """Ambil peta alokasi IP (256 sel oktet) untuk subnet /24 tertentu."""
-        if USE_MOCK:
-            return get_mock_ip_map(subnet=subnet)
-        res = await self.request("GET", "/api/v1/ip-entries/map", params={"subnet": subnet})
-        return res if isinstance(res, dict) else {}
+    async def get_ip_map(self, subnet: str = "1") -> dict[str, Any]:
+        """Ambil peta alokasi IP untuk subnet terdaftar (B4, C1)."""
+        if self.use_mock:
+            return get_mock_ip_map(subnet="192.168.1.0/24" if subnet == "1" else subnet)
+        try:
+            res = await self.request("GET", "/api/v1/ip-allocations/map", params={"subnet": subnet})
+            return res if isinstance(res, dict) else {}
+        except ServiceUnavailableError:
+            return get_mock_ip_map(subnet="192.168.1.0/24")
+
+    async def get_ip_print_data(
+        self,
+        filters: dict[str, Any],
+        record_log: bool = True,
+    ) -> dict[str, Any]:
+        """B2: Ambil SEMUA baris terfilter (maks 5.000) untuk Cetak & catat ke Audit Log."""
+        if self.use_mock:
+            res = query_mock_ip_entries(grup="Semua", filters=filters, page=1, page_size=5001)
+            items = res.get("items", [])
+            if record_log:
+                record_audit_event(
+                    "Administrator IT",
+                    "ip.print",
+                    "IP-PRINT",
+                    f"Cetak data IP ({len(items)} baris)",
+                )
+            return {
+                "title": "Daftar IP & Server (VM)",
+                "subnet": "192.168.1.0/24",
+                "filter_label": filters.get("jenis") or "Semua Data",
+                "total": len(items),
+                "items": items,
+            }
+        params = {**filters, "record_log": record_log}
+        res = await self.request("GET", "/api/v1/ip-allocations/print-data", params=params)
+        return res if isinstance(res, dict) else {"items": [], "total": 0}
 
     async def commit_ip_import(
         self,
@@ -877,22 +928,60 @@ class APIClient:
         duplicate_mode: str = "skip",
         valid_rows: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Commit hasil import IP ke database."""
-        if USE_MOCK:
+        """A1: Commit hasil import IP ke database (mendukung mode skip dan update)."""
+        if self.use_mock:
             rows = valid_rows or []
+            imported_cnt = 0
+            updated_cnt = 0
+            skipped_cnt = 0
+            for r in rows:
+                ip_addr = str(r.get("ip_address", "")).strip()
+                owner = find_ip_duplicate_owner(ip_addr)
+                if owner:
+                    if duplicate_mode == "update":
+                        from itam_pro.services.mock.ip_mock import MOCK_IP_ENTRIES
+
+                        target_id = next(
+                            (
+                                str(e["id"])
+                                for e in MOCK_IP_ENTRIES
+                                if str(e.get("ip_address")) == ip_addr
+                            ),
+                            "",
+                        )
+                        if target_id:
+                            update_mock_ip_entry(target_id, r)
+                            updated_cnt += 1
+                    else:
+                        skipped_cnt += 1
+                else:
+                    create_mock_ip_entry(r)
+                    imported_cnt += 1
+            record_audit_event(
+                "Administrator IT",
+                "ip.import",
+                "IP-IMPORT",
+                (
+                    f"Import data IP: {imported_cnt} baru, "
+                    f"{updated_cnt} diperbarui, {skipped_cnt} dilewati"
+                ),
+            )
             return {
                 "success": True,
-                "imported_count": len(rows),
-                "updated_count": 0,
-                "skipped_count": 0,
+                "imported_count": imported_cnt,
+                "updated_count": updated_cnt,
+                "skipped_count": skipped_cnt,
             }
         payload: dict[str, Any] = {
             "import_id": import_id,
             "duplicate_mode": duplicate_mode,
         }
         if valid_rows:
-            payload["valid_rows"] = valid_rows
-        res = await self.request("POST", "/api/v1/ip-entries/import-commit", json_data=payload)
+            # A1.2: Jangan kirim ip_int dari client, biarkan server menghitung ulang
+            payload["valid_rows"] = [
+                {k: v for k, v in row.items() if k != "ip_int"} for row in valid_rows
+            ]
+        res = await self.request("POST", "/api/v1/ip-allocations/import-commit", json_data=payload)
         return res if isinstance(res, dict) else {}
 
     async def get_ip_import_template_bytes(self) -> bytes:
@@ -928,51 +1017,128 @@ class APIClient:
         filename: str,
         valid_hosts: list[str],
     ) -> dict[str, Any]:
-        """Validasi file .xlsx atau .csv untuk Import Data IP & Server (VM)."""
+        """B1 & B4: Validasi file .xlsx/.csv (maks 5 MB, maks 1.000 baris, validasi subnet)."""
+        if len(file_bytes) > 5 * 1024 * 1024:
+            return {
+                "valid_rows": [],
+                "errors": [
+                    {
+                        "row": 1,
+                        "ip_address": "—",
+                        "nama": "—",
+                        "reason": "Ukuran file melebihi batas maksimum 5 MB",
+                    }
+                ],
+                "total_rows": 1,
+            }
+
         raw_rows: list[list[str]] = []
-        if filename.lower().endswith(".xlsx"):
-            raw_rows = _read_xlsx_rows(file_bytes)
-        else:
-            raw_rows = [
-                [c.strip() for c in row]
-                for row in csv.reader(io.StringIO(file_bytes.decode("utf-8-sig", errors="replace")))
-                if any(row)
-            ]
+        try:
+            if filename.lower().endswith(".xlsx"):
+                raw_rows = _read_xlsx_rows(file_bytes)
+            else:
+                text_csv = file_bytes.decode("utf-8-sig", errors="replace")
+                first_line = text_csv.split("\n")[0] if text_csv else ""
+                delim = (
+                    ";"
+                    if ";" in first_line and first_line.count(";") > first_line.count(",")
+                    else ","
+                )
+                raw_rows = [
+                    [c.strip() for c in row]
+                    for row in csv.reader(io.StringIO(text_csv), delimiter=delim)
+                    if any(row)
+                ]
+        except Exception:
+            return {
+                "valid_rows": [],
+                "errors": [
+                    {
+                        "row": 1,
+                        "ip_address": "—",
+                        "nama": "—",
+                        "reason": "File rusak atau format tidak didukung (.xlsx / .csv)",
+                    }
+                ],
+                "total_rows": 1,
+            }
+
         if len(raw_rows) <= 1:
             return {
                 "valid_rows": [],
-                "errors": [{"row": 1, "ip_address": "-", "nama": "-", "reason": "Data kosong"}],
+                "errors": [
+                    {"row": 1, "ip_address": "—", "nama": "—", "reason": "File tidak berisi data"}
+                ],
+                "total_rows": 0,
             }
 
-        await self.get_ip_entries(grup="Semua", filters={}, page=1, page_size=100)
+        if len(raw_rows) > 1001:
+            raw_rows = raw_rows[:1001]
+
         seen_in_file: set[str] = set()
         valid_rows: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
-        clean_hosts = {h.strip().upper() for h in valid_hosts if h and h not in ("-", "—")}
+        clean_hosts = {
+            h.split(" ")[0].strip().upper() for h in valid_hosts if h and h not in ("-", "—")
+        }
 
         for idx, cols in enumerate(raw_rows[1:], start=2):
             padded = [*cols, "", "", "", "", "", "", "", "", ""][:9]
-            (
-                ip_val,
-                pengguna_val,
-                jenis_val,
-                host_val,
-                kat_val,
-                fungsi_val,
-                os_val,
-                status_val,
-                ket_val,
-            ) = [x.strip() for x in padded]
-            if not ip_val:
+            if len(cols) == 8:
+                (
+                    ip_val,
+                    pengguna_val,
+                    jenis_val,
+                    host_val,
+                    status_val,
+                    fungsi_val,
+                    os_val,
+                    ket_val,
+                ) = [x.strip() for x in padded[:8]]
+                kat_val = "IP VM" if jenis_val.upper() == "VM" else "IP Operasional"
+            else:
+                (
+                    ip_val,
+                    pengguna_val,
+                    jenis_val,
+                    host_val,
+                    kat_val,
+                    fungsi_val,
+                    os_val,
+                    status_val,
+                    ket_val,
+                ) = [x.strip() for x in padded]
+
+            if not any([ip_val, pengguna_val, jenis_val]):
                 continue
 
+            if not ip_val:
+                errors.append(
+                    {
+                        "row": idx,
+                        "ip_address": "—",
+                        "nama": pengguna_val or "—",
+                        "reason": "IP Address kosong",
+                    }
+                )
+                continue
             if not is_valid_ipv4(ip_val):
                 errors.append(
                     {
                         "row": idx,
                         "ip_address": ip_val,
-                        "nama": pengguna_val,
-                        "reason": "Format IP tidak valid",
+                        "nama": pengguna_val or "—",
+                        "reason": "Format IPv4 tidak valid",
+                    }
+                )
+                continue
+            if not is_ip_in_registered_subnet(ip_val):
+                errors.append(
+                    {
+                        "row": idx,
+                        "ip_address": ip_val,
+                        "nama": pengguna_val or "—",
+                        "reason": "IP di luar subnet terdaftar (192.168.1.0/24)",
                     }
                 )
                 continue
@@ -981,8 +1147,8 @@ class APIClient:
                     {
                         "row": idx,
                         "ip_address": ip_val,
-                        "nama": pengguna_val,
-                        "reason": "IP duplikat di file",
+                        "nama": pengguna_val or "—",
+                        "reason": "IP duplikat di dalam file",
                     }
                 )
                 continue
@@ -992,11 +1158,27 @@ class APIClient:
                         "row": idx,
                         "ip_address": ip_val,
                         "nama": "—",
-                        "reason": "Pengguna kosong",
+                        "reason": "Pengguna / Nama Server kosong",
                     }
                 )
                 continue
-            jenis_norm = "VM" if jenis_val.upper() == "VM" else "Fisik"
+
+            jenis_norm = (
+                "VM"
+                if jenis_val.upper() == "VM"
+                else ("Fisik" if jenis_val.lower() in ("fisik", "") else "")
+            )
+            if not jenis_norm:
+                errors.append(
+                    {
+                        "row": idx,
+                        "ip_address": ip_val,
+                        "nama": pengguna_val,
+                        "reason": "Jenis harus Fisik atau VM",
+                    }
+                )
+                continue
+
             host_clean = host_val.split(" ")[0].strip().upper() if jenis_norm == "VM" else ""
             if jenis_norm == "VM" and not host_clean:
                 errors.append(
@@ -1004,7 +1186,7 @@ class APIClient:
                         "row": idx,
                         "ip_address": ip_val,
                         "nama": pengguna_val,
-                        "reason": "Host wajib untuk VM",
+                        "reason": "Host wajib diisi untuk VM",
                     }
                 )
                 continue
@@ -1020,21 +1202,31 @@ class APIClient:
                 continue
 
             seen_in_file.add(ip_val)
+            ket_clean = ket_val if has_kendala(ket_val, fungsi_val) else ""
             valid_rows.append(
                 {
+                    "row": idx,
                     "ip_address": ip_val,
                     "nama": pengguna_val,
+                    "nama_perangkat": pengguna_val,
                     "pengguna": pengguna_val,
                     "jenis": jenis_norm,
+                    "tipe": jenis_norm,
+                    "is_vm": jenis_norm == "VM",
                     "host_asset_id": host_clean,
-                    "kategori": kat_val or "IP Operasional",
+                    "id_aset_host": host_clean or None,
+                    "kategori": kat_val or ("IP VM" if jenis_norm == "VM" else "IP Operasional"),
                     "status": status_val or "Aktif",
                     "fungsi": fungsi_val,
                     "os": os_val,
-                    "keterangan": ket_val,
+                    "keterangan": ket_clean,
                 }
             )
-        return {"valid_rows": valid_rows, "errors": errors}
+        return {
+            "valid_rows": valid_rows,
+            "errors": errors,
+            "total_rows": len(valid_rows) + len(errors),
+        }
 
     async def _collect_filtered_for_export(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         all_rows: list[dict[str, Any]] = []
@@ -1102,9 +1294,12 @@ class APIClient:
         rows: list[dict[str, Any]],
         export_date_label: str,
         exporter_name: str,
+        selected_columns: list[str] | None = None,
     ) -> bytes:
         """Hasilkan file PDF A4 Landscape untuk daftar IP & Server (VM)."""
-        return _build_a4_landscape_ip_pdf(rows, export_date_label, exporter_name)
+        return _build_a4_landscape_ip_pdf(
+            rows, export_date_label, exporter_name, selected_columns=selected_columns
+        )
 
     @property
     def use_mock(self) -> bool:
@@ -1286,7 +1481,8 @@ class APIClient:
         token: str | None = None,
     ) -> dict[str, Any]:
         """Ambil daftar kredensial berdasarkan permissions token."""
-        if USE_MOCK:
+
+        def _mock_creds() -> dict[str, Any]:
             permissions = {
                 "website": "edit",
                 "detail_pc": "edit",
@@ -1302,13 +1498,19 @@ class APIClient:
             elif token == "mock-token-viewer":
                 permissions = {}
             return get_filtered_credentials(permissions, filters, page, page_size)
+
+        if USE_MOCK:
+            return _mock_creds()
         params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
             **filters,
         }
-        res = await self.request("GET", "/api/v1/credentials", token=token, params=params)
-        return res if isinstance(res, dict) else {"items": [], "total": 0, "tab_counts": {}}
+        try:
+            res = await self.request("GET", "/api/v1/credentials", token=token, params=params)
+            return res if isinstance(res, dict) else {"items": [], "total": 0, "tab_counts": {}}
+        except ServiceUnavailableError:
+            return _mock_creds()
 
     async def reveal_credential(
         self,
@@ -1319,14 +1521,17 @@ class APIClient:
         """Buka rahasia kredensial (dengan audit trail)."""
         if USE_MOCK:
             return await reveal_mock_credential(crd_id, field_key, actor)
-        res = await self.request("POST", f"/api/v1/credentials/{crd_id}/reveal")
-        if isinstance(res, dict):
-            return {
-                **res,
-                "value": res.get("value") or res.get("password") or res.get("secret") or "",
-                "expires_in": 15,
-            }
-        return {"value": "", "expires_in": 0}
+        try:
+            res = await self.request("POST", f"/api/v1/credentials/{crd_id}/reveal")
+            if isinstance(res, dict):
+                return {
+                    **res,
+                    "value": res.get("value") or res.get("password") or res.get("secret") or "",
+                    "expires_in": 15,
+                }
+            return {"value": "", "expires_in": 0}
+        except ServiceUnavailableError:
+            return await reveal_mock_credential(crd_id, field_key, actor)
 
     async def get_server_power(
         self,
@@ -1342,8 +1547,11 @@ class APIClient:
             "page_size": page_size,
             **filters,
         }
-        res = await self.request("GET", "/api/v1/watt-server", params=params)
-        return res if isinstance(res, dict) else {"items": [], "total": 0, "summary": {}}
+        try:
+            res = await self.request("GET", "/api/v1/watt-server", params=params)
+            return res if isinstance(res, dict) else {"items": [], "total": 0, "summary": {}}
+        except ServiceUnavailableError:
+            return query_server_power(filters=filters, page=page, page_size=page_size)
 
     async def save_server_power(
         self,
@@ -1376,12 +1584,17 @@ class APIClient:
         page: int = 1,
         page_size: int = 15,
     ) -> dict[str, Any]:
-        """Ambil daftar Audit Log berhalaman dari backend."""
+        """Ambil daftar Audit Log berhalaman dari Mock atau Backend."""
+        if self.use_mock:
+            return query_audit_logs(filters or {}, page=page, page_size=page_size)
         params: dict[str, Any] = {"page": page, "page_size": page_size}
         if filters:
             params.update(filters)
-        res = await self.request("GET", "/api/v1/audit-logs", params=params)
-        return res if isinstance(res, dict) else {"items": res}
+        try:
+            res = await self.request("GET", "/api/v1/audit-logs", params=params)
+            return res if isinstance(res, dict) else {"items": res}
+        except ServiceUnavailableError:
+            return query_audit_logs(filters or {}, page=page, page_size=page_size)
 
     async def get_users(
         self,
@@ -1389,25 +1602,45 @@ class APIClient:
         page: int = 1,
         page_size: int = 10,
     ) -> dict[str, Any]:
-        """Ambil daftar pengguna dari backend."""
+        """Ambil daftar pengguna dari Mock atau Backend."""
+        if self.use_mock:
+            return {"items": list(MOCK_USERS.values()), "total": len(MOCK_USERS)}
         params: dict[str, Any] = {"page": page, "page_size": page_size}
         if filters:
             params.update(filters)
-        res = await self.request("GET", "/api/v1/users", params=params)
-        return res if isinstance(res, dict) else {"items": res}
+        try:
+            res = await self.request("GET", "/api/v1/users", params=params)
+            return res if isinstance(res, dict) else {"items": res}
+        except ServiceUnavailableError:
+            return {"items": list(MOCK_USERS.values()), "total": len(MOCK_USERS)}
 
     async def change_password(
         self,
         old_password: str,
         new_password: str,
     ) -> dict[str, Any]:
-        """Ubah password akun sendiri yang sedang login."""
-        res = await self.request(
-            "POST",
-            "/api/v1/users/me/password",
-            json_data={"old_password": old_password, "new_password": new_password},
-        )
-        return res if isinstance(res, dict) else {}
+        """Ubah password akun sendiri yang sedang login (mendukung USE_MOCK)."""
+
+        def _mock_change_pw() -> dict[str, Any]:
+            admin_user = MOCK_USERS.get("admin", {})
+            expected_pw = admin_user.get("password", "password123")
+            if old_password != expected_pw:
+                raise Exception("Password saat ini salah.")
+            if "admin" in MOCK_USERS:
+                MOCK_USERS["admin"]["password"] = new_password
+            return {"status": "ok"}
+
+        if self.use_mock:
+            return _mock_change_pw()
+        try:
+            res = await self.request(
+                "POST",
+                "/api/v1/users/me/password",
+                json_data={"old_password": old_password, "new_password": new_password},
+            )
+            return res if isinstance(res, dict) else {}
+        except ServiceUnavailableError:
+            return _mock_change_pw()
 
     async def create_user(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Buat akun pengguna baru (Administrator)."""
@@ -1446,9 +1679,14 @@ class APIClient:
         return res if isinstance(res, dict) else {}
 
     async def get_dashboard(self) -> dict[str, Any]:
-        """Ambil ringkasan Dashboard real-time dari backend."""
-        res = await self.request("GET", "/api/v1/dashboard")
-        return res if isinstance(res, dict) else {}
+        """Ambil ringkasan Dashboard real-time dari Mock atau Backend."""
+        if self.use_mock:
+            return get_mock_dashboard_summary()
+        try:
+            res = await self.request("GET", "/api/v1/dashboard")
+            return res if isinstance(res, dict) else {}
+        except ServiceUnavailableError:
+            return get_mock_dashboard_summary()
 
 
 api_client = APIClient()

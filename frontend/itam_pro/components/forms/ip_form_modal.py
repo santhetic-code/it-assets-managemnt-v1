@@ -273,7 +273,7 @@ def ip_form_modal() -> rx.Component:
                                 rx.vstack(
                                     _field_label("Host Server Fisik", required=True),
                                     _select_input(
-                                        options=IPState.server_asset_ids,
+                                        options=IPState.host_server_options,
                                         value=IPState.form_host_asset_id,
                                         on_change=IPState.set_form_host_asset_id,
                                         empty_label="Pilih server fisik...",

@@ -97,6 +97,8 @@ class Color:
     # Extended Tokens for Topbar, Modals, Badges, KPI, & Gradients
     NAVY_900 = "#0F172A"
     NAVY_800 = "#1E3A8A"
+    NAVY_DONUT_INNER = "#132347"
+    ROSE_50 = "#FFF1F2"
     BLUE_600 = "#2563EB"
     BLUE_700 = "#1D4ED8"
     BLUE_100 = "#DBEAFE"

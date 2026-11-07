@@ -1,12 +1,20 @@
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+import warnings
 
-from app.core.config import get_settings
-from app.core.rate_limit import reset_login_rate_limiter
-from app.deps import get_session
-from app.main import app
+import pytest
+
+warnings.filterwarnings(
+    "ignore",
+    message="Using `httpx` with `starlette.testclient` is deprecated.*",
+)
+
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+from sqlmodel import Session, SQLModel, create_engine  # noqa: E402
+
+from app.core.config import get_settings  # noqa: E402
+from app.core.rate_limit import reset_login_rate_limiter  # noqa: E402
+from app.deps import get_session  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

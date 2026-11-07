@@ -42,12 +42,20 @@ def test_account_settings_page_compilation():
 @pytest.mark.anyio
 async def test_audit_state_flow():
     state = AuditState()
-    state.set_search_query("SRV-0001")
+    res = state.set_search_query("SRV-0001")
+    if hasattr(res, "__await__"):
+        await res
+    if not state.logs and hasattr(state, "load_page"):
+        load_res = state.load_page()
+        if hasattr(load_res, "__await__"):
+            await load_res
     assert state.search_query == "SRV-0001"
     assert len(state.logs) >= 1
     assert any("SRV-0001" in item["target_id"] for item in state.logs)
 
-    state.reset_filters()
+    rst = state.reset_filters()
+    if hasattr(rst, "__await__"):
+        await rst
     assert state.search_query == ""
     assert state.module_filter == ""
 

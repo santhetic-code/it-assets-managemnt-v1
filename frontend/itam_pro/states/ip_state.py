@@ -5,14 +5,34 @@ serta ekspor/impor teroptimasi.
 """
 
 import csv
+import html
 import io
+import json
 import math
+import time
 from datetime import datetime
 from typing import Any
 
 import reflex as rx
 
 from itam_pro.services.api_client import api_client
+from itam_pro.services.mock.ip_mock import (
+    REGISTERED_SUBNET_CIDR,
+    has_kendala,
+    is_ip_in_registered_subnet,
+)
+from itam_pro.styles.colors import Color
+
+# C2: Cache sisi client (TTL 45 detik) untuk deduplikasi & perpindahan instan Tabel <-> Peta IP
+_CLIENT_LIST_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CLIENT_MAP_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CLIENT_CACHE_TTL = 45.0
+
+
+def _invalidate_client_ip_cache() -> None:
+    _CLIENT_LIST_CACHE.clear()
+    _CLIENT_MAP_CACHE.clear()
+
 
 MONTHS_ID = [
     "",
@@ -54,8 +74,11 @@ class IPState(rx.State):
     conflict_banner_text: str = ""
 
     view_mode: str = "table"  # "table" | "map"
-    active_subnet: str = "192.168.1.0/24"
-    subnet_options: list[str] = ["192.168.1.0/24", "192.168.2.0/24", "10.0.0.0/24"]
+    active_subnet: str = REGISTERED_SUBNET_CIDR
+    subnet_options: list[str] = [REGISTERED_SUBNET_CIDR]
+    subnets_list: list[dict[str, Any]] = [
+        {"id": 1, "cidr": REGISTERED_SUBNET_CIDR, "nama": "Subnet Utama LAN"}
+    ]
     map_cells: list[dict[str, Any]] = []
     map_stats: dict[str, Any] = {}
     map_selected_octet: int = -1
@@ -77,8 +100,28 @@ class IPState(rx.State):
     only_orphan_vm_filter: bool = False
 
     host_options: list[str] = []
+    host_server_options: list[str] = ["SRV-0001 (SRV-PROXMOX-01)", "SRV-0002 (SRV-ZABBIX-MON)"]
     server_asset_ids: list[str] = ["SRV-0001", "SRV-0002"]
     os_suggestions: list[str] = []
+    _search_seq: int = 0
+
+    # B2: State Modal Cetak Data IP (Artboard 6)
+    print_modal_open: bool = False
+    print_is_loading: bool = False
+    print_follow_filter: bool = True
+    print_col_ip: bool = True
+    print_col_pengguna: bool = True
+    print_col_jenis: bool = True
+    print_col_host: bool = True
+    print_col_kategori: bool = True
+    print_col_fungsi: bool = True
+    print_col_os: bool = True
+    print_col_status: bool = True
+    print_col_keterangan: bool = False  # Default tidak dicentang (data internal)
+    print_rows: list[dict[str, Any]] = []
+    print_filter_label: str = "Semua Data"
+    print_date_label: str = ""
+    print_user_label: str = "Administrator IT"
 
     selected_ids: list[str] = []
     active_entry_id: str = ""
@@ -129,6 +172,79 @@ class IPState(rx.State):
     @rx.var(cache=True)
     def kosong_percent(self) -> int:
         return int((self.kpi_kosong_count / 254) * 100) if self.kpi_kosong_count else 0
+
+    @rx.var(cache=True)
+    def used_subnet_percent(self) -> int:
+        used = max(0, 254 - self.kpi_kosong_count)
+        return min(100, round((used / 254) * 100))
+
+    @rx.var(cache=True)
+    def has_multiple_subnets(self) -> bool:
+        return len(self.subnets_list) > 1
+
+    @rx.var(cache=True)
+    def has_connected_vm_hosts(self) -> bool:
+        """A3: True jika ada minimal 1 host yang memiliki VM terhubung."""
+        return any(h not in ("", "Semua", "Semua host") for h in self.host_options)
+
+    @rx.var(cache=True)
+    def clean_host_options(self) -> list[str]:
+        """A3: Daftar opsi host unik tanpa duplikasi 'Semua host'."""
+        return [h for h in self.host_options if h not in ("", "Semua", "Semua host")]
+
+    @rx.var(cache=True)
+    def active_stat_card(self) -> str:
+        """B3: Penanda kartu statistik aktif ('total'|'fisik'|'vm'|'kosong'|'bentrok')."""
+        if self.view_mode == "map":
+            return "kosong"
+        if self.only_conflict_filter:
+            return "bentrok"
+        if self.active_jenis_tab == "Fisik" or self.jenis_filter == "Fisik":
+            return "fisik"
+        if self.active_jenis_tab == "VM" or self.jenis_filter == "VM":
+            return "vm"
+        return "total"
+
+    @rx.var(cache=True)
+    def import_total_count(self) -> int:
+        return len(self.import_valid_rows) + len(self.import_errors)
+
+    @rx.var(cache=True)
+    def import_preview_rows(self) -> list[dict[str, Any]]:
+        """B1: Error ditampilkan lebih dulu (latar merah muda), diikuti baris valid."""
+        err_items = [
+            {
+                "row": str(e.get("row") or e.get("row_number") or "—"),
+                "ip_address": str(e.get("ip_address") or "—"),
+                "pengguna": str(e.get("nama") or e.get("pengguna") or "—"),
+                "jenis": str(e.get("jenis") or "—"),
+                "status_label": str(e.get("reason") or "Error validasi"),
+                "is_error": True,
+            }
+            for e in self.import_errors
+        ]
+        val_items = [
+            {
+                "row": str(r.get("row") or idx),
+                "ip_address": str(r.get("ip_address") or "—"),
+                "pengguna": str(
+                    r.get("pengguna") or r.get("nama_perangkat") or r.get("nama") or "—"
+                ),
+                "jenis": str(r.get("jenis") or r.get("tipe") or "Fisik"),
+                "status_label": "Siap diimpor",
+                "is_error": False,
+            }
+            for idx, r in enumerate(self.import_valid_rows, start=1)
+        ]
+        return (err_items + val_items)[:50]
+
+    @rx.var(cache=True)
+    def print_preview_rows(self) -> list[dict[str, Any]]:
+        return self.print_rows[:12]
+
+    @rx.var(cache=True)
+    def print_total_count(self) -> int:
+        return len(self.print_rows)
 
     @rx.var(cache=True)
     def jenis_options(self) -> list[str]:
@@ -251,10 +367,9 @@ class IPState(rx.State):
 
     @rx.var(cache=True)
     def drawer_has_kendala(self) -> bool:
+        """A2: Gunakan helper has_kendala yang sama dengan tabel dan Peta IP."""
         entry = self._get_active_entry()
-        ket = str(entry.get("keterangan", "")).strip()
-        fung = str(entry.get("fungsi", "")).strip()
-        return bool(ket and ket != "—" and ket != fung)
+        return has_kendala(entry)
 
     @rx.var(cache=True)
     def active_host_name(self) -> str:
@@ -355,17 +470,26 @@ class IPState(rx.State):
     @staticmethod
     def _enrich_row_for_view(raw: dict[str, Any]) -> dict[str, Any]:
         item = dict(raw)
+        ip_str = str(item.get("ip_address", "")).strip()
         jenis = str(item.get("jenis", "Fisik")).strip() or "Fisik"
-        ket_raw = str(item.get("keterangan", "")).strip()
-        has_kendala = bool(ket_raw and ket_raw != "—")
-        item["has_kendala"] = has_kendala
+        fungsi_val = str(item.get("fungsi") or "").strip()
+        ket_raw = str(item.get("keterangan") or "").strip()
+
+        # A2: Konsisten menggunakan satu helper has_kendala
+        kendala = has_kendala(ket_raw, fungsi_val)
+        outside_subnet = bool(
+            item.get("is_outside_subnet") or (ip_str and not is_ip_in_registered_subnet(ip_str))
+        )
+        item["has_kendala"] = kendala
+        item["is_outside_subnet"] = outside_subnet
+        item["keterangan"] = ket_raw if kendala else ""
 
         item["pengguna"] = str(item.get("pengguna") or item.get("nama") or "—").strip() or "—"
         item["nama"] = str(item.get("nama") or item["pengguna"])
         item["kategori"] = str(item.get("kategori") or "IP Operasional").strip() or "IP Operasional"
 
-        host_id = str(item.get("host_asset_id", "")).strip()
-        host_label = str(item.get("host_label", "")).strip()
+        host_id = str(item.get("host_asset_id") or item.get("id_aset_host") or "").strip()
+        host_label = str(item.get("host_label") or "").strip()
 
         if jenis == "Fisik":
             base_sub = "Perangkat Fisik"
@@ -378,23 +502,120 @@ class IPState(rx.State):
                 base_sub = "Tanpa host"
                 host_col = "Tanpa host"
 
-        item["sub_label"] = "● Ada kendala (lihat keterangan)" if has_kendala else base_sub
+        if kendala:
+            item["sub_label"] = "● Ada kendala (lihat keterangan)"
+        elif outside_subnet:
+            item["sub_label"] = f"{base_sub} · Di luar subnet"
+        else:
+            item["sub_label"] = base_sub
+
         item["host_display"] = host_col
         return item
 
+    def _build_url_query_script(self) -> Any:
+        """B3: Sinkronkan state view & jenis ke query string browser tanpa reload halaman."""
+        v_param = "map" if self.view_mode == "map" else "table"
+        j_param = "all"
+        if self.active_jenis_tab == "Fisik" or self.jenis_filter == "Fisik":
+            j_param = "fisik"
+        elif self.active_jenis_tab == "VM" or self.jenis_filter == "VM":
+            j_param = "vm"
+        return rx.call_script(
+            "window.history.replaceState("
+            f"null, '', '/infrastructure/ip?view={v_param}&jenis={j_param}');"
+        )
+
     @rx.event
-    async def load_ip_page(self) -> None:
+    async def load_ip_page(self) -> Any:
+        """B3 & C2: Baca query string (?view=table|map&jenis=all|fisik|vm) saat halaman dibuka."""
+        params = self.router.page.params or {}
+        q_view = str(params.get("view", "")).strip().lower()
+        q_jenis = str(params.get("jenis", "")).strip().lower()
+
+        if q_view in ("table", "map"):
+            self.view_mode = q_view
+        if q_jenis == "fisik":
+            self.active_jenis_tab = "Fisik"
+            self.jenis_filter = "Fisik"
+        elif q_jenis == "vm":
+            self.active_jenis_tab = "VM"
+            self.jenis_filter = "VM"
+        elif q_jenis == "all":
+            self.active_jenis_tab = "Semua"
+            self.jenis_filter = ""
+
         await self.fetch_ip_entries()
         if self.view_mode == "map":
             await self.fetch_ip_map()
 
     @rx.event
-    async def set_view_mode(self, mode: str) -> None:
+    async def set_view_mode(self, mode: str) -> Any:
         if self.view_mode == mode:
-            return
+            return None
         self.view_mode = mode
         if mode == "map" and not self.map_cells:
             await self.fetch_ip_map()
+        return self._build_url_query_script()
+
+    @rx.event
+    async def click_stat_card(self, card_key: str) -> Any:
+        """B3: Handler interaktif untuk kelima Stats Card."""
+        if card_key == "bentrok" and self.kpi_bentrok <= 0:
+            return None
+
+        self.page = 1
+        self.search_query = ""
+        self.selected_ids = []
+
+        if card_key == "kosong":
+            self.view_mode = "map"
+            self.only_conflict_filter = False
+            if not self.map_cells:
+                await self.fetch_ip_map()
+        elif card_key == "bentrok":
+            self.view_mode = "table"
+            self.only_conflict_filter = not self.only_conflict_filter
+            self.only_orphan_vm_filter = False
+            self.active_jenis_tab = "Semua"
+            self.jenis_filter = ""
+            await self.fetch_ip_entries()
+        elif card_key == "fisik":
+            self.view_mode = "table"
+            self.only_conflict_filter = False
+            self.only_orphan_vm_filter = False
+            self.active_jenis_tab = "Fisik"
+            self.jenis_filter = "Fisik"
+            await self.fetch_ip_entries()
+        elif card_key == "vm":
+            self.view_mode = "table"
+            self.only_conflict_filter = False
+            self.only_orphan_vm_filter = False
+            self.active_jenis_tab = "VM"
+            self.jenis_filter = "VM"
+            await self.fetch_ip_entries()
+        else:
+            # Total IP
+            self.view_mode = "table"
+            self.only_conflict_filter = False
+            self.only_orphan_vm_filter = False
+            self.active_jenis_tab = "Semua"
+            self.jenis_filter = ""
+            await self.fetch_ip_entries()
+
+        v_param = "map" if self.view_mode == "map" else "table"
+        j_param = (
+            "fisik"
+            if self.active_jenis_tab == "Fisik"
+            else ("vm" if self.active_jenis_tab == "VM" else "all")
+        )
+        return rx.call_script(
+            "window.history.replaceState("
+            f"null, '', '/infrastructure/ip?view={v_param}&jenis={j_param}');"
+            "if (window.innerWidth < 900) {"
+            "  var el = document.getElementById('ip-main-content-card');"
+            "  if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});"
+            "}"
+        )
 
     @rx.event
     async def set_active_subnet(self, val: str) -> None:
@@ -407,12 +628,38 @@ class IPState(rx.State):
 
     @rx.event
     async def fetch_ip_map(self) -> None:
-        res = await api_client.get_ip_map(self.active_subnet)
+        now = time.time()
+        cache_key = self.active_subnet or "1"
+        cached = _CLIENT_MAP_CACHE.get(cache_key)
+        if cached and (now - cached[0]) < _CLIENT_CACHE_TTL:
+            res = cached[1]
+        else:
+            res = await api_client.get_ip_map(cache_key)
+            _CLIENT_MAP_CACHE[cache_key] = (now, res)
+
         self.map_cells = res.get("cells", [])
-        self.map_stats = res.get("stats", {})
+        raw_stats = res.get("stats", {})
+        fisik_c = int(raw_stats.get("fisik", 0) or 0)
+        vm_c = int(raw_stats.get("vm", 0) or 0)
+        bentrok_c = int(raw_stats.get("bentrok", 0) or 0)
+        kosong_c = int(raw_stats.get("kosong", max(0, 254 - self.total)) or 0)
+        # A4: Pastikan bentrok dan persentase tidak pernah undefined
+        self.map_stats = {
+            **raw_stats,
+            "fisik": fisik_c,
+            "vm": vm_c,
+            "bentrok": bentrok_c,
+            "kosong": kosong_c,
+            "fisik_percent": raw_stats.get("fisik_percent", round((fisik_c / 254) * 100, 1)),
+            "vm_percent": raw_stats.get("vm_percent", round((vm_c / 254) * 100, 1)),
+            "bentrok_percent": raw_stats.get("bentrok_percent", round((bentrok_c / 254) * 100, 1)),
+            "kosong_percent": raw_stats.get("kosong_percent", round((kosong_c / 254) * 100, 1)),
+        }
         self.map_suggested_ips = res.get("suggested_ips", [])
         self.map_largest_empty_range = res.get("largest_empty_range", "")
-        self.kpi_kosong_count = int(self.map_stats.get("kosong", max(0, 254 - self.total)))
+        self.kpi_kosong_count = kosong_c
+        if res.get("subnets"):
+            self.subnets_list = res["subnets"]
 
     @rx.event
     def select_map_cell(self, cell: dict[str, Any]) -> Any:
@@ -468,7 +715,6 @@ class IPState(rx.State):
 
     @rx.event
     async def fetch_ip_entries(self) -> None:
-        self.is_loading = True
         effective_jenis = (
             self.jenis_filter
             if self.jenis_filter
@@ -485,9 +731,24 @@ class IPState(rx.State):
             "sort_by": self.sort_by,
             "sort_dir": self.sort_dir,
         }
-        res = await api_client.get_ip_entries(
-            grup="Semua", filters=filters, page=self.page, page_size=self.page_size
-        )
+        cache_key = f"{self.page}:{self.page_size}:{sorted(filters.items())}"
+        now = time.time()
+        cached = _CLIENT_LIST_CACHE.get(cache_key)
+
+        if cached and (now - cached[0]) < _CLIENT_CACHE_TTL:
+            res = cached[1]
+        else:
+            if not self.items:
+                self.is_loading = True
+            req_token = self._search_seq
+            res = await api_client.get_ip_entries(
+                grup="Semua", filters=filters, page=self.page, page_size=self.page_size
+            )
+            if req_token != self._search_seq:
+                self.is_loading = False
+                return
+            _CLIENT_LIST_CACHE[cache_key] = (now, res)
+
         raw_items = res.get("items", [])
         self.items = [self._enrich_row_for_view(r) for r in raw_items]
         self.total = int(res.get("total", 0))
@@ -498,24 +759,37 @@ class IPState(rx.State):
             kpi.get("fisik", sum(1 for x in raw_items if x.get("jenis") == "Fisik"))
         )
         self.kpi_vm = int(kpi.get("vm", sum(1 for x in raw_items if x.get("jenis") == "VM")))
-        self.kpi_bentrok = int(kpi.get("bentrok", 0))
-        self.kpi_vm_tanpa_host = int(kpi.get("vm_tanpa_host", 0))
+        self.kpi_bentrok = int(kpi.get("bentrok", 0) or 0)
+        self.kpi_vm_tanpa_host = int(kpi.get("vm_tanpa_host", 0) or 0)
         self.kpi_kosong_count = int(kpi.get("kosong", max(0, 254 - self.total)))
         self.conflict_banner_text = str(res.get("conflict_banner", ""))
-        self.host_options = res.get("host_options", [])
-        self.server_asset_ids = res.get("server_asset_ids", ["SRV-0001", "SRV-0002"])
+        self.host_options = [
+            h
+            for h in res.get("host_options", [])
+            if h not in ("", "Semua", "Semua host", "Tanpa host")
+        ]
+        if res.get("host_server_options"):
+            self.host_server_options = res["host_server_options"]
+        self.server_asset_ids = [
+            s for s in res.get("server_asset_ids", ["SRV-0001", "SRV-0002"]) if s not in ("", "—")
+        ]
         self.os_suggestions = res.get("os_suggestions", [])
+        if res.get("subnets"):
+            self.subnets_list = res["subnets"]
         self.is_loading = False
 
     @rx.event
-    async def set_jenis_tab(self, tab_key: str) -> None:
-        if self.active_jenis_tab == tab_key:
-            return
+    async def set_jenis_tab(self, tab_key: str) -> Any:
+        if self.active_jenis_tab == tab_key and self.view_mode == "table":
+            return None
+        self.view_mode = "table"
         self.active_jenis_tab = tab_key
         self.jenis_filter = "" if tab_key == "Semua" else tab_key
+        self.only_conflict_filter = False
         self.page = 1
         self.selected_ids = []
         await self.fetch_ip_entries()
+        return self._build_url_query_script()
 
     @rx.event
     async def set_jenis_filter(self, val: str) -> None:
@@ -531,6 +805,7 @@ class IPState(rx.State):
     async def set_search_query(self, val: str) -> None:
         if self.search_query == val:
             return
+        self._search_seq += 1
         self.search_query = val
         self.page = 1
         await self.fetch_ip_entries()
@@ -769,29 +1044,56 @@ class IPState(rx.State):
         if not ip:
             self.form_error = "IP Address (IPv4) wajib diisi."
             return None
+        if not api_client.validate_ipv4_sync(ip):
+            self.form_error = f"Format alamat IPv4 '{ip}' tidak valid."
+            return None
+
+        # B4: Tolak IP di luar subnet terdaftar (192.168.1.0/24) saat Tambah atau IP diubah
+        existing_ip = ""
+        if self.form_mode == "edit":
+            for it in self.items:
+                if str(it.get("id")) == str(self.form_entry_id):
+                    existing_ip = str(it.get("ip_address", "")).strip()
+                    break
+        if (self.form_mode != "edit" or ip != existing_ip) and not is_ip_in_registered_subnet(ip):
+            self.form_error = "IP di luar subnet terdaftar (192.168.1.0/24)"
+            return None
+
         exclude_id = self.form_entry_id if self.form_mode == "edit" else ""
         dup_owner = api_client.check_ip_duplicate_sync(ip, exclude_id=exclude_id)
-        if dup_owner:
+        if dup_owner and status_val.lower() not in ("nonaktif", "bebas"):
             self.form_error = f"IP sudah dipakai oleh {dup_owner}"
             return None
         if not pengguna:
             self.form_error = "Pengguna wajib diisi."
             return None
-        if jenis == "VM" and not self.form_host_asset_id.strip():
+
+        host_raw = self.form_host_asset_id.strip() if jenis == "VM" else ""
+        host_code = host_raw.split(" ")[0].strip() if host_raw else ""
+        if jenis == "VM" and not host_code:
             self.form_error = "Host Server Fisik wajib dipilih untuk entri berjenis VM."
             return None
+
+        fungsi_clean = self.form_fungsi.strip()
+        ket_raw = self.form_keterangan.strip()
+        # A2: Normalisasi keterangan kosong/spasi atau identik fungsi
+        ket_clean = ket_raw if has_kendala(ket_raw, fungsi_clean) else ""
 
         return {
             "ip_address": ip,
             "nama": pengguna,
+            "nama_perangkat": pengguna,
             "pengguna": pengguna,
             "jenis": jenis,
-            "host_asset_id": self.form_host_asset_id.strip() if jenis == "VM" else "",
+            "tipe": jenis,
+            "is_vm": jenis == "VM",
+            "host_asset_id": host_code,
+            "id_aset_host": host_code or None,
             "kategori": self.form_kategori,
-            "fungsi": self.form_fungsi.strip(),
+            "fungsi": fungsi_clean,
             "os": self.form_os.strip(),
             "status": status_val,
-            "keterangan": self.form_keterangan.strip(),
+            "keterangan": ket_clean,
         }
 
     @rx.event
@@ -804,7 +1106,10 @@ class IPState(rx.State):
         else:
             await api_client.create_ip_entry(payload=payload)
         self.form_modal_open = False
+        _invalidate_client_ip_cache()
         await self.fetch_ip_entries()
+        if self.view_mode == "map":
+            await self.fetch_ip_map()
 
     @rx.event
     async def save_and_add_another(self) -> None:
@@ -812,6 +1117,7 @@ class IPState(rx.State):
         if payload is None:
             return
         await api_client.create_ip_entry(payload=payload)
+        _invalidate_client_ip_cache()
         await self.fetch_ip_entries()
         self.open_add_modal()
 
@@ -846,6 +1152,7 @@ class IPState(rx.State):
         raw_bytes = await upload_file.read()
 
         self.import_is_processing = True
+        self.import_filename = fname
         preview = await api_client.preview_ip_import_bytes(raw_bytes, fname, self.server_asset_ids)
         self.import_valid_rows = preview.get("valid_rows", [])
         self.import_errors = preview.get("errors", [])
@@ -895,6 +1202,7 @@ class IPState(rx.State):
         )
         self.import_is_processing = False
         self.close_import_modal()
+        _invalidate_client_ip_cache()
         await self.fetch_ip_entries()
         if self.view_mode == "map":
             await self.fetch_ip_map()
@@ -993,7 +1301,219 @@ class IPState(rx.State):
                 self.drawer_open = False
                 self.active_entry_id = ""
         self.cancel_delete()
+        _invalidate_client_ip_cache()
         await self.fetch_ip_entries()
+        if self.view_mode == "map":
+            await self.fetch_ip_map()
+
+    @rx.event
+    def clear_import_file(self) -> None:
+        """B1: Ganti file pada modal Import."""
+        self.import_filename = ""
+        self.import_id = ""
+        self.import_valid_rows = []
+        self.import_errors = []
+        self.import_has_preview = False
+
+    @rx.event
+    async def open_print_modal(self) -> None:
+        """B2: Buka modal Cetak Data IP & muat pratinjau baris sesuai filter aktif."""
+        self.print_modal_open = True
+        self.print_is_loading = True
+        now = datetime.now()
+        self.print_date_label = (
+            f"{now.day} {MONTHS_ID[now.month]} {now.year}, {now.strftime('%H:%M')} WIB"
+        )
+        await self._refresh_print_preview_rows(record_log=False)
+        self.print_is_loading = False
+
+    @rx.event
+    def close_print_modal(self) -> None:
+        self.print_modal_open = False
+
+    @rx.event
+    async def toggle_print_follow_filter(self) -> None:
+        self.print_follow_filter = not self.print_follow_filter
+        await self._refresh_print_preview_rows(record_log=False)
+
+    @rx.event
+    def toggle_print_col(self, col_name: str) -> None:
+        attr_name = f"print_col_{col_name}"
+        if hasattr(self, attr_name):
+            setattr(self, attr_name, not getattr(self, attr_name))
+
+    async def _refresh_print_preview_rows(self, record_log: bool = False) -> None:
+        if self.print_follow_filter:
+            effective_jenis = (
+                self.jenis_filter
+                if self.jenis_filter
+                else (self.active_jenis_tab if self.active_jenis_tab in ("Fisik", "VM") else "")
+            )
+            filters = {
+                "search": self.search_query,
+                "jenis": effective_jenis,
+                "host": self.host_filter,
+                "kategori": self.kategori_filter,
+                "status": self.status_filter,
+                "only_conflict": self.only_conflict_filter,
+                "only_orphan_vm": self.only_orphan_vm_filter,
+            }
+        else:
+            filters = {}
+
+        res = await api_client.get_ip_print_data(filters=filters, record_log=record_log)
+        raw_rows = res.get("items", [])
+        self.print_rows = [self._enrich_row_for_view(r) for r in raw_rows]
+        self.print_filter_label = str(res.get("filter_label") or "Semua Data")
+
+    def _get_selected_print_columns(self) -> list[tuple[str, str]]:
+        cols: list[tuple[str, str]] = [("no", "No")]
+        if self.print_col_ip:
+            cols.append(("ip_address", "IP Address"))
+        if self.print_col_pengguna:
+            cols.append(("pengguna", "Pengguna"))
+        if self.print_col_jenis:
+            cols.append(("jenis", "Jenis"))
+        if self.print_col_host:
+            cols.append(("host", "Host"))
+        if self.print_col_kategori:
+            cols.append(("kategori", "Kategori"))
+        if self.print_col_fungsi:
+            cols.append(("fungsi", "Fungsi"))
+        if self.print_col_os:
+            cols.append(("os", "OS"))
+        if self.print_col_status:
+            cols.append(("status", "Status"))
+        if self.print_col_keterangan:
+            cols.append(("keterangan", "Keterangan"))
+        return cols
+
+    @rx.event
+    async def download_print_pdf(self) -> Any:
+        """B2: Unduh PDF sesuai kolom yang dicentang di modal Cetak."""
+        await self._refresh_print_preview_rows(record_log=True)
+        now = datetime.now()
+        tgl = f"{now.day} {MONTHS_ID[now.month]} {now.year}"
+        sel_keys = [k for k, _ in self._get_selected_print_columns()]
+        pdf_bytes = await api_client.generate_ip_pdf_bytes(
+            self.print_rows, tgl, self.print_user_label, selected_columns=sel_keys
+        )
+        return rx.download(data=pdf_bytes, filename=f"Cetak_IP_{now.strftime('%Y%m%d')}.pdf")
+
+    @rx.event
+    async def execute_direct_print(self) -> Any:
+        """B2: Ambil baris (maks 5.000), catat Audit Log, & panggil window.print()."""
+        await self._refresh_print_preview_rows(record_log=True)
+        if len(self.print_rows) > 5000:
+            return rx.toast.warning(
+                "Data melebihi 5.000 baris. Gunakan Export Excel/PDF.",
+                position="top-right",
+            )
+
+        cols = self._get_selected_print_columns()
+        th_html = "".join(f"<th>{html.escape(label)}</th>" for _, label in cols)
+        tr_list: list[str] = []
+        for idx, r in enumerate(self.print_rows, start=1):
+            tds: list[str] = []
+            for key, _ in cols:
+                if key == "no":
+                    tds.append(f"<td>{idx}</td>")
+                elif key == "ip_address":
+                    tds.append(
+                        f"<td class='mono'>{html.escape(str(r.get('ip_address', '—')))}</td>"
+                    )
+                elif key == "jenis":
+                    jv = str(r.get("jenis", "Fisik"))
+                    cls = "chip-vm" if jv == "VM" else "chip-fisik"
+                    tds.append(f"<td><span class='chip {cls}'>{html.escape(jv)}</span></td>")
+                elif key == "host":
+                    tds.append(f"<td>{html.escape(str(r.get('host_display', '—')))}</td>")
+                elif key == "status":
+                    sv = str(r.get("status", "Aktif"))
+                    cls = "st-aktif" if sv.lower() == "aktif" else "st-nonaktif"
+                    tds.append(f"<td><span class='chip {cls}'>{html.escape(sv)}</span></td>")
+                else:
+                    val = str(r.get(key) or "—")
+                    tds.append(f"<td>{html.escape(val)}</td>")
+            tr_list.append(f"<tr>{''.join(tds)}</tr>")
+
+        sub_esc = html.escape(self.active_subnet)
+        flt_esc = html.escape(self.print_filter_label)
+        dt_esc = html.escape(self.print_date_label)
+        usr_esc = html.escape(self.print_user_label)
+        total_cnt = len(self.print_rows)
+
+        doc_html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'/>"
+            "<title>Daftar IP & Server (VM) - ITAM Pro</title><style>"
+            "@page { size: A4 landscape; margin: 12mm; }"
+            "* { box-sizing: border-box; -webkit-print-color-adjust: exact !important; "
+            "print-color-adjust: exact !important; }"
+            "body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "
+            f"sans-serif; font-size: 10.5px; color: {Color.NAVY_900}; margin: 0; padding: 0; }}"
+            ".hdr { display: flex; justify-content: space-between; align-items: flex-start; "
+            f"margin-bottom: 12px; border-bottom: 2px solid {Color.NAVY_900}; "
+            "padding-bottom: 8px; }"
+            f".hdr h1 {{ font-size: 16px; margin: 0 0 4px 0; color: {Color.NAVY_900}; }}"
+            f".hdr .meta {{ font-size: 10px; color: {Color.NEUTRAL_FG}; }}"
+            f".brand {{ font-size: 12px; font-weight: 800; color: {Color.ACCENT}; }}"
+            "table { width: 100%; border-collapse: collapse; }"
+            "thead { display: table-header-group; }"
+            "tr { break-inside: avoid; page-break-inside: avoid; }"
+            f"th {{ background-color: {Color.NAVY_900} !important; "
+            f"color: {Color.WHITE} !important; text-align: left; padding: 6px 8px; "
+            "font-size: 10px; font-weight: 700; }"
+            f"td {{ padding: 5px 8px; border-bottom: 1px solid {Color.SLATE_200}; "
+            "vertical-align: top; }"
+            f"tbody tr:nth-child(even) {{ background-color: {Color.SLATE_50} !important; }}"
+            ".mono { font-family: ui-monospace, monospace; font-weight: 700; "
+            f"color: {Color.ACCENT}; }}"
+            ".chip { display: inline-block; padding: 2px 6px; border-radius: 999px; "
+            "font-size: 9.5px; font-weight: 700; }"
+            f".chip-fisik {{ background: {Color.BLUE_100} !important; "
+            f"color: {Color.ACCENT} !important; }}"
+            f".chip-vm {{ background: {Color.PURPLE_100} !important; "
+            f"color: {Color.PURPLE_700} !important; }}"
+            f".st-aktif {{ background: {Color.GREEN_100} !important; "
+            f"color: {Color.GREEN_700} !important; }}"
+            f".st-nonaktif {{ background: {Color.RED_100} !important; "
+            f"color: {Color.RED_700} !important; }}"
+            "</style></head><body><div class='hdr'><div>"
+            "<h1>Daftar IP &amp; Server (VM)</h1>"
+            f"<div class='meta'>Subnet: {sub_esc} &middot; Filter: {flt_esc} "
+            f"&middot; Total: {total_cnt} entri</div>"
+            f"<div class='meta'>Dicetak: {dt_esc} &middot; Pengguna: {usr_esc}</div>"
+            "</div><div class='brand'>ITAM Pro</div></div>"
+            f"<table><thead><tr>{th_html}</tr></thead>"
+            f"<tbody>{''.join(tr_list)}</tbody></table></body></html>"
+        )
+
+        escaped_doc = json.dumps(doc_html)
+        js_print = f"""
+        (function() {{
+            var oldFrame = document.getElementById('itam-ip-print-frame');
+            if (oldFrame) oldFrame.remove();
+            var iframe = document.createElement('iframe');
+            iframe.id = 'itam-ip-print-frame';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+            var doc = iframe.contentWindow.document;
+            doc.open();
+            doc.write({escaped_doc});
+            doc.close();
+            setTimeout(function() {{
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+            }}, 250);
+        }})();
+        """
+        self.print_modal_open = False
+        return rx.call_script(js_print)
 
 
 __all__ = ["IPState"]

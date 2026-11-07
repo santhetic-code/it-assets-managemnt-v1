@@ -184,7 +184,10 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
     if rtype == "name_with_sub":
         sub_k = str(col.get("sub_key", "sub_label"))
         sub_val = row[sub_k]
-        is_warn_sub = (sub_val == "Tanpa host") | (sub_val == "● Ada kendala (lihat keterangan)")
+        has_kendala_flag = row["has_kendala"] == True  # noqa: E712
+        is_warn_sub = (
+            (sub_val == "Tanpa host") | has_kendala_flag | (row["is_outside_subnet"] == True)  # noqa: E712
+        )
         return rx.vstack(
             rx.text(
                 row[key],
@@ -197,7 +200,7 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
             rx.text(
                 sub_val,
                 title=rx.cond(
-                    sub_val == "● Ada kendala (lihat keterangan)",
+                    has_kendala_flag,
                     row["keterangan"],
                     sub_val,
                 ),
@@ -300,6 +303,7 @@ def _header_cell(
     sort_dir: Any = "asc",
     on_sort: Any | None = None,
     hidden_columns: Any | None = None,
+    show_checkbox: bool = False,
 ) -> rx.Component:
     """Sel header tabel dengan dukungan sort ↕ dan visibilitas kolom dinamis."""
     accessor = col.get("accessor")
@@ -325,6 +329,8 @@ def _header_cell(
         "border_bottom": f"1px solid {Color.BORDER}",
         "white_space": "nowrap",
         "box_sizing": "border-box",
+        "position": "relative",
+        "z_index": "1",
     }
     if hidden_columns is not None:
         header_style["display"] = rx.cond(
@@ -336,8 +342,8 @@ def _header_cell(
         header_style.update(
             {
                 "position": "sticky",
-                "left": "48px",
-                "z_index": "4",
+                "left": "48px" if show_checkbox else "0px",
+                "z_index": "3",
                 "border_right": f"1px solid {Color.BORDER}",
             }
         )
@@ -419,7 +425,7 @@ def _row_action_menu(
     )
 
 
-def _skeleton_row(col_count: int) -> rx.Component:
+def _skeleton_row(col_count: int, show_checkbox: bool = False) -> rx.Component:
     td_style = rx.Style(
         {
             "height": Size.TABLE_ROW_H,
@@ -427,21 +433,25 @@ def _skeleton_row(col_count: int) -> rx.Component:
             "border_bottom": f"1px solid {Color.DIVIDER}",
         }
     )
-    return rx.el.tr(
-        rx.el.td(
-            rx.box(
-                style=rx.Style(
-                    {
-                        "width": "16px",
-                        "height": "16px",
-                        "background_color": Color.SKELETON,
-                        "border_radius": Radius.BADGE_KBD,
-                    }
-                )
-            ),
-            style=td_style,
-        ),
-        *[
+    cells: list[rx.Component] = []
+    if show_checkbox:
+        cells.append(
+            rx.el.td(
+                rx.box(
+                    style=rx.Style(
+                        {
+                            "width": "16px",
+                            "height": "16px",
+                            "background_color": Color.SKELETON,
+                            "border_radius": Radius.BADGE_KBD,
+                        }
+                    )
+                ),
+                style=td_style,
+            )
+        )
+    cells.extend(
+        [
             rx.el.td(
                 rx.box(
                     style=rx.Style(
@@ -456,7 +466,9 @@ def _skeleton_row(col_count: int) -> rx.Component:
                 style=td_style,
             )
             for _ in range(col_count)
-        ],
+        ]
+    )
+    cells.append(
         rx.el.td(
             rx.box(
                 style=rx.Style(
@@ -469,8 +481,9 @@ def _skeleton_row(col_count: int) -> rx.Component:
                 )
             ),
             style=td_style,
-        ),
+        )
     )
+    return rx.el.tr(*cells)
 
 
 def _empty_table_state(
@@ -785,6 +798,7 @@ def reusable_data_table(
                             sort_dir=sort_dir,
                             on_sort=on_sort,
                             hidden_columns=hidden_columns,
+                            show_checkbox=show_checkbox,
                         )
                         for col in columns
                     ],
@@ -794,7 +808,12 @@ def reusable_data_table(
             rx.el.tbody(
                 rx.cond(
                     actual_loading,
-                    rx.fragment(*[_skeleton_row(len(columns)) for _ in range(6)]),
+                    rx.fragment(
+                        *[
+                            _skeleton_row(len(columns), show_checkbox=show_checkbox)
+                            for _ in range(6)
+                        ]
+                    ),
                     rx.foreach(actual_rows, _render_row),
                 ),
             ),

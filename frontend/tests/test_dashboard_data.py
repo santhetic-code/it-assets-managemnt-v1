@@ -121,10 +121,11 @@ async def test_asset_state_url_parametric_query() -> None:
     """6. Uji penanganan argumen query URL ?status dan ?kategori pada AssetState."""
     state = AssetState()
     state.router = MagicMock()
+    page: Any = state.router.page
 
     # Simulasi ?status=Digunakan
-    state.router.page.params = {"status": "Digunakan"}
-    state.router.page.path = "/assets"
+    page.params = {"status": "Digunakan"}
+    page.path = "/assets"
     await state.load_view_data()
 
     assert state.status_filter == "Digunakan"
@@ -132,8 +133,8 @@ async def test_asset_state_url_parametric_query() -> None:
     assert all(item.get("status") == "Digunakan" for item in state.items)
 
     # Simulasi ?kategori=Monitor
-    state.router.page.params = {"kategori": "Monitor"}
-    state.router.page.path = "/assets"
+    page.params = {"kategori": "Monitor"}
+    page.path = "/assets"
     await state.load_view_data()
 
     assert state.status_filter == ""
