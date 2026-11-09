@@ -27,3 +27,9 @@ class User(TimestampMixin, SQLModel, table=True):
     password_hash: str = Field(max_length=255, nullable=False)
     role: str = Field(default=UserRole.VIEWER.value, max_length=30, nullable=False)
     is_active: bool = Field(default=True, nullable=False)
+
+    # Atribut Akses 2 Lapis Credential Manager (C)
+    jabatan: str = Field(default="", index=True, max_length=60, nullable=False)
+    rank: int = Field(default=0, index=True, nullable=False)
+    division_id: int | None = Field(default=None, index=True, nullable=True)
+    is_it_admin: bool = Field(default=False, index=True, nullable=False)

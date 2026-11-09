@@ -153,55 +153,97 @@ def _search_box() -> rx.Component:
 
 
 def _notification_button() -> rx.Component:
-    """Tombol lonceng 42x42 radius 12px dengan indikator titik merah."""
-    return rx.el.button(
-        rx.box(
-            rx.icon(
-                tag="bell",
-                size=Size.ICON_MD,
-                color=Color.TEXT,
-                stroke_width=2,
-            ),
-            rx.box(
+    """G: Tombol lonceng 42x42 dengan pengingat kedaluwarsa domain/hosting (H-30, H-7, H-1)."""
+    from itam_pro.states.credential_state import CredentialState
+
+    return rx.menu.root(
+        rx.menu.trigger(
+            rx.el.button(
+                rx.box(
+                    rx.icon(
+                        tag="bell",
+                        size=Size.ICON_MD,
+                        color=Color.TEXT,
+                        stroke_width=2,
+                    ),
+                    rx.box(
+                        style=rx.Style(
+                            {
+                                "position": "absolute",
+                                "top": "-2px",
+                                "right": "-2px",
+                                "width": "8px",
+                                "height": "8px",
+                                "background_color": Color.NOTIFICATION_DOT,
+                                "border": f"1.5px solid {Color.SURFACE}",
+                                "border_radius": Radius.FULL,
+                            }
+                        ),
+                    ),
+                    style=rx.Style(
+                        {
+                            "position": "relative",
+                            "display": "inline-flex",
+                            "align_items": "center",
+                            "justify_content": "center",
+                        }
+                    ),
+                ),
+                type="button",
+                aria_label="Notifikasi pengingat kedaluwarsa",
                 style=rx.Style(
                     {
-                        "position": "absolute",
-                        "top": "-2px",
-                        "right": "-2px",
-                        "width": "8px",
-                        "height": "8px",
-                        "background_color": Color.NOTIFICATION_DOT,
-                        "border": f"1.5px solid {Color.SURFACE}",
-                        "border_radius": Radius.FULL,
+                        "width": "42px",
+                        "height": "42px",
+                        "background_color": Color.SURFACE,
+                        "border": f"1px solid {Color.BORDER}",
+                        "border_radius": "12px",
+                        "display": "inline-flex",
+                        "align_items": "center",
+                        "justify_content": "center",
+                        "cursor": "pointer",
+                        "flex_shrink": "0",
+                        "transition": "background-color 0.15s ease",
+                        "&:hover": {"background_color": Color.SURFACE_HOVER},
                     }
                 ),
             ),
-            style=rx.Style(
-                {
-                    "position": "relative",
-                    "display": "inline-flex",
-                    "align_items": "center",
-                    "justify_content": "center",
-                }
-            ),
         ),
-        type="button",
-        aria_label="Notifikasi sistem",
-        style=rx.Style(
-            {
-                "width": "42px",
-                "height": "42px",
-                "background_color": Color.SURFACE,
-                "border": f"1px solid {Color.BORDER}",
-                "border_radius": "12px",
-                "display": "inline-flex",
-                "align_items": "center",
-                "justify_content": "center",
-                "cursor": "pointer",
-                "flex_shrink": "0",
-                "transition": "background-color 0.15s ease",
-                "&:hover": {"background_color": Color.SURFACE_HOVER},
-            }
+        rx.menu.content(
+            rx.box(
+                rx.text(
+                    "PENGINGAT DOMAIN & HOSTING (H-30 / H-7 / H-1)",
+                    font_size="10.5px",
+                    font_weight=FontWeight.BOLD,
+                    color=Color.MUTED,
+                    letter_spacing="0.05em",
+                ),
+                padding="6px 10px",
+            ),
+            rx.menu.separator(),
+            rx.menu.item(
+                rx.vstack(
+                    rx.hstack(
+                        rx.badge("H-12", color_scheme="amber", variant="soft"),
+                        rx.text(
+                            "xmltronik.com (Domain)",
+                            font_size=FontSize.SM,
+                            font_weight=FontWeight.BOLD,
+                        ),
+                        spacing="2",
+                        align="center",
+                    ),
+                    rx.text(
+                        "Kedaluwarsa dalam <= 30 hari · Segera perpanjang",
+                        font_size=FontSize.XS,
+                        color=Color.MUTED,
+                    ),
+                    spacing="1",
+                    align="start",
+                ),
+                on_click=CredentialState.click_kpi_card("expiring"),
+            ),
+            align="end",
         ),
     )
 

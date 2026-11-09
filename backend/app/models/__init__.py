@@ -3,7 +3,14 @@
 from app.models.asset import Asset
 from app.models.audit import AuditLog
 from app.models.base import NAMING_CONVENTION, TimestampMixin, utcnow
-from app.models.credential import Credential
+from app.models.credential import (
+    Credential,
+    CredentialACL,
+    CredentialType,
+    Division,
+    DivisionGrant,
+    RoleTypePermission,
+)
 from app.models.finance import Purchase
 from app.models.ip_allocation import IPAllocation, IPSubnet
 from app.models.maintenance import Maintenance
@@ -14,10 +21,15 @@ __all__ = [
     "Asset",
     "AuditLog",
     "Credential",
+    "CredentialACL",
+    "CredentialType",
+    "Division",
+    "DivisionGrant",
     "IPAllocation",
     "IPSubnet",
     "Maintenance",
     "Purchase",
+    "RoleTypePermission",
     "TimestampMixin",
     "User",
     "UserRole",

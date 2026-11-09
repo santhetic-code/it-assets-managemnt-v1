@@ -52,11 +52,20 @@ services:
       - "8000:8000"
     volumes:
       - ./frontend:/app
+      - frontend_web:/app/.web
+      - frontend_states:/app/.states
+      - frontend_bun_cache:/root/.bun
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - itam_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/ >/dev/null && curl -fsS http://localhost:8000/ping >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
     command: reflex run --env dev --frontend-port 3000 --backend-port 8000 --backend-host 0.0.0.0
 
 networks:
@@ -65,3 +74,6 @@ networks:
 
 volumes:
   postgres_data:
+  frontend_web:
+  frontend_states:
+  frontend_bun_cache:

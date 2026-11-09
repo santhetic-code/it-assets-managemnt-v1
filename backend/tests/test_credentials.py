@@ -198,3 +198,165 @@ def test_credential_update_preserves_or_rotates_secret_and_delete_rbac(
     # Member tidak boleh DELETE (403), Administrator boleh DELETE (200)
     assert client.delete(f"/api/v1/credentials/{code}", headers=member_h).status_code == 403
     assert client.delete(f"/api/v1/credentials/{code}", headers=admin_h).status_code == 200
+
+
+def test_aes256_gcm_nonce_randomness_and_reauth_flow(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """B: Uji enkripsi AES-256-GCM dengan nonce acak & wajib re-autentikasi 5 menit."""
+    from app.core.security import decrypt_aes256_gcm, encrypt_aes256_gcm
+
+    c1 = encrypt_aes256_gcm("RahasiaSangatPenting#2026")
+    c2 = encrypt_aes256_gcm("RahasiaSangatPenting#2026")
+    assert c1 != c2  # Nonce acak menghasilkan ciphertext berbeda untuk plaintext yang sama
+    assert c1.startswith("aes256gcm:v1:")
+    assert decrypt_aes256_gcm(c1) == "RahasiaSangatPenting#2026"
+
+    admin_h = _auth_headers(session, "admin_reauth", UserRole.ADMINISTRATOR)
+    res = client.post(
+        "/api/v1/credentials",
+        headers=admin_h,
+        json={
+            "nama_layanan": "xmltronik.com",
+            "jenis_kredensial": "Aplikasi",
+            "type_code": "website",
+            "divisi": "Kreatif",
+            "username": "admin_wp",
+            "password": "WpSecretPassword!2026",
+            "data_publik": {
+                "nama_website": "xmltronik.com",
+                "wp_link": "https://xmltronik.com/login",
+                "expired_domain": "2026-11-19",
+            },
+        },
+    )
+    assert res.status_code == 201
+    code = res.json()["kode_kredensial"]
+    assert res.json()["secret_fields_meta"]["password"]["hasValue"] is True
+
+    # Tanpa sesi re-auth saat require_reauth=True -> 401
+    no_reauth = client.post(
+        f"/api/v1/credentials/{code}/reveal",
+        headers=admin_h,
+        json={"field": "password", "require_reauth": True},
+    )
+    assert no_reauth.status_code == 401
+
+    # Password akun salah -> 401
+    bad_reauth = client.post(
+        f"/api/v1/credentials/{code}/reveal",
+        headers=admin_h,
+        json={"field": "password", "reauth_password": "salah_password"},
+    )
+    assert bad_reauth.status_code == 401
+
+    # Password akun benar -> 200 & sesi berlaku 5 menit
+    ok_reauth = client.post(
+        f"/api/v1/credentials/{code}/reveal",
+        headers=admin_h,
+        json={"field": "password", "reauth_password": "password123", "require_reauth": True},
+    )
+    assert ok_reauth.status_code == 200
+    assert ok_reauth.json()["value"] == "WpSecretPassword!2026"
+
+
+def test_radmin_standarisasi_two_layer_access_rules(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """C: Uji otomatis ke-9 aturan akses Standarisasi Radmin (Lapis 1 + Lapis 2 SQL WHERE)."""
+    admin_h = _auth_headers(session, "lead_it_radmin", UserRole.ADMINISTRATOR)
+
+    cases = [
+        ("Radmin Direktur", "Manajemen", 40, {"Owner", "Lead IT", "IT Support"}),
+        ("Radmin GM", "Manajemen", 30, {"Owner", "Direktur", "Lead IT", "IT Support"}),
+        (
+            "Radmin SPV Ops",
+            "Manajemen",
+            20,
+            {"Owner", "Direktur", "General Manager", "Lead IT", "IT Support"},
+        ),
+        (
+            "Radmin HRD/Legal/Mkt/Cilacap",
+            "Senior & Cabang",
+            10,
+            {"Owner", "Direktur", "General Manager", "SPV Operasional", "Lead IT", "IT Support"},
+        ),
+        (
+            "Radmin Accounting 1",
+            "Accounting",
+            0,
+            {"Staff Accounting", "Owner", "Direktur", "Lead IT", "IT Support"},
+        ),
+        (
+            "Radmin Operator H2H",
+            "Operator & CS",
+            0,
+            {
+                "Staff Operator & CS",
+                "HRD",
+                "Owner",
+                "Direktur",
+                "General Manager",
+                "SPV Operasional",
+                "Lead IT",
+                "IT Support",
+            },
+        ),
+        (
+            "Radmin CS Voucher",
+            "Voucher",
+            0,
+            {
+                "Staff Voucher",
+                "Owner",
+                "Direktur",
+                "General Manager",
+                "SPV Operasional",
+                "Lead IT",
+                "IT Support",
+            },
+        ),
+        (
+            "Radmin Content Creator",
+            "Kreatif",
+            0,
+            {
+                "Staff Kreatif",
+                "Head Marketing",
+                "Owner",
+                "Direktur",
+                "General Manager",
+                "SPV Operasional",
+                "Lead IT",
+                "IT Support",
+            },
+        ),
+        (
+            "Radmin Full Stack Dev",
+            "Programmer / QA",
+            0,
+            {
+                "Programmer / QA",
+                "Owner",
+                "Direktur",
+                "General Manager",
+                "SPV Operasional",
+                "Lead IT",
+                "IT Support",
+            },
+        ),
+    ]
+
+    for title, div_name, s_rank, expected_viewers in cases:
+        prev = client.get(
+            "/api/v1/credentials/visibility-preview",
+            headers=admin_h,
+            params={"type_code": "radmin", "divisi": div_name, "subject_rank": s_rank},
+        )
+        assert prev.status_code == 200, f"Gagal simulasi {title}"
+        actual_viewers = set(prev.json()["visible_to"])
+        assert actual_viewers == expected_viewers, (
+            f"Mismatch pada {title}: {actual_viewers} != {expected_viewers}"
+        )

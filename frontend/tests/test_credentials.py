@@ -196,3 +196,48 @@ def test_credential_state_and_ui_compilation() -> None:
     # Uji kompilasi UI
     page = credential_view_page()
     assert page is not None
+
+
+def test_eight_dynamic_credential_types_and_two_layer_radmin_rules() -> None:
+    """9. Uji 8 credential_types berbasis schema & 9 skenario akses 2 lapis Standarisasi Radmin."""
+    from itam_pro.services.credential_config import (
+        CREDENTIAL_TYPES_SCHEMA,
+        compute_visibility_preview_fe,
+    )
+
+    type_codes = [t["kode"] for t in CREDENTIAL_TYPES_SCHEMA]
+    assert type_codes == [
+        "website",
+        "pc",
+        "email",
+        "sql_server",
+        "telegram",
+        "radmin",
+        "mikrotik",
+        "cctv_wifi",
+    ]
+
+    # GM & SPV Operasional TIDAK boleh melihat Radmin milik Accounting (Divisi Sensitif)
+    acc_viewers = set(compute_visibility_preview_fe("radmin", "Accounting", subject_rank=0))
+    assert "Staff Accounting" in acc_viewers
+    assert "Owner" in acc_viewers
+    assert "Direktur" in acc_viewers
+    assert "General Manager" not in acc_viewers
+    assert "SPV Operasional" not in acc_viewers
+
+    # HRD boleh melihat Operator & CS (Grant), tetapi TIDAK boleh melihat Voucher
+    opr_viewers = set(compute_visibility_preview_fe("radmin", "Operator & CS", subject_rank=0))
+    vch_viewers = set(compute_visibility_preview_fe("radmin", "Voucher", subject_rank=0))
+    assert "HRD" in opr_viewers
+    assert "HRD" not in vch_viewers
+
+    # Head Marketing boleh melihat Kreatif (Grant)
+    kreatif_viewers = set(compute_visibility_preview_fe("radmin", "Kreatif", subject_rank=0))
+    assert "Head Marketing" in kreatif_viewers
+    assert "Staff Kreatif" in kreatif_viewers
+
+    # Uji tile Terkunci untuk SPV Operasional (6 dari 8 jenis terbuka; SQL & Mikrotik terkunci)
+    res_spv = get_filtered_credentials({}, {"viewer_role": "SPV Operasional"})
+    assert res_spv["kpi"]["unlocked_types_count"] == 6
+    locked_codes = {t["kode"] for t in res_spv["type_tiles"] if t["locked"]}
+    assert locked_codes == {"sql_server", "mikrotik"}
