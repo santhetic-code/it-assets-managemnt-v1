@@ -73,11 +73,12 @@ app.add_page(
     title="Semua Aset · ITAM Pro",
     on_load=[AuthState.check_auth, AssetState.load_view_data],
 )
+# Redirect URL lama /assets/c/... ke /assets?category=... (Seksi 8 & 19)
 app.add_page(
-    assets_view_page,
+    lambda: _redirect_page("/assets"),
     route="/assets/c/[slug]",
-    title="Inventaris Kategori · ITAM Pro",
-    on_load=[AuthState.check_auth, AssetState.load_view_data],
+    title="Mengalihkan · ITAM Pro",
+    on_load=AssetState.redirect_legacy_category_route,
 )
 
 # Route Modul Infrastructure: IP & Server (VM)
@@ -138,14 +139,24 @@ app.add_page(
 
 # Redirect kompatibilitas untuk route lama
 app.add_page(
-    lambda: _redirect_page("/assets/c/pc"),
+    lambda: _redirect_page("/assets?category=pc"),
     route="/pc",
-    on_load=rx.redirect("/assets/c/pc"),
+    on_load=rx.redirect("/assets?category=pc"),
 )
 app.add_page(
-    lambda: _redirect_page("/assets/c/monitor"),
+    lambda: _redirect_page("/assets?category=server"),
+    route="/server",
+    on_load=rx.redirect("/assets?category=server"),
+)
+app.add_page(
+    lambda: _redirect_page("/assets?category=monitor"),
     route="/monitor",
-    on_load=rx.redirect("/assets/c/monitor"),
+    on_load=rx.redirect("/assets?category=monitor"),
+)
+app.add_page(
+    lambda: _redirect_page("/assets?category=ups"),
+    route="/ups",
+    on_load=rx.redirect("/assets?category=ups"),
 )
 app.add_page(
     lambda: _redirect_page("/infrastructure/ip"),

@@ -230,18 +230,19 @@ def test_location_disambiguation_and_full_contract_after_csv_import(
         assert "tab_counts" in payload
         assert "summary" in payload
 
-    # 3. Verifikasi kontrak Inventory (Semua Aset, PC, Monitor, UPS) & category_counts
+    # 3. Verifikasi kontrak Inventory (Semua Aset, PC, Server, Monitor, UPS) & category_counts
     assets_all = client.get("/api/v1/assets", headers=admin_h).json()
     assert "category_counts" in assets_all
     assert assets_all["category_counts"]["all"] == 77
-    assert assets_all["category_counts"]["pc"] == 49  # 33 PC + 16 Server
+    assert assets_all["category_counts"]["pc"] == 33
+    assert assets_all["category_counts"]["server"] == 16
     assert assets_all["category_counts"]["monitor"] == 4
     assert assets_all["category_counts"]["ups"] == 24
 
     pc_op = client.get("/api/v1/assets?slug=pc&tab=Operasional", headers=admin_h).json()
     assert pc_op["total"] == 33
     assert pc_op["tab_counts"]["Operasional"] == 33
-    assert pc_op["tab_counts"]["Server"] == 11
+    assert pc_op["tab_counts"]["Server"] == 16
     assert pc_op["tab_counts"]["Backup"] == 5
     assert "attributes" in pc_op["items"][0]
     assert "sn_pid" in pc_op["items"][0]
@@ -253,7 +254,7 @@ def test_location_disambiguation_and_full_contract_after_csv_import(
     assert "kpis" in dash_data
     assert dash_data["kpis"]["total_assets"] == 77
     assert len(dash_data["monthly_purchases"]) == 6
-    assert len(dash_data["assets_by_category"]) == 3
+    assert len(dash_data["assets_by_category"]) == 4
     assert len(dash_data["ups_loads"]) > 0
 
     # 5. Verifikasi kontrak IP & Server (VM) (/api/v1/ip-entries)

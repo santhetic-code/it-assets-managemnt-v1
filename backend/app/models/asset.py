@@ -1,12 +1,68 @@
 """Model database untuk tabel aset TI (assets)."""
 
-from datetime import date
-from typing import Any
+from datetime import date, datetime
+from typing import Any, cast
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, DateTime
 from sqlmodel import Field, SQLModel
 
-from app.models.base import TimestampMixin
+from app.models.base import TimestampMixin, utcnow
+
+
+class Category(TimestampMixin, SQLModel, table=True):
+    """Tabel pohon kategori aset schema-driven (Seksi 4.2)."""
+
+    __tablename__: Any = "categories"  # type: ignore[assignment]
+
+    id: int | None = Field(default=None, primary_key=True)
+    parent_id: int | None = Field(default=None, index=True, nullable=True)
+    kode: str = Field(index=True, unique=True, max_length=30, nullable=False)
+    nama: str = Field(index=True, max_length=100, nullable=False)
+    ikon: str = Field(default="box", max_length=50, nullable=False)
+    tracking: str = Field(
+        default="unit", max_length=20, nullable=False
+    )  # "unit" | "threshold" | "stok"
+    spec_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False, server_default="{}"),
+    )
+
+
+class AssetLink(SQLModel, table=True):
+    """Tabel relasi antar aset (Seksi 4.4: menyuplai_daya, terpasang, backup_dari)."""
+
+    __tablename__: Any = "asset_links"  # type: ignore[assignment]
+
+    id: int | None = Field(default=None, primary_key=True)
+    asset_id: str = Field(index=True, max_length=30, nullable=False)
+    linked_asset_id: str = Field(index=True, max_length=30, nullable=False)
+    tipe: str = Field(default="menyuplai_daya", index=True, max_length=40, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utcnow,
+        sa_type=cast(Any, DateTime(timezone=True)),
+        nullable=False,
+    )
+
+
+class AssetMovement(SQLModel, table=True):
+    """Tabel riwayat mutasi, serah terima, dan pasang/lepas komponen (Seksi 4.4)."""
+
+    __tablename__: Any = "asset_movements"  # type: ignore[assignment]
+
+    id: int | None = Field(default=None, primary_key=True)
+    asset_id: str = Field(index=True, max_length=30, nullable=False)
+    jenis: str = Field(index=True, max_length=40, nullable=False)
+    dari: str = Field(default="", max_length=150, nullable=False)
+    ke: str = Field(default="", max_length=150, nullable=False)
+    alasan: str = Field(default="", max_length=150, nullable=False)
+    catatan: str = Field(default="", max_length=500, nullable=False)
+    tanggal: date = Field(default_factory=date.today, nullable=False)
+    oleh: str = Field(default="admin", max_length=80, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utcnow,
+        sa_type=cast(Any, DateTime(timezone=True)),
+        nullable=False,
+    )
 
 
 class Asset(TimestampMixin, SQLModel, table=True):
@@ -64,4 +120,34 @@ class Asset(TimestampMixin, SQLModel, table=True):
     extra_specs: dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSON, nullable=False, server_default="{}"),
+    )
+
+    # Kolom Satu Data Induk (Seksi 4.1 & 4.6)
+    asset_tag: str | None = Field(
+        default=None, index=True, unique=True, max_length=30, nullable=True
+    )
+    nama: str = Field(default="", max_length=150, nullable=False)
+    category_id: int | None = Field(default=None, index=True, nullable=True)
+    peran: str | None = Field(default=None, index=True, max_length=40, nullable=True)
+    pengguna_id: int | None = Field(default=None, index=True, nullable=True)
+    pemakai_text: str = Field(default="", max_length=100, nullable=False)
+    lokasi_id: int | None = Field(default=None, index=True, nullable=True)
+    parent_asset_id: str | None = Field(default=None, index=True, max_length=30, nullable=True)
+    tanggal_perolehan: date | None = Field(default=None, nullable=True)
+    nilai_perolehan: int | None = Field(default=None, nullable=True)
+    vendor: str = Field(default="", max_length=150, nullable=False)
+    garansi_sampai: date | None = Field(default=None, index=True, nullable=True)
+    purchase_item_id: int | None = Field(default=None, index=True, nullable=True)
+    specs: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False, server_default="{}"),
+    )
+    tracking: str = Field(default="unit", max_length=20, nullable=False)
+    qty: int = Field(default=1, nullable=False)
+    created_by: str = Field(default="system", max_length=80, nullable=False)
+    deleted_at: datetime | None = Field(
+        default=None,
+        index=True,
+        sa_type=cast(Any, DateTime(timezone=True)),
+        nullable=True,
     )

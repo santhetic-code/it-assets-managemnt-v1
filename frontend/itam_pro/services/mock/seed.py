@@ -361,76 +361,236 @@ MOCK_ASSETS: list[dict[str, Any]] = [
 ]
 
 
-def _load_server_csv() -> list[dict[str, Any]]:
-    csv_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "..", "docs", "data", "rekap_watt_server.csv"
-    )
-    if not os.path.exists(csv_path):
-        csv_path = os.path.join(
-            os.path.dirname(__file__), "..", "..", "..", "docs", "data", "rekap_watt_server.csv"
-        )
-    servers: list[dict[str, Any]] = []
-    if os.path.exists(csv_path):
-        with open(csv_path, encoding="utf-8") as f:
-            reader = list(csv.DictReader(f))
-            for row in reader:
-                if row.get("ID SERVER", "").upper().startswith("ESTIMASI"):
-                    continue
+def _load_real_77_assets_from_csv() -> list[dict[str, Any]]:
+    """Memuat 77 aset nyata (33 PC + 16 Server + 4 Monitor + 24 UPS) dari docs/data/."""
+    base_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "docs", "data")
+    if not os.path.exists(base_dir):
+        base_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docs", "data")
 
-                nama_aset = row.get("ID SERVER", "").strip()
-                if not nama_aset:
-                    continue
+    loaded: list[dict[str, Any]] = []
+    srv_path = os.path.join(base_dir, "rekap_watt_server.csv")
+    ups_path = os.path.join(base_dir, "rekap_ups_xml.csv")
+    ip_path = os.path.join(base_dir, "ip_list_xml.csv")
 
-                # Atribut inti sementara (DATA SEMENTARA - lengkapi)
-                servers.append(
+    if not (os.path.exists(srv_path) and os.path.exists(ups_path) and os.path.exists(ip_path)):
+        return []
+
+    # 1. 16 Server dari rekap_watt_server.csv
+    with open(srv_path, encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            nama_srv = (row.get("ID SERVER") or "").strip()
+            if not nama_srv or nama_srv.upper().startswith("ESTIMASI"):
+                continue
+            idx_srv = sum(1 for x in loaded if x["kategori"] == "Server") + 1
+            is_bkp = "BACKUP" in nama_srv.upper()
+            loaded.append(
+                {
+                    "id_aset": f"SRV-{idx_srv:03d}",
+                    "nama_aset": nama_srv,
+                    "kategori": "Server",
+                    "sn_pid": "—",
+                    "tanggal_masuk_gudang": "2025-01-10",
+                    "tanggal_keluar_gudang": "" if is_bkp else "2025-01-12",
+                    "kepemilikan": "XML",
+                    "lokasi": "Head Office (Blok 14)",
+                    "kondisi": "Baik",
+                    "status": "Cadangan" if is_bkp else "Digunakan",
+                    "digunakan_oleh": "—",
+                    "catatan": "Server Fisik",
+                    "parent_asset_id": None,
+                    "purchase_item_id": 1 if idx_srv <= 8 else None,
+                    "terkait_chips": (
+                        ["UPS 1", "IP 1", "VM 3"] if not is_bkp else ["UPS 1", "IP 1"]
+                    ),
+                    "attributes": {
+                        "jenis": "Backup" if is_bkp else "Server",
+                        "os": (
+                            "Proxmox VE 8.2" if "VM" in nama_srv.upper() else "Windows Server 2022"
+                        ),
+                        "cpu": (row.get("MODEL PROSESOR (CPU)") or "").strip(),
+                        "vga": (row.get("KARTU GRAFIS (GPU)") or "").strip(),
+                        "ram": (row.get("KONFIGURASI RAM") or "").strip(),
+                        "hdd_ssd": (row.get("KONFIGURASI PENYIMPANAN") or "").strip(),
+                        "tdp_total_w": (row.get("TOTAL TDP (W)") or "0").strip(),
+                        "psu_min_w": (row.get("PSU MINIMUM (W)") or "0").strip(),
+                        "psu_rekomendasi_w": (row.get("PSU REKOMENDASI (W)") or "0").strip(),
+                    },
+                }
+            )
+
+    # 2. 33 PC Operasional dari ip_list_xml.csv
+    with open(ip_path, encoding="utf-8-sig") as f:
+        raw_rows = list(csv.reader(f))
+        pc_num = 0
+        for r in raw_rows[2:]:
+            if len(r) > 8 and r[8].strip():
+                user_name = r[7].strip()
+                pc_num += 1
+                code = f"PC-{pc_num:03d}"
+                has_mon = code in ("PC-003", "PC-016", "PC-001")
+                chips = ["Monitor 1", "IP 1"]
+                if code == "PC-003":
+                    chips.append("Kredensial 2")
+                loaded.append(
                     {
-                        "id_aset": f"SRV-{len(servers) + 1:04d}",
-                        "nama_aset": nama_aset,
-                        "kategori": "Server",
-                        "sn_pid": "-",
-                        "tanggal_masuk_gudang": "2024-01-01",
-                        "tanggal_keluar_gudang": "2024-01-02",
+                        "id_aset": code,
+                        "nama_aset": f"PC {user_name}".strip(),
+                        "kategori": "PC",
+                        "sn_pid": f"SN-PC-{pc_num:03d}",
+                        "tanggal_masuk_gudang": "2025-03-10",
+                        "tanggal_keluar_gudang": "2025-03-12",
                         "kepemilikan": "XML",
-                        "lokasi": "Kantor Pusat",
-                        "kondisi": "Baru",
+                        "lokasi": "Head Office",
+                        "kondisi": "Baik",
                         "status": "Digunakan",
-                        "digunakan_oleh": "Operasional IT",
-                        "catatan": "Diimpor dari rekap_watt_server.csv",
+                        "digunakan_oleh": user_name,
+                        "catatan": f"Workstation {user_name}",
                         "parent_asset_id": None,
+                        "purchase_item_id": 1 if pc_num <= 16 else None,
+                        "terkait_chips": chips if has_mon else ["IP 1"],
                         "attributes": {
-                            "jenis": "Server",
-                            "cpu": row.get("CPU", "") or row.get("MODEL PROSESOR (CPU)", ""),
-                            "vga": row.get("GPU", "") or row.get("KARTU GRAFIS (GPU)", ""),
-                            "ram": row.get("RAM", "") or row.get("KONFIGURASI RAM", ""),
-                            "hdd_ssd": (
-                                row.get("Penyimpanan", "") or row.get("KONFIGURASI PENYIMPANAN", "")
+                            "jenis": "Operasional",
+                            "os": "Windows 11 Pro",
+                            "cpu": "Intel Core i5-12400",
+                            "ram": "16GB DDR4",
+                            "vga": "Intel UHD Graphics 730",
+                            "hdd_ssd": "SSD NVMe 512GB",
+                            "mainboard": "ASUS Prime H610M",
+                            "monitor": (
+                                '24" FHD (MON-001)'
+                                if code == "PC-003"
+                                else ('24" FHD' if has_mon else "—")
                             ),
-                            "tdp_total_w": (
-                                row.get("TOTAL (W)") or row.get("TOTAL TDP (W)") or "0"
-                            ).replace(",", "."),
-                            "psu_min_w": (
-                                row.get("PSU (Min)") or row.get("PSU MINIMUM (W)") or "0"
-                            ).replace(",", "."),
-                            "psu_rekomendasi_w": (
-                                row.get("PSU (Rekomendasi)")
-                                or row.get("PSU REKOMENDASI (W)")
-                                or "0"
-                            ).replace(",", "."),
                         },
                     }
                 )
-    return servers
+
+    # 3. 4 Monitor (3 terpasang di PC, 1 Cadangan di Gudang sesuai Artboard 10)
+    mon_defs = [
+        (
+            "MON-001",
+            'Samsung S24D330 24"',
+            "Samsung",
+            "S24D330",
+            "Terpasang di PC-003",
+            "Head Office",
+            "Digunakan",
+            "PC-003",
+            ["PC 1"],
+        ),
+        (
+            "MON-002",
+            'Samsung S24D330 24"',
+            "Samsung",
+            "S24D330",
+            "Terpasang di PC-016",
+            "Head Office",
+            "Digunakan",
+            "PC-016",
+            ["PC 1"],
+        ),
+        (
+            "MON-003",
+            'Samsung S24D330 24"',
+            "Samsung",
+            "S24D330",
+            "Terpasang di PC-001",
+            "Head Office",
+            "Digunakan",
+            "PC-001",
+            ["PC 1"],
+        ),
+        ("MON-004", 'LG 24MR400-B 24"', "LG", "24MR400-B", "—", "Gudang", "Cadangan", None, []),
+    ]
+    for m_id, m_nama, m_merk, m_tipe, m_user, m_lok, m_st, m_parent, m_chips in mon_defs:
+        loaded.append(
+            {
+                "id_aset": m_id,
+                "nama_aset": m_nama,
+                "kategori": "Monitor",
+                "sn_pid": f"SN-{m_id}",
+                "tanggal_masuk_gudang": "2025-04-01",
+                "tanggal_keluar_gudang": "2025-04-02" if m_st == "Digunakan" else "",
+                "kepemilikan": "XML",
+                "lokasi": m_lok,
+                "kondisi": "Baik",
+                "status": m_st,
+                "digunakan_oleh": m_user,
+                "catatan": "Monitor 24 inch FHD",
+                "parent_asset_id": m_parent,
+                "purchase_item_id": 1,
+                "terkait_chips": m_chips,
+                "attributes": {
+                    "merk": m_merk,
+                    "tipe_model": m_tipe,
+                    "ukuran_layar": "24",
+                    "resolusi_layar": "1920 × 1080",
+                    "konektivitas": ["HDMI", "VGA"],
+                },
+            }
+        )
+
+    # 4. 24 UPS dari rekap_ups_xml.csv
+    with open(ups_path, encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            raw_id = (row.get("ID UPS") or "").strip().replace(" ", "")
+            if not raw_id:
+                continue
+            merk = (row.get("MERK UPS") or "").strip()
+            aki = (row.get("KATEGORI AKI") or "").strip()
+            va_raw = (
+                "".join(ch for ch in (row.get("KAPASITAS (VA/WATT)") or "") if ch.isdigit())
+                or "650"
+            )
+            st_ops = (row.get("STATUS OPERASIONAL") or "").strip().upper()
+            id_srv = (row.get("ID SERVER") or "").strip()
+            is_used = st_ops == "DIGUNAKAN"
+            penempatan = (
+                f"Menyuplai SERVER {id_srv}" if (is_used and id_srv and id_srv != "BACKUP") else "—"
+            )
+            loaded.append(
+                {
+                    "id_aset": raw_id,
+                    "nama_aset": f"UPS {merk} {va_raw}VA ({aki.title()})",
+                    "kategori": "UPS",
+                    "sn_pid": f"SN-{raw_id}",
+                    "tanggal_masuk_gudang": "2025-06-15",
+                    "tanggal_keluar_gudang": "2025-06-16" if is_used else "",
+                    "kepemilikan": "XML",
+                    "lokasi": "Head Office (Blok 14)" if is_used else "Gudang",
+                    "kondisi": "Baru",
+                    "status": "Digunakan" if is_used else "Cadangan",
+                    "digunakan_oleh": penempatan,
+                    "catatan": f"Kapasitas {va_raw}VA",
+                    "parent_asset_id": None,
+                    "purchase_item_id": 1 if len(loaded) % 2 == 0 else None,
+                    "terkait_chips": ["Server 1"] if is_used and id_srv else [],
+                    "attributes": {
+                        "kapasitas_va": va_raw,
+                        "jenis_aki": aki.title(),
+                    },
+                }
+            )
+    return loaded
 
 
-MOCK_ASSETS.extend(_load_server_csv())
+def _load_server_csv() -> list[dict[str, Any]]:
+    """Kompatibilitas pemuat CSV server untuk unit test."""
+    return [a for a in _load_real_77_assets_from_csv() if a.get("kategori") == "Server"]
+
+
+_CSV_77_ASSETS = _load_real_77_assets_from_csv()
+if _CSV_77_ASSETS:
+    MOCK_ASSETS.clear()
+    MOCK_ASSETS.extend(_CSV_77_ASSETS)
 
 
 # Counter sekuensial per prefix agar ID Aset tidak pernah dipakai ulang
 _PREFIX_COUNTERS: dict[str, int] = {
-    "PC": 4,
-    "SRV": 2,
-    "MON": 5,
-    "UPS": 2,
+    "PC": 33,
+    "SRV": 16,
+    "MON": 4,
+    "UPS": 24,
     "RTR": 1,
     "SSD": 1,
     "KBD": 0,
@@ -478,6 +638,7 @@ def flatten_asset_row(asset: dict[str, Any]) -> dict[str, Any]:
     row["sn_pid"] = row.get("sn_pid") or "—"
     row["digunakan_oleh"] = row.get("digunakan_oleh") or "—"
     row["catatan"] = row.get("catatan") or "—"
+    row["terkait_chips"] = list(row.get("terkait_chips") or [])
     row["tanggal_masuk_display"] = format_tanggal_id(str(row.get("tanggal_masuk_gudang", "")))
     row["tanggal_keluar_display"] = format_tanggal_id(str(row.get("tanggal_keluar_gudang", "")))
     if "ukuran_layar" in attrs:
@@ -502,14 +663,50 @@ def find_sn_duplicate(sn_pid: str, exclude_id: str = "") -> str | None:
 
 
 def get_mock_category_counts() -> dict[str, int]:
-    """Hitung jumlah unit untuk Semua Aset dan setiap kategori pinned di Sidebar."""
-    counts: dict[str, int] = {"all": len(MOCK_ASSETS)}
-    for slug in ("pc", "monitor", "ups"):
-        cfg = get_config_by_slug(slug)
-        if cfg:
-            inc = cfg["included_categories"]
-            counts[slug] = sum(1 for a in MOCK_ASSETS if a.get("kategori") in inc)
+    """Hitung jumlah unit untuk Semua Aset, PC & Laptop (33), Server (16), Monitor (4), UPS (24)."""
+    counts: dict[str, int] = {
+        "all": len(MOCK_ASSETS),
+        "pc": sum(1 for a in MOCK_ASSETS if a.get("kategori") in ("PC", "Laptop")),
+        "server": sum(1 for a in MOCK_ASSETS if a.get("kategori") == "Server"),
+        "monitor": sum(1 for a in MOCK_ASSETS if a.get("kategori") == "Monitor"),
+        "ups": sum(1 for a in MOCK_ASSETS if a.get("kategori") == "UPS"),
+        "perangkat-it": sum(
+            1
+            for a in MOCK_ASSETS
+            if a.get("kategori") in ("PC", "Laptop", "Server", "Monitor", "UPS")
+        ),
+        "komponen-periferal": sum(
+            1
+            for a in MOCK_ASSETS
+            if a.get("kategori")
+            in ("RAM", "SSD", "HDD", "SSD/HDD", "VGA", "PSU", "Keyboard", "Mouse")
+        ),
+        "jaringan": sum(
+            1
+            for a in MOCK_ASSETS
+            if a.get("kategori") in ("Router", "Router/Switch", "Access Point", "CCTV", "Jaringan")
+        ),
+        "kendaraan": sum(
+            1 for a in MOCK_ASSETS if a.get("kategori") in ("Mobil", "Motor", "Kendaraan")
+        ),
+        "peralatan-kantor": sum(1 for a in MOCK_ASSETS if a.get("kategori") == "AC"),
+        "furnitur": sum(
+            1 for a in MOCK_ASSETS if a.get("kategori") in ("Meja", "Kursi", "Lemari", "Furnitur")
+        ),
+        "lainnya": sum(1 for a in MOCK_ASSETS if a.get("kategori") in ("Lainnya", "Aset lain")),
+    }
     return counts
+
+
+_GROUP_CATEGORY_MAP: dict[str, tuple[str, ...]] = {
+    "perangkat-it": ("PC", "Laptop", "Server", "Monitor", "UPS"),
+    "komponen-periferal": ("RAM", "SSD", "HDD", "SSD/HDD", "VGA", "PSU", "Keyboard", "Mouse"),
+    "jaringan": ("Router", "Router/Switch", "Access Point", "CCTV", "Jaringan"),
+    "kendaraan": ("Mobil", "Motor", "Kendaraan"),
+    "peralatan-kantor": ("AC",),
+    "furnitur": ("Meja", "Kursi", "Lemari", "Furnitur"),
+    "lainnya": ("Lainnya", "Aset lain"),
+}
 
 
 def query_mock_assets(
@@ -517,17 +714,25 @@ def query_mock_assets(
     page: int = 1,
     page_size: int = 10,
 ) -> dict[str, Any]:
-    """Query terpusat untuk `/assets` dan `/assets/c/[slug]`."""
-    slug = str(filters.get("slug", "")).strip().lower()
+    """Query terpusat untuk `/assets` dan `/assets?category=[slug]`."""
+    slug = str(filters.get("category") or filters.get("slug") or "").strip().lower()
+    group_key = str(filters.get("group", "")).strip().lower()
     search = str(filters.get("search", "")).strip().lower()
     tab_value = str(filters.get("tab", "")).strip()
+    pengguna = str(filters.get("pengguna", "")).strip().lower()
+    warranty = str(filters.get("warranty", "")).strip().lower()
+    no_purchase = int(filters.get("no_purchase") or 0)
     sort_by = str(filters.get("sort_by", "")).strip()
     sort_dir = str(filters.get("sort_dir", "asc")).strip().lower()
 
     cfg = get_config_by_slug(slug) if slug else None
+    allowed_group_cats = _GROUP_CATEGORY_MAP.get(group_key) if group_key else None
+
     base_items: list[dict[str, Any]] = []
     for raw in MOCK_ASSETS:
         if cfg and raw.get("kategori") not in cfg["included_categories"]:
+            continue
+        if allowed_group_cats is not None and raw.get("kategori") not in allowed_group_cats:
             continue
         base_items.append(flatten_asset_row(raw))
 
@@ -548,6 +753,15 @@ def query_mock_assets(
             if str(item.get(t_field, "")) != tab_value:
                 continue
 
+        if pengguna and pengguna not in str(item.get("digunakan_oleh", "")).lower():
+            continue
+
+        if no_purchase == 1 and item.get("purchase_item_id"):
+            continue
+
+        if warranty == "expiring" and not str(item.get("id_aset", "")).endswith(("001", "002")):
+            continue
+
         if search:
             haystack = " ".join(
                 [
@@ -564,11 +778,25 @@ def query_mock_assets(
                 continue
 
         # Filter atribut inti
+        status_f = str(filters.get("status", "")).strip()
+        if status_f.lower() in ("attention", "perlu_perhatian"):
+            if item.get("status") not in (
+                "Dalam Perbaikan",
+                "Rusak",
+                "Perbaikan",
+            ) and item.get("kondisi") not in ("Perlu Servis", "Rusak"):
+                continue
+
+        core_ok = True
         for core_key in ("kategori", "kepemilikan", "lokasi", "kondisi", "status"):
+            if core_key == "status" and status_f.lower() in ("attention", "perlu_perhatian"):
+                continue
             f_val = str(filters.get(core_key, "")).strip()
             if f_val and str(item.get(core_key, "")) != f_val:
+                core_ok = False
                 break
-        else:
+
+        if core_ok:
             # Filter atribut dinamis per kategori
             attr_match = True
             attr_filters: dict[str, str] = filters.get("attr_filters") or {}
@@ -609,13 +837,34 @@ def query_mock_assets(
     start = max(0, (page - 1) * page_size)
     paginated = filtered[start : start + page_size]
 
+    cat_counts = get_mock_category_counts()
+    unlinked_cnt = sum(1 for a in MOCK_ASSETS if not a.get("purchase_item_id"))
+    attention_cnt = sum(
+        1
+        for a in MOCK_ASSETS
+        if a.get("status") in ("Dalam Perbaikan", "Rusak", "Perbaikan")
+        or a.get("kondisi") in ("Perlu Servis", "Rusak")
+    )
     return {
         "items": paginated,
         "total": total,
         "page": page,
         "page_size": page_size,
         "tab_counts": tab_counts,
-        "category_counts": get_mock_category_counts(),
+        "category_counts": cat_counts,
+        "group_counts": cat_counts,
+        "subcategory_counts": {
+            "pc": cat_counts["pc"],
+            "server": cat_counts["server"],
+            "monitor": cat_counts["monitor"],
+            "ups": cat_counts["ups"],
+        },
+        "summary": {
+            "total": len(MOCK_ASSETS),
+            "perlu_perhatian": attention_cnt,
+            "garansi_segera_habis": 5,
+            "belum_terhubung_pembelian": unlinked_cnt,
+        },
     }
 
 

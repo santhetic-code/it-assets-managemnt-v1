@@ -9,19 +9,18 @@ from app.core.master_data import (
     ASSET_CONDITIONS,
     ASSET_STATUSES,
     CATEGORY_PREFIXES,
+    CATEGORY_TREE,
     LOCATION_ALIASES,
     LOCATIONS,
+    normalize_asset_condition,
+    normalize_asset_status,
+    resolve_tracking_mode,
 )
 from app.models.asset import Asset
 
 FORBIDDEN_FIELDS = {
-    "power_supply",
-    "psu",
     "casing",
     "cassing",
-    "vendor",
-    "nilai_perolehan",
-    "batas_garansi",
 }
 
 
@@ -39,7 +38,7 @@ def _validate_category(val: str) -> str:
     cleaned = val.strip()
     if not cleaned:
         raise ValueError("Kategori aset wajib diisi")
-    valid_map = {k.lower(): k for k in CATEGORY_PREFIXES}
+    valid_map = {k.lower(): k for k in CATEGORY_PREFIXES if k.lower() != "kendaraan"}
     if cleaned.lower() not in valid_map:
         raise ValueError(f"Kategori '{cleaned}' tidak valid")
     return valid_map[cleaned.lower()]
@@ -61,7 +60,7 @@ def _validate_status(val: str) -> str:
     cleaned = val.strip()
     for st in ASSET_STATUSES:
         if st.lower() == cleaned.lower():
-            return st
+            return normalize_asset_status(st)
     raise ValueError(f"Status aset '{cleaned}' tidak valid")
 
 
@@ -110,6 +109,17 @@ def _derive_asset_jenis(asset: Asset, extra: dict[str, Any]) -> str:
     return "Operasional"
 
 
+def _resolve_category_group(kategori: str) -> str:
+    clean = (kategori or "").strip().lower()
+    for grp in CATEGORY_TREE:
+        if grp["nama"].lower() == clean or grp["slug"] == clean:
+            return grp["nama"]
+        for sub in grp.get("children", []):
+            if sub["nama"].lower() == clean or sub["kode"].lower() == clean:
+                return grp["nama"]
+    return "Perangkat IT"
+
+
 class AssetCreate(BaseModel):
     """Payload pembuatan aset baru."""
 
@@ -118,6 +128,15 @@ class AssetCreate(BaseModel):
     id_aset: str | None = Field(default=None, max_length=30)
     nama_aset: str = Field(min_length=1, max_length=150)
     kategori: str = Field(min_length=1, max_length=50)
+    peran: str | None = Field(default=None, max_length=40)
+    parent_asset_id: str | None = Field(default=None, max_length=30)
+    tanggal_perolehan: date | None = Field(default=None)
+    nilai_perolehan: int | None = Field(default=None, ge=0)
+    vendor: str = Field(default="", max_length=150)
+    garansi_sampai: date | None = Field(default=None)
+    purchase_item_id: int | None = Field(default=None)
+    tracking: str = Field(default="unit", max_length=20)
+    qty: int = Field(default=1, ge=1)
     merek: str = Field(default="", max_length=100)
     model: str = Field(default="", max_length=100)
     serial_number: str | None = Field(default=None, max_length=100)
@@ -256,6 +275,15 @@ class AssetUpdate(BaseModel):
 
     nama_aset: str | None = Field(default=None, max_length=150)
     kategori: str | None = Field(default=None, max_length=50)
+    peran: str | None = Field(default=None, max_length=40)
+    parent_asset_id: str | None = Field(default=None, max_length=30)
+    tanggal_perolehan: date | None = Field(default=None)
+    nilai_perolehan: int | None = Field(default=None, ge=0)
+    vendor: str | None = Field(default=None, max_length=150)
+    garansi_sampai: date | None = Field(default=None)
+    purchase_item_id: int | None = Field(default=None)
+    tracking: str | None = Field(default=None, max_length=20)
+    qty: int | None = Field(default=None, ge=1)
     merek: str | None = Field(default=None, max_length=100)
     model: str | None = Field(default=None, max_length=100)
     serial_number: str | None = Field(default=None, max_length=100)
@@ -328,8 +356,24 @@ class AssetPublic(BaseModel):
 
     id: int
     id_aset: str
+    asset_tag: str = ""
     nama_aset: str
+    nama: str = ""
     kategori: str
+    category_id: int | None = None
+    category_group: str = "Perangkat IT"
+    peran: str = ""
+    parent_asset_id: str | None = None
+    tanggal_perolehan: str | None = None
+    nilai_perolehan: int | None = None
+    vendor: str = ""
+    garansi_sampai: str | None = None
+    purchase_item_id: int | None = None
+    tracking: str = "unit"
+    qty: int = 1
+    specs: dict[str, Any] = Field(default_factory=dict)
+    terkait_chips: list[str] = Field(default_factory=list)
+    related_counts: dict[str, int] = Field(default_factory=dict)
     merek: str
     merk: str
     model: str
@@ -389,25 +433,47 @@ class AssetPublic(BaseModel):
     attributes: dict[str, Any]
 
     @classmethod
-    def from_asset(cls, asset: Asset) -> "AssetPublic":
-        extra: dict[str, Any] = dict(asset.extra_specs or {})
+    def from_asset(
+        cls,
+        asset: Asset,
+        relations_info: dict[str, Any] | None = None,
+    ) -> "AssetPublic":
+        rel = relations_info or {}
+        extra: dict[str, Any] = {**(asset.extra_specs or {}), **(asset.specs or {})}
+        tgl_perolehan = asset.tanggal_perolehan or asset.tanggal_masuk
         tgl = (
-            asset.tanggal_masuk.isoformat()
-            if asset.tanggal_masuk
+            tgl_perolehan.isoformat()
+            if tgl_perolehan
             else (str(extra.get("tanggal_masuk_gudang") or "") or None)
         )
         tgl_keluar = str(extra.get("tanggal_keluar_gudang") or "")
+        garansi_iso = asset.garansi_sampai.isoformat() if asset.garansi_sampai else None
         sn_val = asset.serial_number or str(extra.get("sn_pid") or "-")
         kepemilikan_val = str(extra.get("kepemilikan") or "XML")
-        pemakai_val = asset.penanggung_jawab or str(extra.get("digunakan_oleh") or "") or "—"
-        jenis_val = _derive_asset_jenis(asset, extra)
+
+        # Penempatan / Pengguna dinamis dari relasi bila terpasang pada induk / menyuplai server
+        penempatan_rel = str(rel.get("penempatan_label") or "").strip()
+        raw_pemakai = (
+            penempatan_rel
+            or asset.pemakai_text
+            or asset.penanggung_jawab
+            or str(extra.get("digunakan_oleh") or "")
+        )
+        if asset.kategori.lower() == "server" and raw_pemakai.lower().startswith("server produksi"):
+            raw_pemakai = "—"
+        pemakai_val = raw_pemakai or "—"
+
+        jenis_val = asset.peran or _derive_asset_jenis(asset, extra)
         cpu_val = asset.processor or str(extra.get("cpu") or "—")
         mb_val = asset.motherboard or str(extra.get("mainboard") or "—")
         ram_val = asset.ram or str(extra.get("ram") or "—")
         storage_val = asset.storage or str(extra.get("hdd_ssd") or "—")
         gpu_val = asset.gpu or str(extra.get("vga") or "—")
         os_val = asset.os or str(extra.get("os") or extra.get("operasi_system") or "—")
-        mon_val = str(extra.get("monitor") or "—")
+
+        # Monitor pada PC diambil dari aset monitor yang tertaut (Seksi 5 & 17)
+        linked_mon_label = str(rel.get("monitor_label") or "").strip()
+        mon_val = linked_mon_label or str(extra.get("monitor") or "—")
         kbd_val = str(extra.get("keyboard") or "—")
         mouse_val = str(extra.get("mouse") or "—")
 
@@ -425,6 +491,9 @@ class AssetPublic(BaseModel):
             konektivitas_list = [p.strip() for p in asset.port_display.split(",") if p.strip()]
         else:
             konektivitas_list = []
+
+        terkait_chips: list[str] = list(rel.get("terkait_chips") or [])
+        related_counts: dict[str, int] = dict(rel.get("related_counts") or {})
 
         attrs_out: dict[str, Any] = {
             **extra,
@@ -446,11 +515,20 @@ class AssetPublic(BaseModel):
             "konektivitas": konektivitas_list,
         }
 
+        norm_status = normalize_asset_status(asset.status)
+        norm_kondisi = normalize_asset_condition(asset.kondisi)
+
         return cls(
             id=asset.id or 0,
             id_aset=asset.id_aset,
+            asset_tag=asset.asset_tag or asset.id_aset,
             nama_aset=asset.nama_aset,
+            nama=asset.nama or asset.nama_aset,
             kategori=asset.kategori,
+            category_id=asset.category_id,
+            category_group=_resolve_category_group(asset.kategori),
+            peran=jenis_val,
+            parent_asset_id=asset.parent_asset_id,
             merek=asset.merek,
             merk=merk_val,
             model=asset.model,
@@ -461,16 +539,26 @@ class AssetPublic(BaseModel):
             lokasi=asset.lokasi,
             detail_lokasi=asset.detail_lokasi,
             ruangan=asset.detail_lokasi,
-            penanggung_jawab=asset.penanggung_jawab,
-            pengguna=asset.penanggung_jawab,
+            penanggung_jawab=pemakai_val,
+            pengguna=pemakai_val,
             digunakan_oleh=pemakai_val,
-            status=asset.status,
-            kondisi=asset.kondisi,
+            status=norm_status,
+            kondisi=norm_kondisi,
             tanggal_masuk=tgl,
+            tanggal_perolehan=tgl,
             tanggal_masuk_gudang=tgl,
             tanggal_keluar_gudang=tgl_keluar,
             tanggal_masuk_display=format_date_id(tgl),
             tanggal_keluar_display=format_date_id(tgl_keluar),
+            nilai_perolehan=asset.nilai_perolehan,
+            vendor=asset.vendor,
+            garansi_sampai=garansi_iso,
+            purchase_item_id=asset.purchase_item_id,
+            tracking=asset.tracking or resolve_tracking_mode(asset.kategori, asset.nilai_perolehan),
+            qty=asset.qty or 1,
+            specs=attrs_out,
+            terkait_chips=terkait_chips,
+            related_counts=related_counts,
             jenis=jenis_val,
             processor=asset.processor,
             cpu=cpu_val,
@@ -516,4 +604,6 @@ class AssetPageResponse(BaseModel):
     page_size: int
     tab_counts: dict[str, int]
     category_counts: dict[str, int] = Field(default_factory=dict)
+    group_counts: dict[str, int] = Field(default_factory=dict)
+    subcategory_counts: dict[str, int] = Field(default_factory=dict)
     summary: dict[str, int]

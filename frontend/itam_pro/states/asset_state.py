@@ -39,8 +39,10 @@ from itam_pro.services.validators import validate_asset_business_rules
 class AssetState(rx.State):
     """State tunggal untuk seluruh tampilan inventaris aset dan DynamicForm."""
 
-    # Konteks route saat ini ("" untuk Semua Aset, atau "pc" / "monitor" / "ups" / dst.)
+    # Konteks kelompok utama & subkategori saat ini
+    active_group: str = "all"
     current_slug: str = ""
+    active_kpi_card: str = "total"  # "total" | "attention" | "warranty" | "no_purchase"
     is_loading: bool = False
 
     # Data tabel & paginasi
@@ -55,8 +57,27 @@ class AssetState(rx.State):
     sort_by: str = ""
     sort_dir: str = "asc"
 
-    # Counts untuk badge Sidebar Inventory
-    sidebar_counts: dict[str, int] = {"all": 15, "pc": 6, "monitor": 5, "ups": 2}
+    # Counts seragam untuk Kartu, Baris Kategori, dan Sidebar (Seksi 7 & 8)
+    sidebar_counts: dict[str, int] = {
+        "all": 77,
+        "pc": 33,
+        "server": 16,
+        "monitor": 4,
+        "ups": 24,
+        "perangkat-it": 77,
+        "komponen-periferal": 0,
+        "jaringan": 0,
+        "kendaraan": 0,
+        "peralatan-kantor": 0,
+        "furnitur": 0,
+        "lainnya": 0,
+    }
+    summary_counts: dict[str, int] = {
+        "total": 77,
+        "perlu_perhatian": 7,
+        "garansi_segera_habis": 5,
+        "belum_terhubung_pembelian": 41,
+    }
 
     # Filter Inti
     search_query: str = ""
@@ -65,6 +86,9 @@ class AssetState(rx.State):
     lokasi_filter: str = ""
     kondisi_filter: str = ""
     status_filter: str = ""
+    pengguna_filter: str = ""
+    warranty_filter: str = ""
+    no_purchase_filter: int = 0
 
     # Filter Atribut Kategori
     attr_filters: dict[str, str] = {}
@@ -480,61 +504,118 @@ class AssetState(rx.State):
 
     def _resolve_slug_from_router(self) -> str:
         params = get_current_params(self.router)
-        slug = str(params.get("slug", "")).strip().lower()
+        slug = str(params.get("category") or params.get("slug") or "").strip().lower()
         path = get_current_raw_path(self.router)
         if not slug and "/assets/c/" in path:
             slug = path.split("/assets/c/", 1)[1].strip("/").lower()
         return slug if slug in CATEGORY_CONFIGS else ""
 
     @rx.event
+    def redirect_legacy_category_route(self) -> Any:
+        """Redirect 301 dari /assets/c/[slug] ke /assets?category=[slug] (Seksi 8)."""
+        slug = self._resolve_slug_from_router()
+        if slug:
+            return rx.redirect(f"/assets?category={slug}")
+        return rx.redirect("/assets")
+
+    @rx.event
     async def load_view_data(self) -> None:
-        """Dipanggil saat halaman `/assets` atau `/assets/c/[slug]` dimuat."""
+        """Dipanggil saat halaman /assets dimuat dengan membaca query string."""
         params = get_current_params(self.router)
         new_slug = self._resolve_slug_from_router()
-        if new_slug != self.current_slug:
-            self.current_slug = new_slug
-            self.page = 1
-            self.search_query = ""
-            self.kategori_filter = ""
-            self.kepemilikan_filter = ""
-            self.lokasi_filter = ""
-            self.kondisi_filter = ""
-            self.status_filter = ""
-            self.attr_filters = {}
-            self.selected_ids = []
-            self.drawer_open = False
+        self.current_slug = new_slug
+        if new_slug in ("pc", "server", "monitor", "ups"):
+            self.active_group = "perangkat-it"
+        elif new_slug == "":
+            self.active_group = str(params.get("group", "all")).strip().lower() or "all"
 
-            cfg = get_config_by_slug(new_slug)
-            tab_opts = cfg.get("tab_options") if cfg else None
-            if tab_opts:
-                self.active_tab = tab_opts[0]
-            else:
-                self.active_tab = ""
-
-        # Tangani query parameter URL seperti ?status=Digunakan atau ?kategori=Monitor
         param_status = str(params.get("status", "")).strip()
         param_kategori = str(params.get("kategori", "")).strip()
+        param_warranty = str(params.get("warranty", "")).strip()
+        param_no_purchase = str(params.get("no_purchase", "")).strip()
 
-        if param_status or param_kategori:
-            self.status_filter = param_status
-            self.kategori_filter = param_kategori
-            self.page = 1
+        self.status_filter = param_status
+        self.kategori_filter = param_kategori
+        self.warranty_filter = param_warranty
+        self.no_purchase_filter = 1 if param_no_purchase == "1" else 0
 
+        if param_status in ("attention", "perlu_perhatian"):
+            self.active_kpi_card = "attention"
+        elif param_warranty == "expiring":
+            self.active_kpi_card = "warranty"
+        elif param_no_purchase == "1":
+            self.active_kpi_card = "no_purchase"
+        else:
+            self.active_kpi_card = "total"
+
+        self.page = 1
+        await self.fetch_assets()
+
+    @rx.event
+    async def select_kpi_card(self, card_key: str) -> None:
+        """Klik salah satu dari 4 kartu KPI di Semua Aset (Artboard 10)."""
+        self.active_kpi_card = card_key
+        self.page = 1
+        if card_key == "attention":
+            self.status_filter = "attention"
+            self.warranty_filter = ""
+            self.no_purchase_filter = 0
+        elif card_key == "warranty":
+            self.status_filter = ""
+            self.warranty_filter = "expiring"
+            self.no_purchase_filter = 0
+        elif card_key == "no_purchase":
+            self.status_filter = ""
+            self.warranty_filter = ""
+            self.no_purchase_filter = 1
+        else:
+            self.status_filter = ""
+            self.warranty_filter = ""
+            self.no_purchase_filter = 0
+        await self.fetch_assets()
+
+    @rx.event
+    async def select_category_group(self, group_key: str) -> None:
+        """Klik kelompok kategori utama pada baris kategori (Artboard 10)."""
+        self.active_group = group_key
+        self.current_slug = ""
+        self.kategori_filter = ""
+        self.page = 1
+        await self.fetch_assets()
+
+    @rx.event
+    async def select_subcategory(self, sub_slug: str) -> None:
+        """Klik pill subkategori (misal Semua Perangkat IT, PC & Laptop, Server, Monitor, UPS)."""
+        self.current_slug = sub_slug
+        self.page = 1
+        await self.fetch_assets()
+
+    @rx.event
+    async def set_pengguna_filter(self, val: str) -> None:
+        if self.pengguna_filter == val:
+            return
+        self.pengguna_filter = val
+        self.page = 1
         await self.fetch_assets()
 
     @rx.event
     async def fetch_assets(self) -> None:
-        """Ambil daftar aset dari `api_client.get_assets` sesuai view aktif."""
+        """Ambil daftar aset dari api_client.get_assets sesuai filter aktif."""
         self.is_loading = True
         filters: dict[str, Any] = {
             "slug": self.current_slug,
+            "category": self.current_slug,
+            "group": "" if self.active_group == "all" else self.active_group,
             "tab": self.active_tab,
             "search": self.search_query,
             "kategori": self.kategori_filter,
             "kepemilikan": self.kepemilikan_filter,
             "lokasi": self.lokasi_filter,
+            "pengguna": self.pengguna_filter,
             "kondisi": self.kondisi_filter,
             "status": self.status_filter,
+            "warranty": self.warranty_filter,
+            "no_purchase": self.no_purchase_filter if self.no_purchase_filter else None,
             "attr_filters": self.attr_filters,
             "sort_by": self.sort_by,
             "sort_dir": self.sort_dir,
@@ -547,8 +628,10 @@ class AssetState(rx.State):
         self.items = res.get("items", [])
         self.total = int(res.get("total", 0))
         self.tab_counts = res.get("tab_counts", {})
-        if "category_counts" in res and res["category_counts"] != self.sidebar_counts:
-            self.sidebar_counts = res["category_counts"]
+        if "category_counts" in res and isinstance(res["category_counts"], dict):
+            self.sidebar_counts = {**self.sidebar_counts, **res["category_counts"]}
+        if "summary" in res and isinstance(res["summary"], dict):
+            self.summary_counts = {**self.summary_counts, **res["summary"]}
         self.is_loading = False
 
     # --- EVENT HANDLERS: TAB, FILTER, SORT, PAGINASI ---
@@ -626,8 +709,12 @@ class AssetState(rx.State):
         self.kategori_filter = ""
         self.kepemilikan_filter = ""
         self.lokasi_filter = ""
+        self.pengguna_filter = ""
         self.kondisi_filter = ""
         self.status_filter = ""
+        self.warranty_filter = ""
+        self.no_purchase_filter = 0
+        self.active_kpi_card = "total"
         self.attr_filters = {}
         self.page = 1
         await self.fetch_assets()

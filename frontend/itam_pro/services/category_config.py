@@ -234,26 +234,49 @@ CATEGORY_CONFIGS: dict[str, CategoryConfig] = {
     "pc": {
         "slug": "pc",
         "code": "PC",
-        "name": "PC",
-        "subtitle": "Daftar spesifikasi perangkat PC Operasional, Server, dan Backup.",
+        "name": "PC & Laptop",
+        "subtitle": "Filter perangkat PC dan Laptop dari satu daftar induk Semua Aset.",
         "add_button_label": "+ Tambah PC",
         "pinned": True,
-        "included_categories": ["PC", "Server"],
+        "included_categories": ["PC", "Laptop"],
         "view_columns": [
+            "id_aset",
             "nama_aset",
+            "kategori",
             "digunakan_oleh",
-            "os",
-            "ram",
-            "vga",
+            "lokasi",
             "cpu",
-            "mainboard",
+            "ram",
             "hdd_ssd",
+            "os",
             "monitor",
-            "keyboard",
-            "mouse",
+            "status",
+            "kondisi",
+            "terkait_chips",
         ],
-        "tab_field": "jenis",
-        "tab_options": MASTER_JENIS_PC,
+        "fields": PC_FIELDS,
+    },
+    "server": {
+        "slug": "server",
+        "code": "SRV",
+        "name": "Server",
+        "subtitle": "Filter perangkat Server fisik dan cadangan dari satu daftar induk Semua Aset.",
+        "add_button_label": "+ Tambah Server",
+        "pinned": True,
+        "included_categories": ["Server"],
+        "view_columns": [
+            "id_aset",
+            "nama_aset",
+            "kategori",
+            "lokasi",
+            "cpu",
+            "ram",
+            "hdd_ssd",
+            "os",
+            "status",
+            "kondisi",
+            "terkait_chips",
+        ],
         "fields": PC_FIELDS,
     },
     "monitor": {
@@ -448,158 +471,13 @@ def get_pinned_categories() -> list[CategoryConfig]:
 
 
 def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
-    """Bangun daftar ColumnDef tabel berdasarkan view_columns kategori atau Semua Aset."""
-    if slug == "pc":
-        return [
-            {
-                "key": "nama_aset",
-                "header": "Nama PC",
-                "width": "155px",
-                "min_width": "145px",
-                "render_type": "bold_blue",
-                "sticky_left": True,
-                "sortable": True,
-                "sort_key": "nama_aset",
-            },
-            {
-                "key": "digunakan_oleh",
-                "header": "User / Fungsi",
-                "width": "160px",
-                "min_width": "145px",
-                "render_type": "bold",
-            },
-            {
-                "key": "os",
-                "header": "Operasi System",
-                "width": "155px",
-                "min_width": "140px",
-                "render_type": "text",
-            },
-            {
-                "key": "ram",
-                "header": "RAM",
-                "width": "125px",
-                "min_width": "110px",
-                "render_type": "text",
-            },
-            {
-                "key": "vga",
-                "header": "VGA",
-                "width": "145px",
-                "min_width": "125px",
-                "render_type": "text",
-            },
-            {
-                "key": "cpu",
-                "header": "CPU",
-                "width": "165px",
-                "min_width": "145px",
-                "render_type": "text",
-            },
-            {
-                "key": "mainboard",
-                "header": "Mainboard",
-                "width": "155px",
-                "min_width": "135px",
-                "render_type": "text",
-            },
-            {
-                "key": "hdd_ssd",
-                "header": "HDD / SSD",
-                "width": "145px",
-                "min_width": "130px",
-                "render_type": "text",
-            },
-            {
-                "key": "monitor",
-                "header": "Monitor",
-                "width": "145px",
-                "min_width": "130px",
-                "render_type": "text",
-            },
-            {
-                "key": "keyboard",
-                "header": "Keyboard",
-                "width": "130px",
-                "min_width": "115px",
-                "render_type": "text",
-            },
-            {
-                "key": "mouse",
-                "header": "Mouse",
-                "width": "125px",
-                "min_width": "110px",
-                "render_type": "text",
-            },
-        ]
-
-    if slug == "monitor":
-        return [
-            {
-                "key": "id_aset",
-                "header": "ID Aset",
-                "width": "12%",
-                "min_width": "115px",
-                "render_type": "bold_blue",
-                "sticky_left": True,
-                "sortable": True,
-                "sort_key": "id_aset",
-            },
-            {
-                "key": "merk",
-                "header": "Merk",
-                "width": "11%",
-                "min_width": "100px",
-                "render_type": "bold",
-                "sortable": True,
-                "sort_key": "merk",
-            },
-            {
-                "key": "tipe_model",
-                "header": "Tipe / Model",
-                "width": "18%",
-                "min_width": "150px",
-                "render_type": "text",
-            },
-            {
-                "key": "ukuran_layar_display",
-                "header": "Ukuran Layar",
-                "width": "13%",
-                "min_width": "120px",
-                "render_type": "text",
-                "sortable": True,
-                "sort_key": "ukuran_layar",
-            },
-            {
-                "key": "resolusi_layar",
-                "header": "Resolusi Layar",
-                "width": "14%",
-                "min_width": "130px",
-                "render_type": "text",
-            },
-            {
-                "key": "konektivitas",
-                "header": "Konektivitas",
-                "width": "20%",
-                "min_width": "170px",
-                "render_type": "chips",
-            },
-            {
-                "key": "status",
-                "header": "Status",
-                "width": "12%",
-                "min_width": "115px",
-                "render_type": "status_badge",
-            },
-        ]
-
-    # Semua Aset / Kategori Umum (Termasuk Tgl Keluar Gudang)
-    return [
+    """Bangun kolom dasar Artboard 10 + kolom dinamis dari schema kategori bila kategori dipilih."""
+    base_cols: list[ColumnDef] = [
         {
             "key": "id_aset",
-            "header": "ID Aset",
-            "width": "120px",
-            "min_width": "115px",
+            "header": "ASET ID",
+            "width": "105px",
+            "min_width": "95px",
             "render_type": "bold_blue",
             "sticky_left": True,
             "sortable": True,
@@ -607,7 +485,7 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
         },
         {
             "key": "nama_aset",
-            "header": "Nama Aset",
+            "header": "NAMA",
             "width": "210px",
             "min_width": "180px",
             "render_type": "bold",
@@ -616,68 +494,130 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
         },
         {
             "key": "kategori",
-            "header": "Kategori",
-            "width": "125px",
-            "min_width": "115px",
+            "header": "KATEGORI",
+            "width": "110px",
+            "min_width": "100px",
             "render_type": "badge",
-        },
-        {
-            "key": "sn_pid",
-            "header": "SN / PID",
-            "width": "145px",
-            "min_width": "130px",
-            "render_type": "text",
-        },
-        {
-            "key": "kepemilikan",
-            "header": "Pemilik",
-            "width": "95px",
-            "min_width": "90px",
-            "render_type": "badge",
-        },
-        {
-            "key": "lokasi",
-            "header": "Lokasi",
-            "width": "155px",
-            "min_width": "140px",
-            "render_type": "text",
-        },
-        {
-            "key": "kondisi",
-            "header": "Kondisi",
-            "width": "155px",
-            "min_width": "140px",
-            "render_type": "condition_badge",
-        },
-        {
-            "key": "status",
-            "header": "Status",
-            "width": "140px",
-            "min_width": "125px",
-            "render_type": "status_badge",
         },
         {
             "key": "digunakan_oleh",
-            "header": "Digunakan Oleh",
-            "width": "160px",
-            "min_width": "145px",
+            "header": "PENGGUNA / PENEMPATAN",
+            "width": "190px",
+            "min_width": "165px",
             "render_type": "text",
         },
         {
-            "key": "tanggal_masuk_display",
-            "header": "Tgl Masuk Gudang",
-            "width": "145px",
-            "min_width": "135px",
-            "render_type": "date",
-        },
-        {
-            "key": "tanggal_keluar_display",
-            "header": "Tgl Keluar Gudang",
-            "width": "145px",
-            "min_width": "135px",
-            "render_type": "date",
+            "key": "lokasi",
+            "header": "LOKASI",
+            "width": "165px",
+            "min_width": "145px",
+            "render_type": "text",
         },
     ]
+
+    spec_cols: list[ColumnDef] = []
+    if slug in ("pc", "server"):
+        spec_cols = [
+            {
+                "key": "cpu",
+                "header": "CPU",
+                "width": "155px",
+                "min_width": "135px",
+                "render_type": "text",
+            },
+            {
+                "key": "ram",
+                "header": "RAM",
+                "width": "120px",
+                "min_width": "105px",
+                "render_type": "text",
+            },
+            {
+                "key": "hdd_ssd",
+                "header": "STORAGE",
+                "width": "140px",
+                "min_width": "125px",
+                "render_type": "text",
+            },
+            {
+                "key": "os",
+                "header": "OS",
+                "width": "145px",
+                "min_width": "130px",
+                "render_type": "text",
+            },
+        ]
+        if slug == "pc":
+            spec_cols.append(
+                {
+                    "key": "monitor",
+                    "header": "MONITOR",
+                    "width": "155px",
+                    "min_width": "135px",
+                    "render_type": "text",
+                }
+            )
+    elif slug == "monitor":
+        spec_cols = [
+            {
+                "key": "ukuran_layar_display",
+                "header": "UKURAN",
+                "width": "105px",
+                "min_width": "95px",
+                "render_type": "text",
+                "sortable": True,
+                "sort_key": "ukuran_layar",
+            },
+            {
+                "key": "resolusi_layar",
+                "header": "RESOLUSI",
+                "width": "135px",
+                "min_width": "120px",
+                "render_type": "text",
+            },
+            {
+                "key": "konektivitas",
+                "header": "KONEKTIVITAS",
+                "width": "165px",
+                "min_width": "145px",
+                "render_type": "chips",
+            },
+        ]
+    elif slug == "ups":
+        spec_cols = [
+            {
+                "key": "kapasitas_va",
+                "header": "KAPASITAS VA",
+                "width": "130px",
+                "min_width": "115px",
+                "render_type": "text",
+            },
+        ]
+
+    tail_cols: list[ColumnDef] = [
+        {
+            "key": "status",
+            "header": "STATUS",
+            "width": "130px",
+            "min_width": "115px",
+            "render_type": "status_badge",
+        },
+        {
+            "key": "kondisi",
+            "header": "KONDISI",
+            "width": "120px",
+            "min_width": "105px",
+            "render_type": "condition_badge",
+        },
+        {
+            "key": "terkait_chips",
+            "header": "TERKAIT",
+            "width": "210px",
+            "min_width": "180px",
+            "render_type": "chips",
+        },
+    ]
+    return [*base_cols, *spec_cols, *tail_cols]
 
 
 def build_column_toggle_options(slug: str) -> list[ColumnToggleOption]:

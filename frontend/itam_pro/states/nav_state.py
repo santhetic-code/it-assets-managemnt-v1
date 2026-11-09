@@ -7,7 +7,7 @@ from typing import Any
 
 import reflex as rx
 
-from itam_pro.services.router_utils import get_current_raw_path
+from itam_pro.services.router_utils import get_current_params, get_current_raw_path
 
 
 class NavState(rx.State):
@@ -28,6 +28,19 @@ class NavState(rx.State):
             raw = "/dashboard"
         clean = raw.split("?", 1)[0].split("#", 1)[0].rstrip("/")
         return clean if clean else "/dashboard"
+
+    @rx.var(cache=True)
+    def active_nav_target(self) -> str:
+        """Kembalikan target navigasi spesifik termasuk ?category=... saat berada di /assets."""
+        path = self.active_path
+        params = get_current_params(self.router)
+        cat = str(params.get("category") or params.get("slug") or "").strip().lower()
+        if path.startswith("/assets/c/"):
+            cat = path.split("/assets/c/", 1)[1].strip("/").lower()
+            path = "/assets"
+        if path == "/assets" and cat in ("pc", "server", "monitor", "ups"):
+            return f"/assets?category={cat}"
+        return path
 
     @rx.event
     def toggle_mobile_drawer(self) -> None:

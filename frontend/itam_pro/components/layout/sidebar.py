@@ -16,12 +16,17 @@ from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Si
 def _nav_link_item(
     label: str,
     href: str,
-    icon_tag: str,
+    icon_tag: str | None = None,
     badge_count: Any | None = None,
     is_mobile: bool = False,
+    indented: bool = False,
 ) -> rx.Component:
-    """Render satu baris menu sidebar dengan navigasi SPA (rx.link)."""
-    is_active = NavState.active_path == href
+    """Render satu baris menu sidebar dengan pencocokan active_nav_target yang presisi."""
+    is_active = (
+        (NavState.active_path == "/assets")
+        if href == "/assets"
+        else (NavState.active_nav_target == href)
+    )
     link_props: dict[str, Any] = {}
     if is_mobile:
         link_props["on_click"] = NavState.close_mobile_drawer
@@ -33,10 +38,12 @@ def _nav_link_item(
                     tag=icon_tag,
                     size=Size.ICON_MD,
                     color=rx.cond(is_active, Color.WHITE, Color.SIDEBAR_TEXT),
-                ),
+                )
+                if icon_tag
+                else rx.fragment(),
                 rx.text(
                     label,
-                    font_size=FontSize.BASE,
+                    font_size=FontSize.SM if indented else FontSize.BASE,
                     font_weight=rx.cond(is_active, FontWeight.BOLD, FontWeight.MEDIUM),
                     color=rx.cond(is_active, Color.WHITE, Color.SIDEBAR_TEXT),
                 ),
@@ -71,10 +78,14 @@ def _nav_link_item(
         style=rx.Style(
             {
                 "width": "100%",
-                "padding": "10px 12px",
+                "padding": "8px 12px 8px 28px" if indented else "10px 12px",
                 "border_radius": Radius.CONTROL,
                 "text_decoration": "none",
-                "background_color": rx.cond(is_active, Color.ACCENT_BRIGHT, "transparent"),
+                "background_color": rx.cond(
+                    is_active,
+                    Color.SIDEBAR_HOVER if indented else Color.ACCENT_BRIGHT,
+                    "transparent",
+                ),
                 "display": "block",
                 "font_family": FONT_FAMILY,
                 "transition": "background-color 0.12s ease",
@@ -82,7 +93,11 @@ def _nav_link_item(
         ),
         _hover=rx.Style(
             {
-                "background_color": rx.cond(is_active, Color.ACCENT_BRIGHT, Color.SIDEBAR_HOVER),
+                "background_color": rx.cond(
+                    is_active,
+                    Color.SIDEBAR_HOVER if indented else Color.ACCENT_BRIGHT,
+                    Color.SIDEBAR_HOVER,
+                ),
             }
         ),
         **link_props,
@@ -108,11 +123,6 @@ def _sidebar_group(title: str, *items: rx.Component) -> rx.Component:
 
 def sidebar_content(is_mobile: bool = False) -> rx.Component:
     """Isi navigasi sidebar 7 grup menu."""
-    icon_map = {
-        "pc": "monitor-speaker",
-        "monitor": "monitor",
-        "ups": "battery-charging",
-    }
     pinned_categories = get_pinned_categories()
 
     return rx.vstack(
@@ -149,7 +159,7 @@ def sidebar_content(is_mobile: bool = False) -> rx.Component:
             width="100%",
             padding="20px 16px 12px 16px",
         ),
-        # Daftar 7 Grup Menu
+        # Daftar Grup Menu
         rx.vstack(
             _sidebar_group(
                 "Overview",
@@ -160,17 +170,18 @@ def sidebar_content(is_mobile: bool = False) -> rx.Component:
                 _nav_link_item(
                     "Semua Aset",
                     "/assets",
-                    "boxes",
+                    "layout-grid",
                     badge_count=AssetState.sidebar_counts["all"],
                     is_mobile=is_mobile,
                 ),
                 *[
                     _nav_link_item(
                         cfg["name"],
-                        f"/assets/c/{cfg['slug']}",
-                        icon_map.get(cfg["slug"], "box"),
+                        f"/assets?category={cfg['slug']}",
+                        None,
                         badge_count=AssetState.sidebar_counts[cfg["slug"]],
                         is_mobile=is_mobile,
+                        indented=True,
                     )
                     for cfg in pinned_categories
                 ],
@@ -180,7 +191,6 @@ def sidebar_content(is_mobile: bool = False) -> rx.Component:
                 _nav_link_item(
                     "IP & Server (VM)", "/infrastructure/ip", "network", is_mobile=is_mobile
                 ),
-                _nav_link_item("Rekap Watt Server", "/watt-server", "zap", is_mobile=is_mobile),
             ),
             _sidebar_group(
                 "Operations",
@@ -190,6 +200,10 @@ def sidebar_content(is_mobile: bool = False) -> rx.Component:
                     "wrench",
                     is_mobile=is_mobile,
                 ),
+            ),
+            _sidebar_group(
+                "Laporan",
+                _nav_link_item("Rekap Watt Server", "/watt-server", "zap", is_mobile=is_mobile),
             ),
             _sidebar_group(
                 "Finance",

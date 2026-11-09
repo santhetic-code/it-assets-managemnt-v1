@@ -181,7 +181,11 @@ def get_watt_server_recap(
     tarif_per_kwh: float = Query(default=DEFAULT_TARIF_PER_KWH, gt=0),
 ) -> WattServerPageResponse:
     """Mengambil Rekap Watt Server & UPS yang diturunkan langsung dari tabel assets."""
-    all_assets = list(session.exec(select(Asset).order_by(col(Asset.id_aset).asc())).all())
+    all_assets = list(
+        session.exec(
+            select(Asset).where(col(Asset.deleted_at).is_(None)).order_by(col(Asset.id_aset).asc())
+        ).all()
+    )
     consumers, ups_items, by_location, tab_counts, summary = _build_power_analytics(
         all_assets,
         tarif_per_kwh=tarif_per_kwh,

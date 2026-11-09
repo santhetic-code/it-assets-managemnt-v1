@@ -3,7 +3,7 @@ Halaman Tunggal Generik Inventaris Aset ITAM Pro (Tahap 6c-1).
 Melayani route `/assets` (Semua Aset) dan `/assets/c/[slug]` (View per Kategori).
 """
 
-from typing import cast
+from typing import Any, cast
 
 import reflex as rx
 
@@ -18,7 +18,6 @@ from itam_pro.components.tables import (
 )
 from itam_pro.components.ui import (
     action_primary_button,
-    app_tabs,
     detail_drawer,
     secondary_button,
 )
@@ -31,37 +30,60 @@ from itam_pro.styles import Color, FontSize, FontWeight, Radius, Space
 
 ALL_ASSETS_COLUMNS = build_table_columns_for_slug("")
 PC_VIEW_COLUMNS = build_table_columns_for_slug("pc")
+SERVER_VIEW_COLUMNS = build_table_columns_for_slug("server")
 MONITOR_VIEW_COLUMNS = build_table_columns_for_slug("monitor")
+UPS_VIEW_COLUMNS = build_table_columns_for_slug("ups")
 
 ALL_ASSETS_COL_OPTIONS = build_column_toggle_options("")
 PC_COL_OPTIONS = build_column_toggle_options("pc")
+SERVER_COL_OPTIONS = build_column_toggle_options("server")
 MONITOR_COL_OPTIONS = build_column_toggle_options("monitor")
+UPS_COL_OPTIONS = build_column_toggle_options("ups")
 
 
 def _inventory_header() -> rx.Component:
     return rx.box(
-        rx.vstack(
-            rx.heading(
-                AssetState.page_title,
-                font_size=FontSize.TITLE,
-                font_weight=FontWeight.EXTRABOLD,
-                color=Color.TEXT,
-                line_height="1.2",
-                letter_spacing="-0.02em",
+        rx.hstack(
+            rx.center(
+                rx.icon(tag="layout-grid", size=24, color=Color.WHITE),
+                width="48px",
+                height="48px",
+                background_color=Color.ACCENT_BRIGHT,
+                border_radius=Radius.CARD,
+                flex_shrink="0",
             ),
-            rx.text(
-                AssetState.page_subtitle,
-                font_size=FontSize.BASE,
-                font_weight=FontWeight.REGULAR,
-                color=Color.MUTED,
+            rx.vstack(
+                rx.heading(
+                    AssetState.page_title,
+                    font_size=FontSize.TITLE,
+                    font_weight=FontWeight.EXTRABOLD,
+                    color=Color.TEXT,
+                    line_height="1.2",
+                    letter_spacing="-0.02em",
+                ),
+                rx.text(
+                    (
+                        "Satu daftar induk untuk seluruh aset perusahaan. "
+                        "Halaman kategori hanyalah filter dari sini."
+                    ),
+                    font_size=FontSize.BASE,
+                    font_weight=FontWeight.REGULAR,
+                    color=Color.MUTED,
+                ),
+                spacing="1",
+                align="start",
             ),
-            spacing="1",
-            align="start",
+            spacing="3",
+            align="center",
         ),
         rx.hstack(
             secondary_button(
                 label="Export",
                 on_click=rx.toast.info("Fitur Export sedang disiapkan"),
+            ),
+            secondary_button(
+                label="Import",
+                on_click=rx.toast.info("Fitur Import Aset sedang disiapkan"),
             ),
             action_primary_button(
                 label=AssetState.add_button_label,
@@ -81,6 +103,256 @@ def _inventory_header() -> rx.Component:
                 "gap": Space.S4,
             }
         ),
+    )
+
+
+def _kpi_filter_card(
+    card_key: str,
+    title: str,
+    count_val: rx.Var,
+    subtitle: str,
+    action_text: str,
+    icon_tag: str,
+    icon_color: str,
+    icon_bg: str,
+) -> rx.Component:
+    is_selected = AssetState.active_kpi_card == card_key
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.center(
+                    rx.icon(
+                        tag=icon_tag,
+                        size=16,
+                        color=rx.cond(is_selected, Color.WHITE, icon_color),
+                    ),
+                    width="30px",
+                    height="30px",
+                    border_radius="8px",
+                    background_color=rx.cond(is_selected, "rgba(255,255,255,0.18)", icon_bg),
+                ),
+                rx.text(
+                    title,
+                    font_size=FontSize.GROUP_LABEL,
+                    font_weight=FontWeight.BOLD,
+                    color=rx.cond(is_selected, "rgba(255,255,255,0.85)", Color.MUTED),
+                    letter_spacing="0.06em",
+                ),
+                spacing="2",
+                align="center",
+            ),
+            rx.text(
+                count_val,
+                font_size="30px",
+                font_weight=FontWeight.EXTRABOLD,
+                color=rx.cond(is_selected, Color.WHITE, Color.TEXT),
+                line_height="1.1",
+            ),
+            rx.text(
+                subtitle,
+                font_size=FontSize.XS,
+                color=rx.cond(is_selected, "rgba(255,255,255,0.8)", Color.MUTED),
+            ),
+            rx.text(
+                action_text,
+                font_size=FontSize.XS,
+                font_weight=FontWeight.BOLD,
+                color=rx.cond(is_selected, Color.WHITE, Color.ACCENT),
+                padding_top="4px",
+            ),
+            spacing="2",
+            align="start",
+            width="100%",
+        ),
+        on_click=AssetState.select_kpi_card(card_key),
+        style=rx.Style(
+            {
+                "padding": "18px 20px",
+                "border_radius": Radius.CARD,
+                "background_color": rx.cond(is_selected, Color.BACKUP_FG, Color.SURFACE),
+                "border": rx.cond(
+                    is_selected,
+                    f"2px solid {Color.BACKUP_FG}",
+                    f"1px solid {Color.BORDER}",
+                ),
+                "cursor": "pointer",
+                "transition": "all 0.15s ease",
+            }
+        ),
+    )
+
+
+def _four_kpi_cards_row() -> rx.Component:
+    """Empat kartu KPI yang bisa diklik sesuai Artboard 10."""
+    return rx.box(
+        _kpi_filter_card(
+            "total",
+            "TOTAL ASET",
+            AssetState.summary_counts["total"],
+            "di semua kategori",
+            "Lihat semua →",
+            "layout-grid",
+            Color.ACCENT,
+            Color.INFO_BG,
+        ),
+        _kpi_filter_card(
+            "attention",
+            "PERLU PERHATIAN",
+            AssetState.summary_counts["perlu_perhatian"],
+            "Rusak atau dalam perbaikan",
+            "Lihat daftar →",
+            "triangle-alert",
+            Color.DANGER_FG,
+            Color.DANGER_BG,
+        ),
+        _kpi_filter_card(
+            "warranty",
+            "GARANSI SEGERA HABIS",
+            AssetState.summary_counts["garansi_segera_habis"],
+            "Berakhir ≤ 30 hari",
+            "Lihat daftar →",
+            "clock",
+            Color.WARNING_FG,
+            Color.WARNING_BG,
+        ),
+        _kpi_filter_card(
+            "no_purchase",
+            "BELUM TERHUBUNG PEMBELIAN",
+            AssetState.summary_counts["belum_terhubung_pembelian"],
+            "Belum punya invoice sumber",
+            "Lengkapi data →",
+            "receipt",
+            Color.ACCENT,
+            Color.INFO_BG,
+        ),
+        style=rx.Style(
+            {
+                "width": "100%",
+                "display": "grid",
+                "grid_template_columns": "repeat(auto-fit, minmax(220px, 1fr))",
+                "gap": Space.S4,
+            }
+        ),
+    )
+
+
+def _category_group_chip(group_key: str, label: str, icon_tag: str, count_key: str) -> rx.Component:
+    is_active = AssetState.active_group == group_key
+    return rx.box(
+        rx.hstack(
+            rx.center(
+                rx.icon(tag=icon_tag, size=16, color=Color.ACCENT),
+                width="32px",
+                height="32px",
+                border_radius="8px",
+                background_color=Color.INFO_BG,
+            ),
+            rx.vstack(
+                rx.text(
+                    label,
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.BOLD,
+                    color=Color.TEXT,
+                    line_height="1.15",
+                ),
+                rx.text(
+                    f"{AssetState.sidebar_counts[count_key]} aset",
+                    font_size=FontSize.XS,
+                    color=Color.MUTED,
+                ),
+                spacing="1",
+                align="start",
+            ),
+            spacing="3",
+            align="center",
+        ),
+        on_click=AssetState.select_category_group(group_key),
+        style=rx.Style(
+            {
+                "padding": "10px 14px",
+                "border_radius": Radius.CARD,
+                "background_color": Color.SURFACE,
+                "border": rx.cond(
+                    is_active,
+                    f"2px solid {Color.ACCENT_BRIGHT}",
+                    f"1px solid {Color.BORDER}",
+                ),
+                "cursor": "pointer",
+            }
+        ),
+    )
+
+
+def _subcategory_pill(slug_val: str, label: str, count_var: Any) -> rx.Component:
+    is_active = AssetState.current_slug == slug_val
+    return rx.box(
+        rx.text(
+            f"{label} {count_var}",
+            font_size=FontSize.XS,
+            font_weight=FontWeight.BOLD,
+            color=rx.cond(is_active, Color.ACCENT, Color.TEXT),
+        ),
+        on_click=AssetState.select_subcategory(slug_val),
+        style=rx.Style(
+            {
+                "padding": "6px 14px",
+                "border_radius": Radius.FULL,
+                "background_color": rx.cond(is_active, Color.INFO_BG, Color.SURFACE),
+                "border": rx.cond(
+                    is_active,
+                    f"1px solid {Color.ACCENT}",
+                    f"1px solid {Color.BORDER}",
+                ),
+                "cursor": "pointer",
+            }
+        ),
+    )
+
+
+def _category_hierarchy_bars() -> rx.Component:
+    """Baris kategori utama dan subkategori sesuai Artboard 10."""
+    return rx.vstack(
+        rx.box(
+            _category_group_chip("all", "Semua", "layout-grid", "all"),
+            _category_group_chip("perangkat-it", "Perangkat IT", "monitor", "perangkat-it"),
+            _category_group_chip(
+                "komponen-periferal", "Komponen & Periferal", "cpu", "komponen-periferal"
+            ),
+            _category_group_chip("jaringan", "Jaringan", "network", "jaringan"),
+            _category_group_chip("kendaraan", "Kendaraan", "car", "kendaraan"),
+            _category_group_chip(
+                "peralatan-kantor", "Peralatan Kantor", "air-vent", "peralatan-kantor"
+            ),
+            _category_group_chip("furnitur", "Furnitur", "armchair", "furnitur"),
+            _category_group_chip("lainnya", "Lainnya", "box", "lainnya"),
+            style=rx.Style(
+                {
+                    "width": "100%",
+                    "display": "grid",
+                    "grid_template_columns": "repeat(auto-fit, minmax(145px, 1fr))",
+                    "gap": "10px",
+                }
+            ),
+        ),
+        rx.hstack(
+            rx.text(
+                "Perangkat IT ›",
+                font_size=FontSize.XS,
+                font_weight=FontWeight.SEMIBOLD,
+                color=Color.MUTED,
+            ),
+            _subcategory_pill("", "Semua Perangkat IT", AssetState.sidebar_counts["perangkat-it"]),
+            _subcategory_pill("pc", "PC & Laptop", AssetState.sidebar_counts["pc"]),
+            _subcategory_pill("server", "Server", AssetState.sidebar_counts["server"]),
+            _subcategory_pill("monitor", "Monitor", AssetState.sidebar_counts["monitor"]),
+            _subcategory_pill("ups", "UPS", AssetState.sidebar_counts["ups"]),
+            spacing="2",
+            align="center",
+            wrap="wrap",
+            width="100%",
+        ),
+        spacing="3",
+        width="100%",
     )
 
 
@@ -278,7 +550,7 @@ def _filter_bar_by_slug() -> rx.Component:
 
 
 def _table_by_slug() -> rx.Component:
-    """Render `reusable_data_table` tunggal dengan preset kolom dari `category_config`."""
+    """Render reusable_data_table dengan kolom dasar + kolom schema kategori."""
 
     def _build_table(cols: list) -> rx.Component:
         return reusable_data_table(
@@ -311,26 +583,21 @@ def _table_by_slug() -> rx.Component:
         rx.match(
             AssetState.current_slug,
             ("pc", _build_table(PC_VIEW_COLUMNS)),
+            ("server", _build_table(SERVER_VIEW_COLUMNS)),
             ("monitor", _build_table(MONITOR_VIEW_COLUMNS)),
+            ("ups", _build_table(UPS_VIEW_COLUMNS)),
             _build_table(ALL_ASSETS_COLUMNS),
         ),
     )
 
 
 def assets_view_page() -> rx.Component:
-    """Halaman generik untuk `/assets` dan `/assets/c/[slug]`."""
+    """Halaman Semua Aset (/assets) dengan 4 Kartu KPI dan Tabel Satu Data Induk."""
     content = rx.vstack(
         _inventory_header(),
+        _four_kpi_cards_row(),
+        _category_hierarchy_bars(),
         rx.box(
-            rx.cond(
-                AssetState.has_tabs,
-                app_tabs(
-                    tabs=AssetState.current_tabs,
-                    active_tab=AssetState.active_tab,
-                    on_change=AssetState.set_tab,
-                ),
-                rx.fragment(),
-            ),
             _filter_bar_by_slug(),
             _table_by_slug(),
             table_pagination(

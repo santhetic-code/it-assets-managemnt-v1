@@ -46,7 +46,7 @@ def get_dashboard_overview(
     today = date.today()
 
     # 1. Aset & Daya
-    all_assets = list(session.exec(select(Asset)).all())
+    all_assets = list(session.exec(select(Asset).where(col(Asset.deleted_at).is_(None))).all())
     _, asset_sum, _ = compute_asset_summary(session)
     _, _, _, _, power_sum = _build_power_analytics(
         all_assets,
@@ -273,11 +273,13 @@ def get_dashboard_overview(
     ]
 
     # Distribusi kategori format frontend
-    pc_srv_count = cat_counts.get("PC", 0) + cat_counts.get("Server", 0)
+    pc_only_count = cat_counts.get("PC", 0) + cat_counts.get("Laptop", 0)
+    srv_only_count = cat_counts.get("Server", 0)
     mon_count = cat_counts.get("Monitor", 0)
     ups_count = cat_counts.get("UPS", 0)
     assets_by_category_fe = [
-        {"name": "PC & Server", "count": pc_srv_count, "category_key": "pc"},
+        {"name": "PC & Laptop", "count": pc_only_count, "category_key": "pc"},
+        {"name": "Server", "count": srv_only_count, "category_key": "server"},
         {"name": "Monitor", "count": mon_count, "category_key": "monitor"},
         {"name": "UPS", "count": ups_count, "category_key": "ups"},
     ]

@@ -17,9 +17,15 @@ from typing import Any
 
 from sqlmodel import Session, col, select
 
-from app.core.master_data import LOCATION_ALIASES, LOCATIONS
+from app.core.master_data import (
+    CATEGORY_TREE,
+    LOCATION_ALIASES,
+    LOCATIONS,
+    normalize_asset_condition,
+    normalize_asset_status,
+)
 from app.core.security import encrypt_secret
-from app.models.asset import Asset
+from app.models.asset import Asset, AssetLink, Category
 from app.models.credential import Credential
 from app.models.finance import Purchase
 from app.models.ip_allocation import IPAllocation
@@ -1012,6 +1018,105 @@ def _seed_initial_operational_records(session: Session) -> None:
         session.commit()
 
 
+def _sync_master_categories_and_links(session: Session) -> None:
+    """Memastikan tabel categories terisi dan 77 aset memiliki category_id & relasi."""
+    existing_cats = list(session.exec(select(Category)).all())
+    cat_map: dict[str, int] = {c.nama.lower(): c.id for c in existing_cats if c.id is not None}
+    cat_map.update({c.kode.lower(): c.id for c in existing_cats if c.id is not None})
+
+    if not cat_map:
+        for grp in CATEGORY_TREE:
+            parent = Category(
+                parent_id=None,
+                kode=grp["kode"],
+                nama=grp["nama"],
+                ikon=grp["ikon"],
+                tracking=grp["tracking"],
+                spec_schema={},
+            )
+            session.add(parent)
+            session.flush()
+            for sub in grp.get("children", []):
+                child = Category(
+                    parent_id=parent.id,
+                    kode=sub["kode"],
+                    nama=sub["nama"],
+                    ikon=sub["ikon"],
+                    tracking=sub["tracking"],
+                    spec_schema=sub.get("spec_schema", {}),
+                )
+                session.add(child)
+                session.flush()
+                if child.id is not None:
+                    cat_map[sub["nama"].lower()] = child.id
+                    cat_map[sub["kode"].lower()] = child.id
+        session.commit()
+
+    all_assets = list(session.exec(select(Asset)).all())
+    servers = [a for a in all_assets if a.kategori.lower() == "server"]
+    pcs = [a for a in all_assets if a.kategori.lower() == "pc"]
+
+    # Tautkan Monitor yang Digunakan ke PC (PC-003, PC-016, PC-001) bila belum punya parent_asset_id
+    monitors_used = [
+        a
+        for a in all_assets
+        if a.kategori.lower() == "monitor" and normalize_asset_status(a.status) == "Digunakan"
+    ]
+    preferred_pc_tags = ["PC-003", "PC-016", "PC-001"]
+    pc_by_tag = {p.id_aset: p for p in pcs}
+
+    for idx, mon in enumerate(monitors_used):
+        if not mon.parent_asset_id:
+            target_tag = (
+                preferred_pc_tags[idx]
+                if idx < len(preferred_pc_tags) and preferred_pc_tags[idx] in pc_by_tag
+                else (pcs[idx].id_aset if idx < len(pcs) else None)
+            )
+            if target_tag:
+                mon.parent_asset_id = target_tag
+                mon.penanggung_jawab = f"Terpasang di {target_tag}"
+                mon.pemakai_text = f"Terpasang di {target_tag}"
+
+    for a in all_assets:
+        a.asset_tag = a.id_aset
+        a.nama = a.nama_aset
+        a.status = normalize_asset_status(a.status)
+        a.kondisi = normalize_asset_condition(a.kondisi)
+        a.category_id = cat_map.get(a.kategori.lower()) or cat_map.get("ast")
+        a.pemakai_text = a.penanggung_jawab
+        if not a.tanggal_perolehan and a.tanggal_masuk:
+            a.tanggal_perolehan = a.tanggal_masuk
+        if not a.peran:
+            a.peran = (
+                "Server"
+                if a.kategori.lower() == "server"
+                else ("Backup" if a.status == "Cadangan" else "Operasional")
+            )
+
+        # Tautkan UPS ke Server melalui asset_links (Seksi 4.4 & 15.4)
+        if a.kategori.lower() == "ups" and a.beban_perangkat:
+            matched_srv = _match_server_asset(a.beban_perangkat, servers)
+            if matched_srv:
+                a.penanggung_jawab = f"Menyuplai {matched_srv.nama_aset}"
+                a.pemakai_text = a.penanggung_jawab
+                existing_link = session.exec(
+                    select(AssetLink).where(
+                        col(AssetLink.asset_id) == a.id_aset,
+                        col(AssetLink.linked_asset_id) == matched_srv.id_aset,
+                    )
+                ).first()
+                if existing_link is None:
+                    session.add(
+                        AssetLink(
+                            asset_id=a.id_aset,
+                            linked_asset_id=matched_srv.id_aset,
+                            tipe="menyuplai_daya",
+                        )
+                    )
+        session.add(a)
+    session.commit()
+
+
 def import_all_csv_data(
     session: Session,
     data_dir: Path | str | None = None,
@@ -1026,6 +1131,7 @@ def import_all_csv_data(
     ip_count = import_ip_list_csv(session, folder / "ip_list_xml.csv")
     purchase_count = import_purchases_csv(session, folder / "rekap_pembelian.csv")
     _seed_initial_operational_records(session)
+    _sync_master_categories_and_links(session)
 
     total_imported = ups_count + server_count + ip_count + purchase_count
 

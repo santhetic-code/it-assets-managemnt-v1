@@ -1,6 +1,6 @@
 """Daftarkan SEMUA model di sini agar terbaca oleh Alembic (autogenerate)."""
 
-from app.models.asset import Asset
+from app.models.asset import Asset, AssetLink, AssetMovement, Category
 from app.models.audit import AuditLog
 from app.models.base import NAMING_CONVENTION, TimestampMixin, utcnow
 from app.models.credential import (
@@ -19,7 +19,10 @@ from app.models.user import User, UserRole
 __all__ = [
     "NAMING_CONVENTION",
     "Asset",
+    "AssetLink",
+    "AssetMovement",
     "AuditLog",
+    "Category",
     "Credential",
     "CredentialACL",
     "CredentialType",
