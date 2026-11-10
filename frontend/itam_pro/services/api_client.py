@@ -782,6 +782,477 @@ class APIClient:
         )
         return True
 
+    async def get_asset_full_detail(
+        self,
+        asset_id: str,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Ambil detail lengkap satu aset beserta relasi lintas modul untuk /assets/[id]."""
+        clean_id = asset_id.strip().upper()
+        if not USE_MOCK:
+            try:
+                res = await self.request(
+                    method="GET",
+                    endpoint=f"/api/v1/assets/{clean_id}/full-detail",
+                    token=token,
+                )
+                if isinstance(res, dict):
+                    return res
+            except ServiceUnavailableError:
+                pass
+
+        from itam_pro.services.mock.seed import MOCK_ASSETS, flatten_asset_row
+
+        raw_item = next(
+            (a for a in MOCK_ASSETS if str(a.get("id_aset", "")).upper() == clean_id),
+            None,
+        )
+        if not raw_item:
+            return {}
+        flat = flatten_asset_row(raw_item)
+        child_mons = [
+            {
+                "id_aset": str(m["id_aset"]),
+                "nama_aset": str(m["nama_aset"]),
+                "summary": f"{m['id_aset']} — {m['nama_aset']} — 24\" FHD",
+            }
+            for m in MOCK_ASSETS
+            if m.get("parent_asset_id") == clean_id and m.get("kategori") == "Monitor"
+        ]
+        parent_id = raw_item.get("parent_asset_id")
+        parent_obj = (
+            next((a for a in MOCK_ASSETS if a.get("id_aset") == parent_id), None)
+            if parent_id
+            else None
+        )
+        power_links = [
+            {
+                "id_aset": str(u["id_aset"]),
+                "nama_aset": str(u["nama_aset"]),
+                "kategori": str(u["kategori"]),
+                "summary": f"{u['id_aset']} — {u['nama_aset']}",
+            }
+            for u in MOCK_ASSETS
+            if (
+                u.get("kategori") == "UPS"
+                and str(raw_item.get("nama_aset", "")).upper()
+                in str(u.get("digunakan_oleh", "")).upper()
+                and raw_item.get("kategori") == "Server"
+            )
+        ]
+        ips = [
+            {
+                "id": 1,
+                "ip_address": "192.168.1.31" if clean_id == "PC-003" else "192.168.1.10",
+                "nama_perangkat": str(flat.get("nama_aset", "")),
+                "is_vm": False,
+                "status": "Aktif",
+                "summary": (
+                    "192.168.1.31 — Aktif" if clean_id == "PC-003" else "192.168.1.10 — Aktif"
+                ),
+            }
+        ]
+        creds = (
+            [
+                {
+                    "kode_kredensial": "CRD-001",
+                    "nama": str(flat.get("nama_aset")),
+                    "jenis": "PC",
+                    "username": "user",
+                },
+                {
+                    "kode_kredensial": "CRD-002",
+                    "nama": f"Radmin {flat.get('nama_aset')}",
+                    "jenis": "Radmin",
+                    "username": "admin",
+                },
+            ]
+            if flat.get("kategori") in ("PC", "Server")
+            else []
+        )
+        movements = list(
+            raw_item.get("movements")
+            or [
+                {
+                    "id": 1,
+                    "jenis": "serah_terima",
+                    "dari": "Gudang IT",
+                    "ke": f"{flat.get('digunakan_oleh', '—')} ({flat.get('lokasi', '—')})",
+                    "alasan": "Penempatan awal",
+                    "catatan": str(flat.get("catatan", "")),
+                    "tanggal": str(flat.get("tanggal_masuk_gudang") or "2025-03-10"),
+                    "oleh": "admin",
+                }
+            ]
+        )
+
+        comp_installed = [
+            {
+                "id_aset": str(c.get("id_aset")),
+                "komponen": str(c.get("kategori")),
+                "spesifikasi": (
+                    f"{c.get('kategori')} {c.get('attributes', {}).get('tipe', '')} "
+                    f"{c.get('attributes', {}).get('kapasitas_gb', '')} GB"
+                ).strip(),
+                "slot": str(c.get("attributes", {}).get("slot", "—")),
+                "dipasang_sejak": str(c.get("attributes", {}).get("dipasang_sejak", "—")),
+                "parent_asset_id": str(c.get("parent_asset_id", "")),
+                "data_status": str(c.get("attributes", {}).get("data_status", "Kosong")),
+            }
+            for c in MOCK_ASSETS
+            if str(c.get("parent_asset_id", "")).upper() == clean_id
+            and str(c.get("kategori", "")).lower() in ("ram", "ssd", "hdd", "vga", "psu")
+        ]
+        comp_spares = [
+            {
+                "id_aset": str(c.get("id_aset")),
+                "komponen": str(c.get("kategori")),
+                "spesifikasi": (
+                    f"{c.get('kategori')} {c.get('attributes', {}).get('tipe', '')} "
+                    f"{c.get('attributes', {}).get('kapasitas_gb', '')} GB"
+                ).strip(),
+                "slot": str(c.get("attributes", {}).get("slot", "—")),
+                "dipasang_sejak": str(c.get("attributes", {}).get("dipasang_sejak", "—")),
+                "parent_asset_id": "",
+                "data_status": str(c.get("attributes", {}).get("data_status", "Kosong")),
+            }
+            for c in MOCK_ASSETS
+            if not c.get("parent_asset_id")
+            and str(c.get("lokasi", "")).lower() == "gudang"
+            and str(c.get("kategori", "")).lower() in ("ram", "ssd", "hdd", "vga", "psu")
+        ]
+        pc_targets = [
+            f"{c.get('id_aset')} — {c.get('nama_aset')}"
+            for c in MOCK_ASSETS
+            if str(c.get("id_aset", "")).upper() != clean_id
+            and str(c.get("kategori", "")).lower() in ("pc", "laptop", "server")
+        ]
+        total_ram_gb = sum(
+            int(c.get("attributes", {}).get("kapasitas_gb") or 0)
+            for c in MOCK_ASSETS
+            if str(c.get("parent_asset_id", "")).upper() == clean_id
+            and str(c.get("kategori", "")).lower() == "ram"
+        )
+        ram_mods = sum(
+            1
+            for c in MOCK_ASSETS
+            if str(c.get("parent_asset_id", "")).upper() == clean_id
+            and str(c.get("kategori", "")).lower() == "ram"
+        )
+        total_storage_gb = sum(
+            int(c.get("attributes", {}).get("kapasitas_gb") or 0)
+            for c in MOCK_ASSETS
+            if str(c.get("parent_asset_id", "")).upper() == clean_id
+            and str(c.get("kategori", "")).lower() in ("ssd", "hdd", "ssd/hdd")
+        )
+        storage_disks = sum(
+            1
+            for c in MOCK_ASSETS
+            if str(c.get("parent_asset_id", "")).upper() == clean_id
+            and str(c.get("kategori", "")).lower() in ("ssd", "hdd", "ssd/hdd")
+        )
+        is_comp_tracked = len(comp_installed) > 0
+        ram_chip = (
+            f"RAM total {total_ram_gb} GB · {ram_mods} modul"
+            if total_ram_gb > 0
+            else f"RAM {flat.get('ram') or '—'}"
+        )
+        storage_chip = (
+            f"Storage total {total_storage_gb} GB · {storage_disks} disk"
+            if total_storage_gb > 0
+            else f"Storage {flat.get('storage') or '—'}"
+        )
+
+        return {
+            "asset": flat,
+            "relations": {
+                "monitors": child_mons,
+                "parent_asset": (
+                    {
+                        "id_aset": str(parent_obj["id_aset"]),
+                        "nama_aset": str(parent_obj["nama_aset"]),
+                        "kategori": str(parent_obj["kategori"]),
+                    }
+                    if parent_obj
+                    else None
+                ),
+                "power_links": power_links,
+                "ips": ips,
+                "credentials": creds,
+                "credentials_summary": (
+                    "2 entri (PC, Radmin) · sesuai hak akses Anda"
+                    if creds
+                    else "Belum ada kredensial tertaut"
+                ),
+                "purchase": (
+                    {
+                        "kode_pembelian": "PO-001",
+                        "nomor_invoice": "INV-PO-001",
+                        "nama_item": str(flat.get("nama_aset", "")),
+                        "vendor": "Toko Resmi IT",
+                        "harga_satuan": 6500000,
+                        "tanggal_beli": str(flat.get("tanggal_masuk_gudang") or "2025-03-10"),
+                    }
+                    if raw_item.get("purchase_item_id")
+                    else None
+                ),
+                "maintenances": [],
+            },
+            "movements": movements,
+            "components": {
+                "is_tracked": is_comp_tracked,
+                "ram_summary_chip": ram_chip,
+                "storage_summary_chip": storage_chip,
+                "installed": comp_installed,
+                "spares": comp_spares,
+                "pc_targets": pc_targets,
+            },
+        }
+
+    async def handover_asset(
+        self,
+        asset_id: str,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Simpan serah terima atau pindah lokasi aset ke asset_movements."""
+        if not USE_MOCK:
+            res = await self.request(
+                method="POST",
+                endpoint=f"/api/v1/assets/{asset_id.strip()}/handover",
+                token=token,
+                json_data=payload,
+            )
+            return res if isinstance(res, dict) else {}
+
+        from itam_pro.services.mock.seed import MOCK_ASSETS
+
+        for item in MOCK_ASSETS:
+            if str(item.get("id_aset", "")).upper() == asset_id.strip().upper():
+                old_u = item.get("digunakan_oleh") or "—"
+                old_l = item.get("lokasi") or "—"
+                if payload.get("pengguna_baru"):
+                    item["digunakan_oleh"] = payload["pengguna_baru"]
+                if payload.get("lokasi_baru"):
+                    item["lokasi"] = payload["lokasi_baru"]
+                if payload.get("status_baru"):
+                    item["status"] = payload["status_baru"]
+                mvs = list(item.get("movements") or [])
+                mvs.insert(
+                    0,
+                    {
+                        "id": len(mvs) + 1,
+                        "jenis": payload.get("jenis", "serah_terima"),
+                        "dari": f"{old_u} ({old_l})",
+                        "ke": f"{item.get('digunakan_oleh')} ({item.get('lokasi')})",
+                        "alasan": payload.get("alasan", "Serah terima"),
+                        "catatan": payload.get("catatan", ""),
+                        "tanggal": payload.get("tanggal", "2026-11-09"),
+                        "oleh": "admin",
+                    },
+                )
+                item["movements"] = mvs
+                break
+        return {"status": "ok"}
+
+    async def link_asset_relation(
+        self,
+        asset_id: str,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Tautkan atau lepas relasi antar aset (Monitor <-> PC atau UPS <-> Server)."""
+        if not USE_MOCK:
+            res = await self.request(
+                method="POST",
+                endpoint=f"/api/v1/assets/{asset_id.strip()}/links",
+                token=token,
+                json_data=payload,
+            )
+            return res if isinstance(res, dict) else {}
+
+        from itam_pro.services.mock.seed import MOCK_ASSETS
+
+        src_id = asset_id.strip().upper()
+        tgt_id = str(payload.get("target_asset_id") or "").strip().upper()
+        act = str(payload.get("action") or "link").lower()
+        for item in MOCK_ASSETS:
+            if (
+                str(item.get("id_aset", "")).upper() == tgt_id
+                and item.get("kategori") == "Monitor"
+            ):
+                item["parent_asset_id"] = None if act == "unlink" else src_id
+                item["digunakan_oleh"] = "—" if act == "unlink" else f"Terpasang di {src_id}"
+                item["status"] = "Cadangan" if act == "unlink" else "Digunakan"
+        return {"status": "ok"}
+
+    async def preview_component_impact(
+        self,
+        component_id: str,
+        action: str = "pindah",
+        target_pc_id: str = "",
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Hitung dampak pemindahan/pelepasan komponen pada PC asal & PC tujuan (Artboard 12)."""
+        if not USE_MOCK:
+            try:
+                res = await self.request(
+                    method="GET",
+                    endpoint=f"/api/v1/assets/{component_id.strip()}/components/preview-impact",
+                    token=token,
+                    params={"action": action, "target_pc_id": target_pc_id},
+                )
+                if isinstance(res, dict):
+                    return res
+            except ServiceUnavailableError:
+                pass
+
+        from itam_pro.services.mock.seed import MOCK_ASSETS
+
+        comp = next((a for a in MOCK_ASSETS if a.get("id_aset") == component_id), None)
+        if not comp:
+            return {"impacts": [], "warning": "", "needs_wipe_confirmation": False}
+        attrs = comp.get("attributes") or {}
+        cap = int(attrs.get("kapasitas_gb") or 8)
+        is_ram = comp.get("kategori") == "RAM"
+        metric = "RAM" if is_ram else "Storage"
+        src_id = comp.get("parent_asset_id") or "PC-003"
+        tgt_clean = target_pc_id.split("—")[0].strip() if target_pc_id else "PC-016"
+        impacts = []
+        if comp.get("parent_asset_id"):
+            before_s = 16 if is_ram else 512
+            impacts.append(
+                {
+                    "label": f"{src_id} {metric}",
+                    "change": f"{before_s} GB -> {max(0, before_s - cap)} GB",
+                }
+            )
+        if action in ("pindah", "pasang") and tgt_clean:
+            before_t = 8 if is_ram else 256
+            impacts.append(
+                {
+                    "label": f"{tgt_clean} {metric}",
+                    "change": f"{before_t} GB -> {before_t + cap} GB",
+                }
+            )
+        return {
+            "impacts": impacts,
+            "warning": "",
+            "needs_wipe_confirmation": str(attrs.get("data_status", "")).lower() == "berisi data",
+        }
+
+    async def mutate_component(
+        self,
+        payload: dict[str, Any],
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Jalankan mutasi komponen (pasang, lepas, pindah, tandai_rusak) secara atomik."""
+        if not USE_MOCK:
+            res = await self.request(
+                method="POST",
+                endpoint="/api/v1/assets/components/mutate",
+                token=token,
+                json_data=payload,
+            )
+            return res if isinstance(res, dict) else {}
+
+        from itam_pro.services.mock.seed import MOCK_ASSETS
+
+        cid = str(payload.get("component_id") or "").strip().upper()
+        act = str(payload.get("action") or "pindah").strip().lower()
+        raw_tgt = str(payload.get("target_pc_id") or "").strip()
+        tgt_id = raw_tgt.split("—")[0].strip().upper() if raw_tgt else ""
+        comp = next((a for a in MOCK_ASSETS if str(a.get("id_aset", "")).upper() == cid), None)
+        if not comp:
+            return {"status": "error"}
+        attrs = dict(comp.get("attributes") or {})
+        if (
+            comp.get("kategori") in ("SSD", "HDD")
+            and attrs.get("data_status") == "Berisi data"
+            and act in ("pasang", "pindah")
+        ):
+            if not payload.get("confirm_wipe"):
+                raise Exception(
+                    f"Disk {cid} berstatus 'Berisi data'. "
+                    "Centang konfirmasi wipe sebelum memasang/memindahkan."
+                )
+            attrs["data_status"] = "Sudah di-wipe"
+
+        if act in ("pasang", "pindah") and tgt_id:
+            comp["parent_asset_id"] = tgt_id
+            comp["status"] = "Digunakan"
+            comp["digunakan_oleh"] = f"Terpasang di {tgt_id}"
+            attrs["slot"] = payload.get("slot") or attrs.get("slot") or "DIMM 2"
+            attrs["dipasang_sejak"] = "Nov 2026"
+        elif act == "lepas":
+            comp["parent_asset_id"] = None
+            comp["status"] = "Cadangan"
+            comp["lokasi"] = payload.get("lokasi") or "Gudang"
+            comp["digunakan_oleh"] = "Cadangan — Gudang"
+        elif act in ("rusak", "tandai_rusak"):
+            comp["parent_asset_id"] = None
+            comp["status"] = "Rusak"
+            comp["kondisi"] = "Rusak"
+            comp["digunakan_oleh"] = "Rusak — Gudang"
+        comp["attributes"] = attrs
+        return {"status": "ok"}
+
+    async def run_component_wizard(
+        self,
+        asset_id: str,
+        payload: dict[str, Any] | None = None,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Jalankan Wizard Konversi spesifikasi teks PC/Server menjadi komponen per unit."""
+        if not USE_MOCK:
+            res = await self.request(
+                method="POST",
+                endpoint=f"/api/v1/assets/{asset_id.strip()}/components/convert-wizard",
+                token=token,
+                json_data=payload or {},
+            )
+            return res if isinstance(res, dict) else {}
+
+        from itam_pro.services.mock.seed import create_mock_assets
+
+        p_id = asset_id.strip().upper()
+        create_mock_assets(
+            {
+                "nama_aset": "RAM DDR4 8 GB",
+                "kategori": "RAM",
+                "lokasi": "Head Office",
+                "status": "Digunakan",
+                "digunakan_oleh": f"Terpasang di {p_id}",
+                "parent_asset_id": p_id,
+                "attributes": {
+                    "tipe": "DDR4",
+                    "kapasitas_gb": 8,
+                    "slot": "DIMM 1",
+                    "dipasang_sejak": "Nov 2026",
+                },
+            },
+            count=2,
+        )
+        create_mock_assets(
+            {
+                "nama_aset": "SSD NVMe 512 GB",
+                "kategori": "SSD",
+                "lokasi": "Head Office",
+                "status": "Digunakan",
+                "digunakan_oleh": f"Terpasang di {p_id}",
+                "parent_asset_id": p_id,
+                "attributes": {
+                    "tipe": "NVMe",
+                    "kapasitas_gb": 512,
+                    "slot": "M.2",
+                    "dipasang_sejak": "Nov 2026",
+                    "data_status": "Berisi data",
+                },
+            },
+            count=1,
+        )
+        return {"status": "ok"}
+
     def check_sn_duplicate_sync(self, sn_pid: str, exclude_id: str = "") -> str | None:
         return find_sn_duplicate(sn_pid=sn_pid, exclude_id=exclude_id)
 
@@ -1325,22 +1796,24 @@ class APIClient:
     async def convert_purchase_to_asset(
         self,
         id_pembelian: str,
-        payload: dict[str, str],
-    ) -> bool:
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
         if USE_MOCK:
-            action_jadikan_aset(
+            codes = action_jadikan_aset(
                 id_pembelian,
-                payload["kategori"],
-                payload["kepemilikan"],
-                payload["lokasi"],
+                str(payload.get("kategori", "PC")),
+                str(payload.get("kepemilikan", "XML")),
+                str(payload.get("lokasi", "Head Office")),
+                jumlah_daftar=int(payload.get("jumlah", 1) or 1),
+                bukan_aset=bool(payload.get("bukan_aset", False)),
             )
-            return True
-        await self.request(
+            return {"created_assets": codes}
+        res = await self.request(
             "POST",
             f"/api/v1/purchases/{id_pembelian}/convert-to-asset",
             json_data=payload,
         )
-        return True
+        return res if isinstance(res, dict) else {}
 
     async def get_invoices(
         self,

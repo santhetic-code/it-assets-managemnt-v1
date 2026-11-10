@@ -9,7 +9,7 @@ from itam_pro.pages.admin import account_settings_page
 from itam_pro.pages.auth import login_page
 from itam_pro.pages.finance import purchases_view_page
 from itam_pro.pages.infrastructure import ip_vm_page, watt_server_page
-from itam_pro.pages.inventory import assets_view_page
+from itam_pro.pages.inventory.assets_view import asset_detail_page, assets_view_page
 from itam_pro.pages.operations.maintenance_view import maintenance_view_page
 from itam_pro.pages.overview import dashboard_page
 from itam_pro.pages.security.audit_view import audit_view_page
@@ -72,6 +72,12 @@ app.add_page(
     route="/assets",
     title="Semua Aset · ITAM Pro",
     on_load=[AuthState.check_auth, AssetState.load_view_data],
+)
+app.add_page(
+    asset_detail_page,
+    route="/assets/[id]",
+    title="Detail Aset · ITAM Pro",
+    on_load=[AuthState.check_auth, AssetState.load_asset_detail_page],
 )
 # Redirect URL lama /assets/c/... ke /assets?category=... (Seksi 8 & 19)
 app.add_page(

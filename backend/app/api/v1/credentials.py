@@ -19,6 +19,7 @@ from app.core.security import (
     verify_password,
 )
 from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
+from app.models.asset import Asset
 from app.models.audit import AuditLog
 from app.models.base import utcnow
 from app.models.credential import (
@@ -581,16 +582,37 @@ def get_credential_config(
             }
         )
 
-    ip_rows = session.exec(select(IPAllocation).order_by(col(IPAllocation.ip_int).asc())).all()
+    active_pc_assets = session.exec(
+        select(Asset)
+        .where(
+            col(Asset.kategori).in_(["PC", "Laptop", "Server"]),
+            col(Asset.deleted_at).is_(None),
+        )
+        .order_by(col(Asset.id_aset).asc())
+    ).all()
+    ip_by_asset = {
+        r.id_aset: r.ip_address
+        for r in session.exec(
+            select(IPAllocation).where(col(IPAllocation.id_aset).is_not(None))
+        ).all()
+        if r.id_aset
+    }
     pc_options: list[dict[str, Any]] = []
-    for ip_r in ip_rows:
-        div_n, s_rank, _ = normalize_legacy_division_and_rank(ip_r.pengguna or ip_r.nama_perangkat)
+    for a_row in active_pc_assets:
+        pemakai = a_row.pemakai_text or a_row.penanggung_jawab or a_row.nama_aset
+        ip_val = ip_by_asset.get(a_row.id_aset) or a_row.ip_address or "—"
+        div_n, s_rank, _ = normalize_legacy_division_and_rank(pemakai)
+        if a_row.kategori.lower() == "server":
+            div_n = "IT"
+            s_rank = 15
         pc_options.append(
             {
-                "id": ip_r.id_aset or f"IP-{ip_r.id}",
-                "label": f"{ip_r.pengguna or ip_r.nama_perangkat} ({ip_r.ip_address})",
-                "ip_address": ip_r.ip_address,
-                "pengguna": ip_r.pengguna or ip_r.nama_perangkat,
+                "id": a_row.id_aset,
+                "asset_id": a_row.id_aset,
+                "label": f"{a_row.id_aset} · {a_row.nama_aset} ({ip_val})",
+                "ip_address": ip_val if ip_val != "—" else "",
+                "pengguna": pemakai,
+                "lokasi": a_row.lokasi,
                 "divisi": div_n,
                 "subject_rank": s_rank,
             }
@@ -1332,12 +1354,41 @@ def create_credential(
     )
     ct_obj = by_code.get(map_legacy_type_to_code(raw_type_code)) or by_code["pc"]
 
-    # Tentukan divisi & subject_rank (otomatis dari PC/IP bila ditautkan untuk Radmin/PC)
-    linked_id = str(extra.get("linked_asset_id") or payload.id_aset or "").strip() or None
+    # Tentukan divisi & subject_rank otomatis dari Asset bila ditautkan (Seksi 12)
+    raw_linked = str(extra.get("linked_asset_id") or payload.id_aset or "").strip()
+    linked_id = raw_linked.split(" ")[0].strip().upper() if raw_linked else None
+    matched_asset = (
+        session.exec(
+            select(Asset).where(
+                func.upper(Asset.id_aset) == linked_id,
+                col(Asset.deleted_at).is_(None),
+            )
+        ).first()
+        if linked_id
+        else None
+    )
+
     div_name_req = str(extra.get("divisi") or extra.get("divisi_label") or "").strip()
     subj_rank_req = extra.get("subject_rank")
 
-    if not div_name_req:
+    if matched_asset is not None:
+        if not payload.lokasi or payload.lokasi == "Head Office (Office Blok 14)":
+            payload.lokasi = matched_asset.lokasi
+        if not payload.ip_address and matched_asset.ip_address:
+            payload.ip_address = matched_asset.ip_address
+        if not div_name_req:
+            source_label = (
+                matched_asset.pemakai_text
+                or matched_asset.penanggung_jawab
+                or matched_asset.nama_aset
+            )
+            div_name_req, auto_rank, _ = normalize_legacy_division_and_rank(source_label)
+            if matched_asset.kategori.lower() == "server":
+                div_name_req = "IT"
+                auto_rank = 15
+        else:
+            _, auto_rank, _ = normalize_legacy_division_and_rank(div_name_req)
+    elif not div_name_req:
         div_name_req, auto_rank, _ = normalize_legacy_division_and_rank(payload.nama_layanan)
         if is_admin_only_type(payload.jenis_kredensial):
             div_name_req = "IT"

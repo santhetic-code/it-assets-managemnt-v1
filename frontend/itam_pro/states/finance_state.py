@@ -52,13 +52,10 @@ class FinanceState(rx.State):
     status_filter: str = "Semua"
     status_options: list[str] = [
         "Semua",
-        "Belum dicatat",
+        "Belum didaftarkan",
+        "Sebagian",
+        "Terdaftar",
         "Bukan aset",
-        "1 aset dibuat",
-        "2 aset dibuat",
-        "3 aset dibuat",
-        "4 aset dibuat",
-        "5 aset dibuat",
     ]
     summary: dict[str, Any] = {
         "total_belanja": 0,
@@ -96,18 +93,41 @@ class FinanceState(rx.State):
     pay_nominal: str = ""
     pay_error: str = ""
 
-    # Modal "Jadikan Aset"
+    # Modal "Daftarkan jadi aset" (Seksi 10)
     is_asset_modal_open: bool = False
     selected_purchase_id: str = ""
     selected_purchase_title: str = ""
+    selected_purchase_max_qty: int = 1
     asset_form_kategori: str = "PC"
-    asset_form_lokasi: str = "Kantor Pusat"
-    kategori_options: list[str] = ["PC", "Monitor", "Server", "UPS", "Lainnya"]
+    asset_form_lokasi: str = "Head Office (Office Blok 14)"
+    asset_form_qty: str = "1"
+    asset_form_garansi: str = ""
+    asset_form_error: str = ""
+    kategori_options: list[str] = [
+        "PC",
+        "Laptop",
+        "Server",
+        "Monitor",
+        "UPS",
+        "RAM",
+        "SSD",
+        "HDD",
+        "VGA",
+        "PSU",
+        "Keyboard",
+        "Mouse",
+        "Router/Switch",
+        "CCTV",
+        "AC",
+        "Lainnya",
+    ]
     lokasi_options: list[str] = [
-        "Kantor Pusat",
-        "Kantor Blok 14",
-        "Server Room Lt.2",
-        "Gudang IT",
+        "Head Office (Office Blok 14)",
+        "White House (Office Blok 13)",
+        "Office 437 (Office Blok 12)",
+        "Mess (Mess Blok 12)",
+        "Konter (Ruko Rinjani)",
+        "Gudang",
     ]
 
     # --- COMPUTED PROPERTIES ---
@@ -288,17 +308,37 @@ class FinanceState(rx.State):
         self.page = 1
         await self._refetch()
 
-    # --- MODAL JADIKAN ASET ---
+    # --- MODAL DAFTARKAN JADI ASET (SEKSI 10) ---
 
     @rx.event
     def open_jadikan_aset_modal(self, purchase_id: str) -> None:
         self.selected_purchase_id = purchase_id
+        self.asset_form_error = ""
         for p in self.purchases:
             if p.get("id_pembelian") == purchase_id:
-                self.selected_purchase_title = f"{p.get('produk', '')} ({p.get('pcs', 1)} unit)"
+                pcs_val = int(p.get("pcs", 1) or 1)
+                reg_cnt = int(p.get("registered_count", 0) or 0)
+                sisa = max(1, pcs_val - reg_cnt)
+                self.selected_purchase_max_qty = sisa
+                self.asset_form_qty = str(sisa)
+                self.selected_purchase_title = (
+                    f"{p.get('produk', '')} — Maks. {sisa} dari {pcs_val} unit"
+                )
+                prod_low = str(p.get("produk", "")).lower()
+                if "ram" in prod_low:
+                    self.asset_form_kategori = "RAM"
+                elif "ssd" in prod_low:
+                    self.asset_form_kategori = "SSD"
+                elif "hdd" in prod_low:
+                    self.asset_form_kategori = "HDD"
+                elif "monitor" in prod_low:
+                    self.asset_form_kategori = "Monitor"
+                elif "ups" in prod_low:
+                    self.asset_form_kategori = "UPS"
+                else:
+                    self.asset_form_kategori = "PC"
                 break
-        self.asset_form_kategori = "PC"
-        self.asset_form_lokasi = "Kantor Pusat"
+        self.asset_form_lokasi = "Head Office (Office Blok 14)"
         self.is_asset_modal_open = True
 
     @rx.event
@@ -307,21 +347,54 @@ class FinanceState(rx.State):
             self.is_asset_modal_open = False
         self.selected_purchase_id = ""
         self.selected_purchase_title = ""
+        self.asset_form_error = ""
 
     @rx.event
     def set_asset_form_kategori(self, val: str) -> None:
         self.asset_form_kategori = val
+        if val in ("RAM", "SSD", "HDD", "VGA", "PSU"):
+            self.asset_form_lokasi = "Gudang"
 
     @rx.event
     def set_asset_form_lokasi(self, val: str) -> None:
         self.asset_form_lokasi = val
 
     @rx.event
+    def set_asset_form_qty(self, val: str) -> None:
+        self.asset_form_qty = val
+
+    @rx.event
+    def set_asset_form_garansi(self, val: str) -> None:
+        self.asset_form_garansi = val
+
+    @rx.event
+    async def submit_bukan_aset(self) -> None:
+        await api_client.convert_purchase_to_asset(
+            self.selected_purchase_id,
+            {"bukan_aset": True, "kategori": "Bukan aset"},
+        )
+        self.is_asset_modal_open = False
+        await self.fetch_purchases()
+
+    @rx.event
     async def submit_jadikan_aset(self) -> None:
-        payload = {
+        try:
+            qty_int = int(self.asset_form_qty.strip() or "1")
+        except ValueError:
+            self.asset_form_error = "Jumlah unit harus berupa angka bulat."
+            return
+        if qty_int < 1 or qty_int > self.selected_purchase_max_qty:
+            self.asset_form_error = (
+                f"Jumlah unit harus antara 1 sampai {self.selected_purchase_max_qty}."
+            )
+            return
+
+        payload: dict[str, Any] = {
             "kategori": self.asset_form_kategori,
             "kepemilikan": "XML",
             "lokasi": self.asset_form_lokasi,
+            "jumlah": qty_int,
+            "garansi_sampai": self.asset_form_garansi.strip() or None,
         }
         await api_client.convert_purchase_to_asset(self.selected_purchase_id, payload)
         self.is_asset_modal_open = False

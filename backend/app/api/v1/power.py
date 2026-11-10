@@ -27,22 +27,28 @@ from app.schemas.power import (
 router = APIRouter()
 
 
-def _is_power_consumer(asset: Asset, include_all_consumers: bool = False) -> bool:
-    """Menentukan apakah aset termasuk ke dalam daftar Rekap Watt Server."""
+def _is_power_consumer(
+    asset: Asset,
+    include_all_consumers: bool = False,
+    scope: str = "server",
+) -> bool:
+    """Menentukan apakah aset masuk ke laporan Rekap Watt berdasarkan cakupan (scope)."""
     kat = asset.kategori.strip().lower()
     if kat == "ups":
         return False
-    if kat == "server":
-        return True
-    if include_all_consumers and asset.watt > 0:
-        return True
-    return False
+    scope_clean = (scope or "server").strip().lower()
+    if scope_clean in ("pc", "pc operasional"):
+        return kat in ("pc", "laptop")
+    if scope_clean in ("semua", "all") or include_all_consumers:
+        return kat in ("server", "pc", "laptop") or asset.watt > 0
+    return kat == "server"
 
 
 def _build_power_analytics(
     all_assets: list[Asset],
     tarif_per_kwh: float,
     include_all_consumers: bool,
+    scope: str = "server",
 ) -> tuple[
     list[Asset],
     list[UPSPowerItem],
@@ -51,7 +57,7 @@ def _build_power_analytics(
     dict[str, Any],
 ]:
     """Menghitung seluruh metrik daya, UPS, lokasi, tab_counts, dan KPI dari daftar Asset."""
-    consumers = [a for a in all_assets if _is_power_consumer(a, include_all_consumers)]
+    consumers = [a for a in all_assets if _is_power_consumer(a, include_all_consumers, scope=scope)]
     ups_assets = [a for a in all_assets if a.kategori.strip().lower() == "ups"]
 
     active_consumers = [a for a in consumers if a.status.strip().lower() in ("aktif", "digunakan")]
@@ -177,6 +183,7 @@ def get_watt_server_recap(
     status_filter: str | None = Query(default=None, alias="status"),
     sort_by: str | None = Query(default=None),
     sort_dir: str | None = Query(default="asc"),
+    scope: str | None = Query(default="server"),
     include_all_consumers: bool = Query(default=False),
     tarif_per_kwh: float = Query(default=DEFAULT_TARIF_PER_KWH, gt=0),
 ) -> WattServerPageResponse:
@@ -190,6 +197,7 @@ def get_watt_server_recap(
         all_assets,
         tarif_per_kwh=tarif_per_kwh,
         include_all_consumers=include_all_consumers,
+        scope=scope or "server",
     )
 
     all_items = [ServerPowerItem.from_asset(a, tarif_per_kwh=tarif_per_kwh) for a in consumers]

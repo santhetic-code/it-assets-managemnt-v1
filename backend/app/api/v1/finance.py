@@ -389,53 +389,208 @@ def create_purchase(
 @router.post("/{identifier}/convert-to-asset")
 def convert_purchase_to_asset(
     identifier: str,
-    payload: dict,
+    payload: dict[str, Any],
     session: SessionDep,
-    _: EditorUserDep,
+    current_user: EditorUserDep,
 ) -> dict[str, Any]:
-    """Mengonversi item pembelian menjadi aset fisik di inventaris dan menautkan id_aset."""
-    row = _find_purchase(session, identifier)
-    kategori_raw = str(payload.get("kategori") or row.kategori or "PC").strip()
-    kat_map = {
-        "pc": "PC",
-        "server": "Server",
-        "monitor": "Monitor",
-        "ups": "UPS",
-        "jaringan": "Jaringan",
-    }
-    kat_final = kat_map.get(kategori_raw.lower(), "PC")
+    """Mendaftarkan item pembelian menjadi N aset atau menandai Bukan Aset (Seksi 10)."""
+    from app.core.master_data import resolve_tracking_mode
 
-    if row.id_aset:
+    row = _find_purchase(session, identifier)
+
+    # Opsi 1: Tandai sebagai Bukan Aset (jasa, langganan, habis pakai)
+    if (
+        payload.get("bukan_aset") is True
+        or str(payload.get("kategori", "")).lower() == "bukan aset"
+    ):
+        row.id_aset = "BUKAN-ASET"
+        row.updated_at = utcnow()
+        session.add(row)
+        session.commit()
+        session.refresh(row)
         return {
-            "asset_id": row.id_aset,
-            "id_aset": row.id_aset,
+            "asset_id": "BUKAN-ASET",
+            "created_assets": [],
             "item": PurchasePublic.from_model(row),
         }
 
-    new_asset_id = generate_next_asset_id(session, kat_final)
-    asset = Asset(
-        id_aset=new_asset_id,
-        nama_aset=row.nama_item[:145],
-        kategori=kat_final,
-        merek="Umum",
-        model=row.nama_item[:100],
-        lokasi=row.lokasi or "Head Office (Office Blok 14)",
-        penanggung_jawab=row.penanggung_jawab or "Ridho",
-        status="Digunakan",
-        kondisi="Baru",
-        tanggal_masuk=row.tanggal_beli,
-        catatan=f"Konversi dari pembelian {row.kode_pembelian} ({row.vendor})",
-        extra_specs={"kepemilikan": "XML", "jenis": "Operasional"},
+    # Hitung aset yang sudah pernah didaftarkan dari item pembelian ini
+    existing_linked = list(
+        session.exec(
+            select(Asset.id_aset).where(
+                col(Asset.purchase_item_id) == row.id,
+                col(Asset.deleted_at).is_(None),
+            )
+        ).all()
     )
-    session.add(asset)
-    row.id_aset = new_asset_id
+    if not existing_linked and row.id_aset and row.id_aset != "BUKAN-ASET":
+        existing_linked = [x.strip() for x in row.id_aset.split(",") if x.strip()]
+
+    remaining_qty = max(0, row.jumlah - len(existing_linked))
+    if remaining_qty == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Seluruh qty ({row.jumlah} unit) pada pembelian {row.kode_pembelian} "
+                "sudah terdaftar menjadi aset."
+            ),
+        )
+
+    req_qty = int(payload.get("jumlah") or payload.get("qty") or remaining_qty)
+    if req_qty < 1 or req_qty > remaining_qty:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Jumlah aset yang didaftarkan ({req_qty}) tidak boleh melebihi sisa "
+                f"qty pembelian ({remaining_qty})."
+            ),
+        )
+
+    kategori_raw = str(payload.get("kategori") or row.kategori or "PC").strip()
+    kat_map = {
+        "pc": "PC",
+        "laptop": "Laptop",
+        "server": "Server",
+        "monitor": "Monitor",
+        "ups": "UPS",
+        "ram": "RAM",
+        "ssd": "SSD",
+        "hdd": "HDD",
+        "ssd/hdd": "SSD",
+        "vga": "VGA",
+        "psu": "PSU",
+        "keyboard": "Keyboard",
+        "mouse": "Mouse",
+        "jaringan": "Router/Switch",
+        "router": "Router/Switch",
+        "cctv": "CCTV",
+        "ac": "AC",
+        "mobil": "Mobil",
+        "motor": "Motor",
+        "meja": "Meja",
+        "kursi": "Kursi",
+        "lemari": "Lemari",
+        "lainnya": "Lainnya",
+    }
+    kat_final = kat_map.get(kategori_raw.lower(), kategori_raw)
+    is_component = kat_final.lower() in ("ram", "ssd", "hdd", "vga", "psu")
+    tracking_mode = resolve_tracking_mode(kat_final, row.harga_satuan)
+
+    lokasi_val = str(payload.get("lokasi") or row.lokasi or "Head Office (Office Blok 14)").strip()
+    pemakai_val = str(
+        payload.get("penanggung_jawab")
+        or ("Cadangan · Gudang" if is_component else (row.penanggung_jawab or "Gudang IT"))
+    ).strip()
+    serial_numbers: list[str] = payload.get("serial_numbers") or []
+    raw_garansi = str(payload.get("garansi_sampai") or "").strip()
+    garansi_dt = date.fromisoformat(raw_garansi) if raw_garansi else None
+
+    created_codes: list[str] = []
+
+    # Bila kategori mengikuti batas nilai dan harga_satuan < Rp 1.000.000 -> mode stok
+    if tracking_mode == "stok":
+        new_id = generate_next_asset_id(session, kat_final)
+        stok_asset = Asset(
+            id_aset=new_id,
+            asset_tag=new_id,
+            nama_aset=row.nama_item[:145],
+            nama=row.nama_item[:145],
+            kategori=kat_final,
+            merek=row.vendor[:100] if row.vendor else "Umum",
+            model=row.nama_item[:100],
+            lokasi=lokasi_val,
+            penanggung_jawab=pemakai_val,
+            pemakai_text=pemakai_val,
+            status="Cadangan",
+            kondisi="Baru",
+            tanggal_masuk=row.tanggal_beli,
+            tanggal_perolehan=row.tanggal_beli,
+            nilai_perolehan=row.harga_satuan,
+            vendor=row.vendor,
+            garansi_sampai=garansi_dt,
+            purchase_item_id=row.id,
+            tracking="stok",
+            qty=req_qty,
+            catatan=f"Stok ({req_qty} unit) dari {row.kode_pembelian} ({row.vendor})",
+            specs={"kepemilikan": str(payload.get("kepemilikan") or "XML")},
+            extra_specs={"kepemilikan": str(payload.get("kepemilikan") or "XML")},
+        )
+        session.add(stok_asset)
+        created_codes.append(new_id)
+    else:
+        for idx in range(req_qty):
+            new_id = generate_next_asset_id(session, kat_final)
+            sn_item = (
+                serial_numbers[idx].strip()
+                if idx < len(serial_numbers) and serial_numbers[idx]
+                else None
+            )
+            cap_gb = 0
+            m_gb = re.search(r"(\d+)\s*GB", row.nama_item.upper())
+            if m_gb:
+                cap_gb = int(m_gb.group(1))
+            elif "1TB" in row.nama_item.upper() or "1 TB" in row.nama_item.upper():
+                cap_gb = 1024
+
+            comp_specs: dict[str, Any] = {
+                "kepemilikan": str(payload.get("kepemilikan") or "XML"),
+                "jenis": "Operasional",
+            }
+            if is_component:
+                comp_specs.update(
+                    {
+                        "tipe": (
+                            "DDR4"
+                            if kat_final == "RAM"
+                            else ("NVMe" if "NVME" in row.nama_item.upper() else "SATA")
+                        ),
+                        "kapasitas_gb": cap_gb or (8 if kat_final == "RAM" else 512),
+                        "data_status": "Kosong",
+                    }
+                )
+
+            unit_asset = Asset(
+                id_aset=new_id,
+                asset_tag=new_id,
+                nama_aset=row.nama_item[:145],
+                nama=row.nama_item[:145],
+                kategori=kat_final,
+                merek=row.vendor[:100] if row.vendor else "Umum",
+                model=row.nama_item[:100],
+                serial_number=sn_item,
+                lokasi=lokasi_val,
+                penanggung_jawab=pemakai_val,
+                pemakai_text=pemakai_val,
+                status="Cadangan" if is_component else "Digunakan",
+                kondisi="Baru",
+                tanggal_masuk=row.tanggal_beli,
+                tanggal_perolehan=row.tanggal_beli,
+                nilai_perolehan=row.harga_satuan,
+                vendor=row.vendor,
+                garansi_sampai=garansi_dt,
+                purchase_item_id=row.id,
+                tracking="unit",
+                qty=1,
+                catatan=f"Didaftarkan dari pembelian {row.kode_pembelian} ({row.vendor})",
+                specs=comp_specs,
+                extra_specs=comp_specs,
+                created_by=current_user.username,
+            )
+            session.add(unit_asset)
+            session.flush()
+            created_codes.append(new_id)
+
+    all_codes = [*existing_linked, *created_codes]
+    row.id_aset = ", ".join(all_codes)[:250]
     row.updated_at = utcnow()
     session.add(row)
     session.commit()
     session.refresh(row)
+
     return {
-        "asset_id": new_asset_id,
-        "id_aset": new_asset_id,
+        "asset_id": created_codes[0] if created_codes else "",
+        "id_aset": row.id_aset,
+        "created_assets": created_codes,
         "item": PurchasePublic.from_model(row),
     }
 

@@ -352,7 +352,9 @@ class PurchasePublic(BaseModel):
     siklus_tagihan: str
     periode: str = "Sekali"
     id_aset: str | None
-    aset_status: str = "Belum Dicatat"
+    aset_status: str = "Belum didaftarkan"
+    registered_count: int = 0
+    registered_assets: list[str] = Field(default_factory=list)
     penanggung_jawab: str
     dibeli_oleh: str = "Ridho"
     pembayar: str = "Finance"
@@ -406,7 +408,22 @@ class PurchasePublic(BaseModel):
         total_rp = f"Rp {row.total_harga:,}".replace(",", ".")
         link_val = row.keterangan if "http" in (row.keterangan or "").lower() else ""
         domain_val = _extract_domain_chip(link_val)
-        aset_st = row.id_aset if row.id_aset else "Belum Dicatat"
+        raw_id_aset = (row.id_aset or "").strip()
+        if raw_id_aset.upper() == "BUKAN-ASET" or row.is_recurring:
+            reg_assets: list[str] = []
+            reg_count = 0
+            aset_st = "Bukan aset"
+        elif raw_id_aset:
+            reg_assets = [x.strip() for x in raw_id_aset.split(",") if x.strip()]
+            reg_count = len(reg_assets)
+            if reg_count >= row.jumlah:
+                aset_st = f"Terdaftar ({reg_count} aset)"
+            else:
+                aset_st = f"Sebagian ({reg_count}/{row.jumlah})"
+        else:
+            reg_assets = []
+            reg_count = 0
+            aset_st = "Belum didaftarkan"
         inv_code = row.nomor_invoice if row.nomor_invoice else f"INV-{row.kode_pembelian}"
 
         return cls(
@@ -458,6 +475,8 @@ class PurchasePublic(BaseModel):
             periode=row.siklus_tagihan,
             id_aset=row.id_aset,
             aset_status=aset_st,
+            registered_count=reg_count,
+            registered_assets=reg_assets,
             penanggung_jawab=row.penanggung_jawab or "Ridho",
             dibeli_oleh=row.penanggung_jawab or "Ridho",
             pembayar=row.penanggung_jawab or "Finance",

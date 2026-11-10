@@ -71,6 +71,21 @@ def _total_summary_footer() -> rx.Component:
     )
 
 
+def _modal_input_style() -> rx.Style:
+    return rx.Style(
+        {
+            "width": "100%",
+            "height": Size.FILTER_CONTROL_H,
+            "padding": "0 12px",
+            "border": f"1px solid {Color.INPUT_BORDER}",
+            "border_radius": Radius.CONTROL,
+            "background_color": Color.SURFACE,
+            "color": Color.TEXT,
+            "font_family": FONT_FAMILY,
+        }
+    )
+
+
 def _jadikan_aset_dialog() -> rx.Component:
     """Modal Dialog untuk otomatisasi konversi data pembelian menjadi aset fisik."""
     return rx.cond(
@@ -140,6 +155,15 @@ def _jadikan_aset_dialog() -> rx.Component:
                     ),
                     # Form Input: Kategori & Lokasi
                     rx.vstack(
+                        rx.cond(
+                            FinanceState.asset_form_error != "",
+                            rx.text(
+                                FinanceState.asset_form_error,
+                                font_size=FontSize.XS,
+                                font_weight=FontWeight.BOLD,
+                                color=Color.DANGER_FG,
+                            ),
+                        ),
                         rx.text(
                             "Kategori Aset",
                             font_size=FontSize.SM,
@@ -192,10 +216,46 @@ def _jadikan_aset_dialog() -> rx.Component:
                                 }
                             ),
                         ),
+                        rx.hstack(
+                            rx.vstack(
+                                rx.text(
+                                    "Jumlah Unit Didaftarkan (N)",
+                                    font_size=FontSize.SM,
+                                    font_weight=FontWeight.SEMIBOLD,
+                                    color=Color.TEXT,
+                                ),
+                                rx.el.input(
+                                    type="number",
+                                    value=FinanceState.asset_form_qty,
+                                    on_change=FinanceState.set_asset_form_qty,
+                                    style=_modal_input_style(),
+                                ),
+                                width="50%",
+                                align="start",
+                            ),
+                            rx.vstack(
+                                rx.text(
+                                    "Garansi Sampai (Opsional)",
+                                    font_size=FontSize.SM,
+                                    font_weight=FontWeight.SEMIBOLD,
+                                    color=Color.TEXT,
+                                ),
+                                rx.el.input(
+                                    type="date",
+                                    value=FinanceState.asset_form_garansi,
+                                    on_change=FinanceState.set_asset_form_garansi,
+                                    style=_modal_input_style(),
+                                ),
+                                width="50%",
+                                align="start",
+                            ),
+                            spacing="3",
+                            width="100%",
+                        ),
                         rx.box(
                             rx.text(
-                                "Aset akan otomatis dibuat dengan status 'Tidak Digunakan' "
-                                "dan kondisi 'Baru' sebanyak jumlah Pcs pada pembelian.",
+                                "Aset akan otomatis dibuat dengan status 'Cadangan' untuk komponen "
+                                "atau 'Digunakan' untuk unit utama sesuai jumlah Pcs.",
                                 font_size=FontSize.XS,
                                 color=Color.MUTED,
                             ),
@@ -212,6 +272,26 @@ def _jadikan_aset_dialog() -> rx.Component:
                     ),
                     # Tombol Aksi Dialog
                     rx.hstack(
+                        rx.el.button(
+                            "Tandai Bukan Aset",
+                            type="button",
+                            on_click=FinanceState.submit_bukan_aset,
+                            style=rx.Style(
+                                {
+                                    "height": Size.BUTTON_MD_H,
+                                    "padding": "0 14px",
+                                    "background_color": Color.WARNING_BG,
+                                    "border": "none",
+                                    "border_radius": Radius.CONTROL,
+                                    "font_family": FONT_FAMILY,
+                                    "font_size": FontSize.XS,
+                                    "font_weight": FontWeight.BOLD,
+                                    "color": Color.WARNING_FG,
+                                    "cursor": "pointer",
+                                }
+                            ),
+                        ),
+                        rx.spacer(),
                         rx.el.button(
                             "Batal",
                             type="button",
@@ -464,21 +544,6 @@ def _bills_tab() -> rx.Component:
     )
 
 
-def _modal_input_style() -> rx.Style:
-    return rx.Style(
-        {
-            "width": "100%",
-            "height": Size.FILTER_CONTROL_H,
-            "padding": "0 12px",
-            "border": f"1px solid {Color.INPUT_BORDER}",
-            "border_radius": Radius.CONTROL,
-            "background_color": Color.SURFACE,
-            "color": Color.TEXT,
-            "font_family": FONT_FAMILY,
-        }
-    )
-
-
 def _pay_bill_dialog() -> rx.Component:
     """Modal 'Tandai Dibayar': simpan riwayat & geser jatuh tempo otomatis."""
     return rx.cond(
@@ -690,7 +755,7 @@ def purchases_view_page() -> rx.Component:
                             on_row_click=FinanceState.open_jadikan_aset_modal,
                             on_edit_row=FinanceState.open_jadikan_aset_modal,
                             on_duplicate_row=FinanceState.open_jadikan_aset_modal,
-                            duplicate_action_label="Jadikan Aset",
+                            duplicate_action_label="Daftarkan jadi aset",
                             show_action_header=True,
                         ),
                         _total_summary_footer(),

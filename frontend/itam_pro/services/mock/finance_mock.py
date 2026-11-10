@@ -72,7 +72,7 @@ if os.path.exists(_csv_path):
                         "nama_toko": row[6].strip(),
                         "link_marketplace": row[7].strip() if len(row) > 7 else "",
                         "dibeli_oleh": "Data CSV",
-                        "aset_status": "Belum dicatat",
+                        "aset_status": "Belum didaftarkan",
                     }
                 )
 
@@ -259,7 +259,11 @@ def query_purchases(
         "summary": {
             "total_belanja": total_belanja_keseluruhan,
             "belanja_terbesar": max((x["total"] for x in filtered), default=0),
-            "belum_dicatat": sum(1 for x in MOCK_PURCHASES if x["aset_status"] == "Belum dicatat"),
+            "belum_dicatat": sum(
+                1
+                for x in MOCK_PURCHASES
+                if x["aset_status"] in ("Belum didaftarkan", "Belum dicatat")
+            ),
         },
     }
 
@@ -269,25 +273,56 @@ def action_jadikan_aset(
     kategori: str,
     kepemilikan: str,
     lokasi: str,
-) -> None:
-    """Otomatisasi pembuatan aset di MOCK_ASSETS berdasarkan data pembelian."""
+    jumlah_daftar: int | None = None,
+    bukan_aset: bool = False,
+) -> list[str]:
+    """Otomatisasi pendaftaran item pembelian menjadi N aset (atau Bukan Aset)."""
     for p in MOCK_PURCHASES:
         if p["id_pembelian"] == id_pembelian or (
             id_pembelian == "PRC-2026-001" and p["id_pembelian"] == "PRC-CSV-001"
         ):
+            if bukan_aset or kategori.lower() == "bukan aset":
+                p["aset_status"] = "Bukan aset"
+                p["registered_assets"] = []
+                return []
+
+            existing_list: list[str] = list(p.get("registered_assets") or [])
+            total_pcs = int(p.get("pcs", 1))
+            sisa = max(0, total_pcs - len(existing_list))
+            if sisa <= 0:
+                return existing_list
+
+            qty_make = min(sisa, jumlah_daftar or sisa)
+            is_comp = kategori.upper() in ("RAM", "SSD", "HDD", "VGA", "PSU")
             payload = {
                 "nama_aset": p["produk"],
                 "kategori": kategori,
                 "tanggal_masuk_gudang": p["tanggal"],
                 "kepemilikan": kepemilikan,
-                "lokasi": lokasi,
+                "lokasi": "Gudang" if is_comp else lokasi,
                 "kondisi": "Baru",
-                "status": "Tidak Digunakan",
+                "status": "Cadangan" if is_comp else "Digunakan",
+                "digunakan_oleh": "Cadangan - Gudang" if is_comp else "Operasional",
+                "attributes": (
+                    {
+                        "tipe": "DDR4" if kategori.upper() == "RAM" else "SATA",
+                        "kapasitas_gb": 8 if kategori.upper() == "RAM" else 512,
+                        "data_status": "Kosong",
+                    }
+                    if is_comp
+                    else {}
+                ),
             }
-            # Buat N unit ke seed.py
-            create_mock_assets(payload, count=int(p["pcs"]))
-            p["aset_status"] = f"{p['pcs']} aset dibuat"
-            break
+            created_rows = create_mock_assets(payload, count=qty_make)
+            new_ids = [str(r["id_aset"]) for r in created_rows]
+            all_ids = [*existing_list, *new_ids]
+            p["registered_assets"] = all_ids
+            if len(all_ids) >= total_pcs:
+                p["aset_status"] = f"Terdaftar ({len(all_ids)} aset)"
+            else:
+                p["aset_status"] = f"Sebagian ({len(all_ids)}/{total_pcs})"
+            return all_ids
+    return []
 
 
 def _paginate(rows: list[dict[str, Any]], page: int, page_size: int) -> list[dict[str, Any]]:

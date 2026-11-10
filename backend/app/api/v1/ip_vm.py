@@ -130,19 +130,22 @@ def _validate_and_resolve_host(
     id_aset_host: str | None,
     host_name: str,
 ) -> tuple[str | None, str]:
-    """Memvalidasi id_aset_host terhadap tabel assets bila diisi."""
+    """Memvalidasi id_aset_host terhadap tabel assets (hanya aset aktif & belum dihapus)."""
     if not id_aset_host:
         return None, host_name
 
     host_asset = session.exec(
-        select(Asset).where(func.lower(Asset.id_aset) == id_aset_host.lower())
+        select(Asset).where(
+            func.lower(Asset.id_aset) == id_aset_host.lower(),
+            col(Asset.deleted_at).is_(None),
+        )
     ).first()
     if host_asset is None:
         raise HTTPException(
             status_code=HTTP_422_STATUS,
             detail=f"Host aset '{id_aset_host}' tidak ditemukan di inventaris aset",
         )
-    if host_asset.status.lower() in ("rusak", "nonaktif"):
+    if host_asset.status.lower() in ("rusak", "nonaktif", "dihapusbukukan"):
         raise HTTPException(
             status_code=HTTP_422_STATUS,
             detail=(
@@ -152,6 +155,29 @@ def _validate_and_resolve_host(
         )
     resolved_name = host_name or host_asset.nama_aset
     return host_asset.id_aset, resolved_name
+
+
+def _validate_and_sync_device_asset(
+    session: Session,
+    id_aset: str | None,
+    canonical_ip: str,
+) -> str | None:
+    """Menautkan entri IP fisik ke id_aset di tabel assets (Seksi 12)."""
+    if not id_aset or id_aset.strip() in ("", "-", "—"):
+        return None
+    clean_tag = id_aset.strip().split(" ")[0].strip().upper()
+    asset = session.exec(
+        select(Asset).where(
+            func.upper(Asset.id_aset) == clean_tag,
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    if asset is None:
+        return None
+    if asset.ip_address != canonical_ip:
+        asset.ip_address = canonical_ip
+        session.add(asset)
+    return asset.id_aset
 
 
 def _detect_orphan_and_conflict_maps(
@@ -239,7 +265,10 @@ def _get_cached_ip_metadata(session: Session) -> dict[str, Any]:
 
     srv_assets = session.exec(
         select(Asset.id_aset, Asset.nama_aset, Asset.kategori, Asset.status)
-        .where(col(Asset.kategori).in_(["Server", "PC"]))
+        .where(
+            col(Asset.kategori).in_(["Server", "PC", "Laptop"]),
+            col(Asset.deleted_at).is_(None),
+        )
         .order_by(col(Asset.id_aset).asc())
     ).all()
     sig = (tuple((a[0], a[3]) for a in srv_assets), tuple(allowed_cidrs))
@@ -1581,6 +1610,7 @@ def create_ip_allocation(
         payload.id_aset_host,
         payload.host_name,
     )
+    resolved_asset_id = _validate_and_sync_device_asset(session, payload.id_aset, canonical_ip)
 
     fungsi_str = payload.port_servis.strip()
     ket_norm = normalize_keterangan(payload.keterangan, fungsi_str)
@@ -1595,7 +1625,7 @@ def create_ip_allocation(
         tipe=payload.tipe,
         status=payload.status,
         lokasi=payload.lokasi,
-        id_aset=payload.id_aset,
+        id_aset=resolved_asset_id,
         is_vm=bool(payload.is_vm),
         host_name=resolved_host_name,
         id_aset_host=resolved_host_id,

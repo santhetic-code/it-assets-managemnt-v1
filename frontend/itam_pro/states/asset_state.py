@@ -172,6 +172,65 @@ class AssetState(rx.State):
     asset_to_delete: str = ""
     asset_to_delete_label: str = ""
 
+    # --- STATE FASE 2: DETAIL ASET (/assets/[id]), SERAH TERIMA, QR, & RELASI ---
+    detail_asset_id: str = ""
+    detail_tab: str = "ringkasan"
+    detail_asset: dict[str, Any] = {}
+    detail_monitors: list[dict[str, str]] = []
+    detail_power_links: list[dict[str, str]] = []
+    detail_ips: list[dict[str, Any]] = []
+    detail_credentials: list[dict[str, str]] = []
+    detail_credentials_summary: str = "Belum ada kredensial tertaut"
+    detail_purchase: dict[str, Any] = {}
+    detail_has_purchase: bool = False
+    detail_maintenances: list[dict[str, str]] = []
+    detail_movements: list[dict[str, str]] = []
+
+    # Modal Serahkan / Pindahkan
+    handover_modal_open: bool = False
+    handover_jenis: str = "serah_terima"
+    handover_pengguna: str = ""
+    handover_lokasi: str = "Head Office (Office Blok 14)"
+    handover_status: str = "Digunakan"
+    handover_alasan: str = "Serah terima operasional"
+    handover_tanggal: str = "2026-11-09"
+    handover_catatan: str = ""
+
+    # Modal Cetak Label QR
+    qr_modal_open: bool = False
+
+    # Modal Hubungkan Monitor / UPS
+    link_modal_open: bool = False
+    link_target_id: str = ""
+
+    # --- STATE FASE 3: KOMPONEN PER UNIT (ARTBOARD 12) ---
+    comp_is_tracked: bool = True
+    comp_ram_summary_chip: str = "RAM total 16 GB · 2 modul"
+    comp_storage_summary_chip: str = "Storage total 512 GB · 1 disk"
+    comp_installed_list: list[dict[str, Any]] = []
+    comp_spare_list: list[dict[str, Any]] = []
+    comp_pc_targets: list[str] = ["PC-016 — PC CS H2H", "PC-001 — PC IT TIO"]
+
+    # Modal Pindahkan / Pasang / Lepas Komponen (Artboard 12 Kanan)
+    comp_modal_open: bool = False
+    comp_modal_id: str = ""
+    comp_modal_subtitle: str = ""
+    comp_modal_is_disk: bool = False
+    comp_modal_action: str = "pindah"  # "pindah" | "lepas" | "rusak" | "pasang"
+    comp_modal_target_pc: str = "PC-016 — PC CS H2H"
+    comp_modal_slot: str = "DIMM 2"
+    comp_modal_alasan: str = "Upgrade RAM PC tujuan"
+    comp_modal_tanggal: str = "2026-11-09"
+    comp_modal_catatan: str = ""
+    comp_modal_lokasi_cadangan: str = "Gudang"
+    comp_modal_confirm_wipe: bool = False
+    comp_modal_error: str = ""
+    comp_modal_warning: str = ""
+    comp_modal_impacts: list[dict[str, str]] = [
+        {"label": "PC-003 RAM", "change": "16 GB -> 8 GB"},
+        {"label": "PC-016 RAM", "change": "8 GB -> 16 GB"},
+    ]
+
     # --- COMPUTED VARS: KONTEKS HALAMAN & HEADER ---
 
     @rx.var(cache=True)
@@ -1147,6 +1206,368 @@ class AssetState(rx.State):
             self.selected_ids = [x for x in self.selected_ids if x != self.asset_to_delete]
         self.cancel_delete()
         await self.fetch_assets()
+
+    # --- COMPUTED VARS & EVENT HANDLERS FASE 2: DETAIL ASET (/assets/[id]) ---
+
+    @rx.var(cache=True)
+    def detail_category_hierarchy(self) -> str:
+        kat = str(self.detail_asset.get("kategori") or "PC")
+        grp = str(self.detail_asset.get("category_group") or "Perangkat IT")
+        return f"{grp} › {kat}"
+
+    @rx.var(cache=True)
+    def detail_monitor_display(self) -> str:
+        if self.detail_monitors:
+            m0 = self.detail_monitors[0]
+            return f'24" FHD (dari aset {m0.get("id_aset", "")})'
+        return str(self.detail_asset.get("monitor") or "—")
+
+    @rx.var(cache=True)
+    def detail_primary_ip_summary(self) -> str:
+        if self.detail_ips:
+            return str(self.detail_ips[0].get("summary", "—"))
+        ip_raw = str(self.detail_asset.get("ip_address") or "")
+        return f"{ip_raw} · Aktif" if ip_raw else "Belum ada IP tertaut"
+
+    @rx.var(cache=True)
+    def detail_has_monitors(self) -> bool:
+        return len(self.detail_monitors) > 0
+
+    @rx.var(cache=True)
+    def detail_has_maintenances(self) -> bool:
+        return len(self.detail_maintenances) > 0
+
+    @rx.var(cache=True)
+    def detail_maintenances_summary(self) -> str:
+        return f"{len(self.detail_maintenances)} jadwal terdaftar"
+
+    @rx.var(cache=True)
+    def detail_is_pc_or_server(self) -> bool:
+        return str(self.detail_asset.get("kategori", "")).lower() in ("pc", "laptop", "server")
+
+    @rx.var(cache=True)
+    def detail_qr_url(self) -> str:
+        code = str(self.detail_asset.get("id_aset") or self.detail_asset_id or "PC-003")
+        return (
+            "https://api.qrserver.com/v1/create-qr-code/?size=180x180"
+            f"&data=https://itam.xmltronik.id/assets/{code}"
+        )
+
+    @rx.event
+    def open_asset_detail_page(self, row_id: str) -> Any:
+        """Buka halaman penuh /assets/[id] saat baris tabel diklik (Artboard 11)."""
+        target = (row_id or "").strip()
+        if not target:
+            return None
+        return rx.redirect(f"/assets/{target}")
+
+    @rx.event
+    async def load_asset_detail_page(self) -> None:
+        """Muat data lengkap aset beserta relasinya saat halaman /assets/[id] dibuka."""
+        params = get_current_params(self.router)
+        raw_path = get_current_raw_path(self.router)
+        asset_id = str(params.get("id") or "").strip()
+        if not asset_id and "/assets/" in raw_path:
+            tail = raw_path.split("/assets/", 1)[1].split("?")[0].strip("/")
+            if tail and not tail.startswith("c/"):
+                asset_id = tail
+
+        if not asset_id:
+            return
+
+        self.detail_asset_id = asset_id.upper()
+        tab_param = str(params.get("tab") or "").strip().lower()
+        if tab_param in (
+            "ringkasan",
+            "spesifikasi",
+            "komponen",
+            "relasi",
+            "pembelian",
+            "maintenance",
+            "riwayat",
+        ):
+            self.detail_tab = tab_param
+        else:
+            self.detail_tab = "ringkasan"
+
+        res = await api_client.get_asset_full_detail(self.detail_asset_id)
+        if not res:
+            return
+        self.detail_asset = res.get("asset") or {}
+        rels = res.get("relations") or {}
+        self.detail_monitors = list(rels.get("monitors") or [])
+        self.detail_power_links = list(rels.get("power_links") or [])
+        self.detail_ips = list(rels.get("ips") or [])
+        self.detail_credentials = list(rels.get("credentials") or [])
+        self.detail_credentials_summary = str(
+            rels.get("credentials_summary") or "Belum ada kredensial tertaut"
+        )
+        purch = rels.get("purchase")
+        self.detail_has_purchase = purch is not None
+        self.detail_purchase = purch or {}
+        self.detail_maintenances = list(rels.get("maintenances") or [])
+        self.detail_movements = list(res.get("movements") or [])
+        comp_data = res.get("components") or {}
+        self.comp_is_tracked = bool(comp_data.get("is_tracked", False))
+        self.comp_ram_summary_chip = str(
+            comp_data.get("ram_summary_chip") or "RAM total 16 GB · 2 modul"
+        )
+        self.comp_storage_summary_chip = str(
+            comp_data.get("storage_summary_chip") or "Storage total 512 GB · 1 disk"
+        )
+        self.comp_installed_list = list(comp_data.get("installed") or [])
+        self.comp_spare_list = list(comp_data.get("spares") or [])
+        if comp_data.get("pc_targets"):
+            self.comp_pc_targets = list(comp_data["pc_targets"])
+        self.active_asset_id = self.detail_asset_id
+
+    @rx.event
+    def set_detail_tab(self, tab_key: str) -> None:
+        self.detail_tab = tab_key
+
+    @rx.event
+    def open_edit_from_detail(self) -> None:
+        if self.detail_asset:
+            self._populate_form_from_item(self.detail_asset, mode="edit")
+
+    # --- Handlers Modal Serahkan / Pindahkan ---
+    @rx.event
+    def open_handover_modal(self) -> None:
+        self.handover_jenis = "serah_terima"
+        user_cur = str(self.detail_asset.get("digunakan_oleh") or "")
+        self.handover_pengguna = "" if user_cur == "—" else user_cur
+        self.handover_lokasi = str(
+            self.detail_asset.get("lokasi") or "Head Office (Office Blok 14)"
+        )
+        self.handover_status = str(self.detail_asset.get("status") or "Digunakan")
+        self.handover_alasan = "Serah terima operasional"
+        self.handover_tanggal = "2026-11-09"
+        self.handover_catatan = ""
+        self.handover_modal_open = True
+
+    @rx.event
+    def close_handover_modal(self) -> None:
+        self.handover_modal_open = False
+
+    @rx.event
+    def set_handover_jenis(self, val: str) -> None:
+        self.handover_jenis = val
+
+    @rx.event
+    def set_handover_pengguna(self, val: str) -> None:
+        self.handover_pengguna = val
+
+    @rx.event
+    def set_handover_lokasi(self, val: str) -> None:
+        self.handover_lokasi = val
+
+    @rx.event
+    def set_handover_status(self, val: str) -> None:
+        self.handover_status = val
+
+    @rx.event
+    def set_handover_alasan(self, val: str) -> None:
+        self.handover_alasan = val
+
+    @rx.event
+    def set_handover_tanggal(self, val: str) -> None:
+        self.handover_tanggal = val
+
+    @rx.event
+    def set_handover_catatan(self, val: str) -> None:
+        self.handover_catatan = val
+
+    @rx.event
+    async def submit_handover(self) -> None:
+        if not self.detail_asset_id:
+            return
+        await api_client.handover_asset(
+            self.detail_asset_id,
+            {
+                "jenis": self.handover_jenis,
+                "pengguna_baru": self.handover_pengguna,
+                "lokasi_baru": self.handover_lokasi,
+                "status_baru": self.handover_status,
+                "alasan": self.handover_alasan,
+                "tanggal": self.handover_tanggal,
+                "catatan": self.handover_catatan,
+            },
+        )
+        self.handover_modal_open = False
+        await self.load_asset_detail_page()
+
+    # --- Handlers Modal Label QR & Tautan Relasi ---
+    @rx.event
+    def open_qr_modal(self) -> None:
+        self.qr_modal_open = True
+
+    @rx.event
+    def close_qr_modal(self) -> None:
+        self.qr_modal_open = False
+
+    @rx.event
+    def open_link_modal(self) -> None:
+        self.link_target_id = ""
+        self.link_modal_open = True
+
+    @rx.event
+    def close_link_modal(self) -> None:
+        self.link_modal_open = False
+
+    @rx.event
+    def set_link_target_id(self, val: str) -> None:
+        self.link_target_id = val
+
+    @rx.event
+    async def submit_asset_link(self) -> None:
+        if not self.detail_asset_id or not self.link_target_id.strip():
+            return
+        await api_client.link_asset_relation(
+            self.detail_asset_id,
+            {"action": "link", "target_asset_id": self.link_target_id.strip()},
+        )
+        self.link_modal_open = False
+        await self.load_asset_detail_page()
+
+    @rx.var(cache=True)
+    def comp_slot_options(self) -> list[str]:
+        if self.comp_modal_is_disk:
+            return ["M.2", "M.2_2", "SATA 1", "SATA 2", "SATA 3", "SATA 4"]
+        return ["DIMM 1", "DIMM 2", "DIMM 3", "DIMM 4"]
+
+    @rx.var(cache=True)
+    def comp_alasan_options(self) -> list[str]:
+        return [
+            "Upgrade RAM PC tujuan",
+            "Upgrade Storage PC tujuan",
+            "Backup / Cadangan Gudang",
+            "Komponen Rusak / Bermasalah",
+            "Lainnya",
+        ]
+
+    async def _refresh_comp_impact(self) -> None:
+        if not self.comp_modal_id:
+            return
+        tgt = (
+            f"{self.detail_asset_id}"
+            if self.comp_modal_action == "pasang"
+            else self.comp_modal_target_pc
+        )
+        prev = await api_client.preview_component_impact(
+            self.comp_modal_id,
+            action=self.comp_modal_action,
+            target_pc_id=tgt,
+        )
+        self.comp_modal_impacts = list(prev.get("impacts") or [])
+        self.comp_modal_warning = str(prev.get("warning") or "")
+
+    @rx.event
+    async def open_move_component_modal(
+        self, comp_id: str, action: str
+    ) -> None:
+        all_comps = [*self.comp_installed_list, *self.comp_spare_list]
+        target = next((c for c in all_comps if c.get("id_aset") == comp_id), None)
+        if not target:
+            return
+        self.comp_modal_id = comp_id
+        kat_str = str(target.get("komponen") or "RAM")
+        spec_str = str(target.get("spesifikasi") or "")
+        parent_str = str(target.get("parent_asset_id") or "")
+        loc_info = f"terpasang di {parent_str}" if parent_str else "Cadangan — Gudang"
+        self.comp_modal_subtitle = f"{comp_id} · {kat_str} {spec_str} · {loc_info}"
+        self.comp_modal_is_disk = kat_str.upper() in ("SSD", "HDD", "SSD/HDD")
+        self.comp_modal_action = action
+        self.comp_modal_target_pc = (
+            self.comp_pc_targets[0] if self.comp_pc_targets else "PC-016 — PC CS H2H"
+        )
+        default_slot = "M.2" if self.comp_modal_is_disk else "DIMM 2"
+        self.comp_modal_slot = str(target.get("slot") or default_slot)
+        self.comp_modal_alasan = (
+            "Upgrade Storage PC tujuan" if self.comp_modal_is_disk else "Upgrade RAM PC tujuan"
+        )
+        self.comp_modal_tanggal = "2026-11-09"
+        self.comp_modal_catatan = ""
+        self.comp_modal_confirm_wipe = False
+        self.comp_modal_error = ""
+        self.comp_modal_open = True
+        await self._refresh_comp_impact()
+
+    @rx.event
+    async def open_install_spare_modal(self, comp_id: str) -> None:
+        await self.open_move_component_modal(comp_id, "pasang")
+        nama = self.detail_asset.get("nama_aset", "")
+        self.comp_modal_target_pc = f"{self.detail_asset_id} — {nama}"
+        await self._refresh_comp_impact()
+
+    @rx.event
+    def close_comp_modal(self) -> None:
+        self.comp_modal_open = False
+        self.comp_modal_error = ""
+
+    @rx.event
+    async def set_comp_modal_action(self, act: str) -> None:
+        self.comp_modal_action = act
+        self.comp_modal_error = ""
+        await self._refresh_comp_impact()
+
+    @rx.event
+    async def set_comp_modal_target_pc(self, val: str) -> None:
+        self.comp_modal_target_pc = val
+        await self._refresh_comp_impact()
+
+    @rx.event
+    def set_comp_modal_slot(self, val: str) -> None:
+        self.comp_modal_slot = val
+
+    @rx.event
+    def set_comp_modal_alasan(self, val: str) -> None:
+        self.comp_modal_alasan = val
+
+    @rx.event
+    def set_comp_modal_tanggal(self, val: str) -> None:
+        self.comp_modal_tanggal = val
+
+    @rx.event
+    def set_comp_modal_catatan(self, val: str) -> None:
+        self.comp_modal_catatan = val
+
+    @rx.event
+    def toggle_comp_modal_wipe(self, _checked: Any = None) -> None:
+        self.comp_modal_confirm_wipe = not self.comp_modal_confirm_wipe
+
+    @rx.event
+    async def submit_component_mutation(self) -> None:
+        self.comp_modal_error = ""
+        tgt_pc = (
+            self.detail_asset_id
+            if self.comp_modal_action == "pasang"
+            else self.comp_modal_target_pc
+        )
+        try:
+            await api_client.mutate_component(
+                {
+                    "component_id": self.comp_modal_id,
+                    "action": self.comp_modal_action,
+                    "target_pc_id": tgt_pc,
+                    "slot": self.comp_modal_slot,
+                    "alasan": self.comp_modal_alasan,
+                    "tanggal": self.comp_modal_tanggal,
+                    "catatan": self.comp_modal_catatan,
+                    "lokasi": self.comp_modal_lokasi_cadangan,
+                    "confirm_wipe": self.comp_modal_confirm_wipe,
+                }
+            )
+            self.comp_modal_open = False
+            await self.load_asset_detail_page()
+        except Exception as exc:
+            self.comp_modal_error = str(exc)
+
+    @rx.event
+    async def execute_component_wizard(self) -> None:
+        if not self.detail_asset_id:
+            return
+        await api_client.run_component_wizard(self.detail_asset_id)
+        await self.load_asset_detail_page()
 
 
 __all__ = ["AssetState"]

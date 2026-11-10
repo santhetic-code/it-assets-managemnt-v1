@@ -26,6 +26,7 @@ class PowerState(rx.State):
 
     # Tab & Filter
     active_tab: str = "Semua"
+    scope_filter: str = "Server"
     search_query: str = ""
     cpu_brand_filter: str = ""
     beban_filter: str = ""
@@ -122,6 +123,19 @@ class PowerState(rx.State):
         end = min(self.total_items, self.page * self.page_size)
         return f"Menampilkan {start}-{end} dari {self.total_items} server"
 
+    @rx.var(cache=True)
+    def scope_options(self) -> list[str]:
+        return ["Server", "PC Operasional", "Semua"]
+
+    @rx.event
+    async def set_scope_filter(self, val: str) -> None:
+        clean = val if val in ("Server", "PC Operasional", "Semua") else "Server"
+        if self.scope_filter == clean:
+            return
+        self.scope_filter = clean
+        self.page = 1
+        await self.fetch_power_data()
+
     @rx.event
     async def load_power_page(self) -> None:
         """Muat data saat halaman /watt-server dibuka."""
@@ -130,7 +144,9 @@ class PowerState(rx.State):
     @rx.event
     async def fetch_power_data(self) -> None:
         self.is_loading = True
+        scope_map = {"Server": "server", "PC Operasional": "pc", "Semua": "all"}
         filters = {
+            "scope": scope_map.get(self.scope_filter, "server"),
             "tab": self.active_tab,
             "search": self.search_query,
             "cpu_brand": self.cpu_brand_filter,
@@ -330,27 +346,18 @@ class PowerState(rx.State):
         self.form_modal_open = True
 
     @rx.event
-    def open_edit_modal(self, row_id: str) -> None:
+    def open_edit_modal(self, row_id: str) -> Any:
+        """Buka tab Spesifikasi di Detail Aset (/assets/[id]?tab=spesifikasi) sesuai Seksi 11."""
         target_id = row_id or self.active_row_id
-        target = next((x for x in self.items if x["id"] == target_id), None)
-        if not target:
-            return
-        self.is_edit_mode = True
-        self.edit_asset_id = target["id_aset"]
-        self.form_error = ""
-        self.form_nama_aset = target["nama_aset"]
-        self.form_cpu = "" if target["cpu"] == "—" else target["cpu"]
-        self.form_vga = "" if target["vga"] == "—" else target["vga"]
-        self.form_ram = "" if target["ram"] == "—" else target["ram"]
-        self.form_hdd_ssd = "" if target["hdd_ssd"] == "—" else target["hdd_ssd"]
-        self.form_tdp_w = str(target["tdp_total_w"])
-        self.form_psu_min_w = str(target["psu_min_w"])
-        self.form_psu_rek_w = str(target["psu_rekomendasi_w"])
-        self.form_lokasi = target["lokasi"]
-        self.form_status = target["status"]
-        self.form_catatan = "" if target["catatan"] == "—" else target["catatan"]
+        target = next(
+            (x for x in self.items if x["id"] == target_id or x["id_aset"] == target_id),
+            None,
+        )
+        asset_code = target["id_aset"] if target else (self.active_code or target_id)
         self.drawer_open = False
-        self.form_modal_open = True
+        if asset_code:
+            return rx.redirect(f"/assets/{asset_code}?tab=spesifikasi")
+        return None
 
     @rx.event
     def open_duplicate_modal(self, row_id: str) -> None:

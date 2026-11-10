@@ -5,9 +5,10 @@ from datetime import date, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, col, select
 
+from app.api.v1.credentials import can_access_credential, resolve_viewer_context
 from app.core.master_data import (
     CATEGORY_TREE,
     get_prefix_for_category,
@@ -15,10 +16,12 @@ from app.core.master_data import (
     normalize_asset_status,
 )
 from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
-from app.models.asset import Asset, AssetLink, Category
+from app.models.asset import Asset, AssetLink, AssetMovement, Category
 from app.models.base import utcnow
 from app.models.credential import Credential
+from app.models.finance import Purchase
 from app.models.ip_allocation import IPAllocation
+from app.models.maintenance import Maintenance
 from app.schemas.asset import (
     FORBIDDEN_FIELDS,
     AssetCreate,
@@ -28,6 +31,7 @@ from app.schemas.asset import (
     _clean_serial_number,
     _resolve_category_group,
 )
+from app.schemas.audit import record_audit_log
 
 router = APIRouter()
 
@@ -519,6 +523,646 @@ def get_asset_detail(
     return AssetPublic.from_asset(asset, rel_map.get(asset.id_aset))
 
 
+COMPONENT_CATEGORIES = {"ram", "ssd", "hdd", "ssd/hdd", "vga", "psu"}
+
+
+def _parse_capacity_gb(raw_val: Any) -> int:
+    """Mengekstrak angka kapasitas GB dari angka atau teks (mis. '512 GB', '1 TB' -> 1024)."""
+    if isinstance(raw_val, (int, float)):
+        return int(raw_val)
+    text = str(raw_val or "").strip().upper()
+    if not text:
+        return 0
+    m_tb = re.search(r"(\d+(?:[.,]\d+)?)\s*TB", text)
+    if m_tb:
+        return int(float(m_tb.group(1).replace(",", ".")) * 1024)
+    m_gb = re.search(r"(\d+)\s*GB", text)
+    if m_gb:
+        return int(m_gb.group(1))
+    digits = re.sub(r"[^\d]", "", text)
+    return int(digits) if digits else 0
+
+
+def _compute_pc_component_totals(
+    session: Session,
+    parent_tag: str,
+) -> dict[str, Any]:
+    """Menghitung total RAM (GB & modul) dan Storage (GB & disk) dari komponen terpasang."""
+    children = list(
+        session.exec(
+            select(Asset).where(
+                func.upper(Asset.parent_asset_id) == parent_tag.strip().upper(),
+                col(Asset.deleted_at).is_(None),
+            )
+        ).all()
+    )
+    comp_children = [c for c in children if c.kategori.strip().lower() in COMPONENT_CATEGORIES]
+
+    ram_gb = 0
+    ram_modules = 0
+    ram_types: set[str] = set()
+    storage_gb = 0
+    storage_disks = 0
+    storage_labels: list[str] = []
+
+    for c in comp_children:
+        kat_low = c.kategori.strip().lower()
+        sp = {**(c.extra_specs or {}), **(c.specs or {})}
+        cap = _parse_capacity_gb(sp.get("kapasitas_gb") or c.ram or c.storage or c.nama_aset)
+        tipe = str(sp.get("tipe") or c.model or "").strip().upper()
+        if kat_low == "ram":
+            ram_modules += 1
+            ram_gb += cap or 8
+            if tipe:
+                ram_types.add(tipe)
+        elif kat_low in ("ssd", "hdd", "ssd/hdd"):
+            storage_disks += 1
+            storage_gb += cap or 256
+            st_type = tipe or ("NVMe" if "NVME" in c.nama_aset.upper() else "SSD")
+            storage_labels.append(f"{st_type} {cap or 256}GB")
+
+    ram_type_str = "/".join(sorted(ram_types)) or "DDR4"
+    return {
+        "is_tracked": len(comp_children) > 0,
+        "ram_total_gb": ram_gb,
+        "ram_modules": ram_modules,
+        "ram_summary_chip": f"RAM total {ram_gb} GB · {ram_modules} modul",
+        "ram_text": f"{ram_gb}GB {ram_type_str}" if ram_modules > 0 else "",
+        "storage_total_gb": storage_gb,
+        "storage_disks": storage_disks,
+        "storage_summary_chip": f"Storage total {storage_gb} GB · {storage_disks} disk",
+        "storage_text": ", ".join(storage_labels) if storage_disks > 0 else "",
+        "components": comp_children,
+    }
+
+
+def _recalculate_parent_component_totals(session: Session, parent_tag: str | None) -> None:
+    """Sinkronkan field teks RAM & Storage pada PC/Server induk setiap ada mutasi komponen."""
+    if not parent_tag:
+        return
+    parent = session.exec(
+        select(Asset).where(
+            func.upper(Asset.id_aset) == parent_tag.strip().upper(),
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    if parent is None:
+        return
+
+    totals = _compute_pc_component_totals(session, parent.id_aset)
+    extra = dict(parent.extra_specs or {})
+    specs = dict(parent.specs or {})
+    extra["component_tracked"] = totals["is_tracked"]
+    specs["component_tracked"] = totals["is_tracked"]
+
+    if totals["ram_modules"] > 0:
+        parent.ram = totals["ram_text"]
+        extra["ram"] = totals["ram_text"]
+        specs["ram"] = totals["ram_text"]
+    if totals["storage_disks"] > 0:
+        parent.storage = totals["storage_text"]
+        extra["hdd_ssd"] = totals["storage_text"]
+        specs["storage"] = totals["storage_text"]
+
+    parent.extra_specs = extra
+    parent.specs = specs
+    parent.updated_at = utcnow()
+    session.add(parent)
+
+
+def format_date_id(dt_or_str: Any) -> str:
+    """Format tanggal ke 'Mon YYYY' mis. 'Nov 2026'."""
+    bulan = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"]
+    if isinstance(dt_or_str, str):
+        try:
+            d = date.fromisoformat(dt_or_str[:10])
+        except Exception:
+            return dt_or_str
+    elif isinstance(dt_or_str, date):
+        d = dt_or_str
+    else:
+        return str(dt_or_str)
+    return f"{bulan[d.month - 1]} {d.year}"
+
+
+def _format_component_row(c: Asset) -> dict[str, Any]:
+    sp = {**(c.extra_specs or {}), **(c.specs or {})}
+    kat_up = c.kategori.upper()
+    cap = _parse_capacity_gb(sp.get("kapasitas_gb") or c.ram or c.storage or c.nama_aset)
+    tipe = str(sp.get("tipe") or ("DDR4" if kat_up == "RAM" else "NVMe")).strip()
+    slot = str(sp.get("slot") or ("DIMM 1" if kat_up == "RAM" else "M.2")).strip()
+    data_status = str(
+        sp.get("data_status") or ("Kosong" if kat_up == "RAM" else "Siap pakai")
+    ).strip()
+    dipasang_sejak = str(sp.get("dipasang_sejak") or "Jun 2025")
+    spec_label = f"{tipe} · {cap} GB" if cap > 0 else (c.model or c.nama_aset)
+    return {
+        "id_aset": c.id_aset,
+        "komponen": "SSD" if kat_up in ("SSD", "HDD", "SSD/HDD") else kat_up,
+        "nama_aset": c.nama_aset,
+        "spesifikasi": spec_label,
+        "tipe": tipe,
+        "kapasitas_gb": cap,
+        "slot": slot,
+        "dipasang_sejak": dipasang_sejak,
+        "lokasi": f"{c.status} · {c.lokasi}",
+        "status": c.status,
+        "parent_asset_id": c.parent_asset_id or "",
+        "data_status": data_status,
+        "catatan_chip": (
+            "Berisi data, belum di-wipe"
+            if data_status.lower() == "berisi data"
+            else "Siap pakai"
+        ),
+        "needs_wipe": data_status.lower() == "berisi data",
+    }
+
+
+@router.get("/{id_aset}/full-detail")
+def get_asset_full_detail(
+    id_aset: str,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> dict[str, Any]:
+    """Mengambil detail lengkap aset beserta seluruh relasi lintas modul (Artboard 11)."""
+    clean_tag = id_aset.strip().upper()
+    asset = session.exec(
+        select(Asset).where(
+            func.upper(Asset.id_aset) == clean_tag,
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aset tidak ditemukan",
+        )
+
+    rel_map = _build_relations_map(session, [asset])
+    pub = AssetPublic.from_asset(asset, rel_map.get(asset.id_aset))
+
+    # 1. Monitor terpasang (jika aset ini PC/Server) atau PC induk (jika aset ini Monitor)
+    child_monitors = list(
+        session.exec(
+            select(Asset).where(
+                col(Asset.parent_asset_id) == asset.id_aset,
+                func.lower(Asset.kategori) == "monitor",
+                col(Asset.deleted_at).is_(None),
+            )
+        ).all()
+    )
+    parent_asset = (
+        session.exec(
+            select(Asset).where(
+                col(Asset.id_aset) == asset.parent_asset_id,
+                col(Asset.deleted_at).is_(None),
+            )
+        ).first()
+        if asset.parent_asset_id
+        else None
+    )
+
+    # 2. Relasi UPS <-> Server dari asset_links
+    ups_links = list(
+        session.exec(
+            select(AssetLink).where(
+                or_(
+                    col(AssetLink.asset_id) == asset.id_aset,
+                    col(AssetLink.linked_asset_id) == asset.id_aset,
+                )
+            )
+        ).all()
+    )
+    linked_tags = {
+        lnk.linked_asset_id if lnk.asset_id == asset.id_aset else lnk.asset_id for lnk in ups_links
+    }
+    linked_power_assets = (
+        list(
+            session.exec(
+                select(Asset).where(
+                    col(Asset.id_aset).in_(linked_tags),
+                    col(Asset.deleted_at).is_(None),
+                )
+            ).all()
+        )
+        if linked_tags
+        else []
+    )
+
+    # 3. Jaringan (IP Fisik & VM yang berjalan di host ini)
+    ip_entries = list(
+        session.exec(
+            select(IPAllocation).where(
+                or_(
+                    func.upper(IPAllocation.id_aset) == asset.id_aset.upper(),
+                    func.upper(IPAllocation.id_aset_host) == asset.id_aset.upper(),
+                )
+            )
+        ).all()
+    )
+
+    # 4. Kredensial terkait (difilter sesuai hak akses pengguna saat ini - Seksi 7 & 9)
+    v_ctx = resolve_viewer_context(session, current_user)
+    raw_creds = list(
+        session.exec(
+            select(Credential).where(
+                col(Credential.deleted_at).is_(None),
+                or_(
+                    func.upper(Credential.linked_asset_id) == asset.id_aset.upper(),
+                    func.upper(Credential.id_aset) == asset.id_aset.upper(),
+                ),
+            )
+        ).all()
+    )
+    accessible_creds = [
+        {
+            "kode_kredensial": c.kode_kredensial,
+            "nama": c.nama or c.nama_layanan,
+            "jenis": c.jenis_kredensial,
+            "username": c.username,
+        }
+        for c in raw_creds
+        if can_access_credential(session, v_ctx, c, action="view")
+    ]
+
+    # 5. Pembelian & Garansi
+    purchase_row = None
+    if asset.purchase_item_id:
+        purchase_row = session.get(Purchase, asset.purchase_item_id)
+    if purchase_row is None:
+        purchase_row = session.exec(
+            select(Purchase).where(func.upper(Purchase.id_aset) == asset.id_aset.upper())
+        ).first()
+
+    # 6. Jadwal & Riwayat Maintenance
+    maintenances = list(
+        session.exec(
+            select(Maintenance)
+            .where(func.upper(Maintenance.id_aset) == asset.id_aset.upper())
+            .order_by(col(Maintenance.tanggal_jadwal).desc())
+        ).all()
+    )
+
+    # 7. Riwayat Mutasi & Serah Terima (asset_movements)
+    movements = list(
+        session.exec(
+            select(AssetMovement)
+            .where(func.upper(AssetMovement.asset_id) == asset.id_aset.upper())
+            .order_by(col(AssetMovement.tanggal).desc(), col(AssetMovement.id).desc())
+        ).all()
+    )
+
+    # 8. Komponen Terpasang & Stok Komponen Cadangan (Seksi 6 & Artboard 12)
+    comp_totals = _compute_pc_component_totals(session, asset.id_aset)
+    installed_components = [_format_component_row(c) for c in comp_totals["components"]]
+
+    spare_rows = list(
+        session.exec(
+            select(Asset).where(
+                col(Asset.parent_asset_id).is_(None),
+                func.lower(Asset.kategori).in_(
+                    ["ram", "ssd", "hdd", "ssd/hdd", "vga", "psu"]
+                ),
+                func.lower(Asset.status).in_(["cadangan", "backup", "gudang"]),
+                col(Asset.deleted_at).is_(None),
+            )
+        ).all()
+    )
+    spare_components = [_format_component_row(s) for s in spare_rows]
+
+    pc_targets = [
+        f"{p.id_aset} · {p.nama_aset}"
+        for p in session.exec(
+            select(Asset)
+            .where(
+                func.lower(Asset.kategori).in_(["pc", "laptop", "server"]),
+                col(Asset.id_aset) != asset.id_aset,
+                col(Asset.deleted_at).is_(None),
+            )
+            .order_by(col(Asset.id_aset).asc())
+        ).all()
+    ]
+
+    return {
+        "asset": pub,
+        "relations": {
+            "monitors": [
+                {
+                    "id_aset": m.id_aset,
+                    "nama_aset": m.nama_aset,
+                    "summary": (
+                        f"{m.id_aset} · {m.nama_aset} · "
+                        f'{(m.ukuran_layar or "24").replace('"', "")}" FHD'
+                    ),
+                }
+                for m in child_monitors
+            ],
+            "parent_asset": (
+                {
+                    "id_aset": parent_asset.id_aset,
+                    "nama_aset": parent_asset.nama_aset,
+                    "kategori": parent_asset.kategori,
+                }
+                if parent_asset
+                else None
+            ),
+            "power_links": [
+                {
+                    "id_aset": p.id_aset,
+                    "nama_aset": p.nama_aset,
+                    "kategori": p.kategori,
+                    "summary": f"{p.id_aset} · {p.nama_aset}",
+                }
+                for p in linked_power_assets
+            ],
+            "ips": [
+                {
+                    "id": ip.id,
+                    "ip_address": ip.ip_address,
+                    "nama_perangkat": ip.nama_perangkat,
+                    "is_vm": ip.is_vm,
+                    "status": ip.status,
+                    "summary": f"{ip.ip_address} · {ip.status}",
+                }
+                for ip in ip_entries
+            ],
+            "credentials": accessible_creds,
+            "credentials_summary": (
+                f"{len(accessible_creds)} entri "
+                f"({', '.join(sorted({c['jenis'] for c in accessible_creds}))}) · "
+                "sesuai hak akses Anda"
+                if accessible_creds
+                else "Belum ada kredensial tertaut"
+            ),
+            "purchase": (
+                {
+                    "kode_pembelian": purchase_row.kode_pembelian,
+                    "nomor_invoice": purchase_row.nomor_invoice,
+                    "nama_item": purchase_row.nama_item,
+                    "vendor": purchase_row.vendor,
+                    "harga_satuan": purchase_row.harga_satuan,
+                    "tanggal_beli": (
+                        purchase_row.tanggal_beli.isoformat() if purchase_row.tanggal_beli else ""
+                    ),
+                }
+                if purchase_row
+                else None
+            ),
+            "maintenances": [
+                {
+                    "kode_maintenance": m.kode_maintenance,
+                    "judul": m.judul,
+                    "jenis_maintenance": m.jenis_maintenance,
+                    "tanggal_jadwal": m.tanggal_jadwal.isoformat() if m.tanggal_jadwal else "",
+                    "status": m.status,
+                    "teknisi": m.teknisi,
+                }
+                for m in maintenances
+            ],
+        },
+        "movements": [
+            {
+                "id": mv.id,
+                "jenis": mv.jenis,
+                "dari": mv.dari,
+                "ke": mv.ke,
+                "alasan": mv.alasan,
+                "catatan": mv.catatan,
+                "tanggal": mv.tanggal.isoformat(),
+                "oleh": mv.oleh,
+            }
+            for mv in movements
+        ],
+        "components": {
+            "is_tracked": comp_totals["is_tracked"],
+            "ram_summary_chip": comp_totals["ram_summary_chip"],
+            "storage_summary_chip": comp_totals["storage_summary_chip"],
+            "installed": installed_components,
+            "spares": spare_components,
+            "pc_targets": pc_targets,
+        },
+    }
+
+
+@router.post("/{id_aset}/handover")
+def handover_or_move_asset(
+    id_aset: str,
+    payload: dict[str, Any],
+    session: SessionDep,
+    current_user: EditorUserDep,
+) -> dict[str, Any]:
+    """Mencatat Serah Terima atau Pindah Lokasi ke asset_movements secara atomik (Seksi 4.4 & 9)."""
+    asset = session.exec(
+        select(Asset).where(
+            func.lower(Asset.id_aset) == id_aset.strip().lower(),
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aset tidak ditemukan",
+        )
+
+    jenis_mutasi = str(payload.get("jenis") or "serah_terima").strip().lower()
+    if jenis_mutasi not in ("serah_terima", "pindah", "ubah_status"):
+        jenis_mutasi = "serah_terima"
+
+    new_user = str(payload.get("pengguna_baru") or "").strip()
+    new_loc = str(payload.get("lokasi_baru") or "").strip()
+    new_status = str(payload.get("status_baru") or "").strip()
+    alasan = str(payload.get("alasan") or "Serah terima operasional").strip()
+    catatan = str(payload.get("catatan") or "").strip()
+    raw_tgl = str(payload.get("tanggal") or "").strip()
+    tgl_mutasi = date.fromisoformat(raw_tgl) if raw_tgl else date.today()
+
+    old_user = asset.pemakai_text or asset.penanggung_jawab or "Gudang"
+    old_loc = asset.lokasi
+    dari_str = f"{old_user} ({old_loc})"
+
+    if new_user:
+        asset.penanggung_jawab = new_user
+        asset.pemakai_text = new_user
+    if new_loc:
+        asset.lokasi = new_loc
+    if new_status:
+        asset.status = normalize_asset_status(new_status)
+
+    ke_str = f"{asset.pemakai_text or asset.penanggung_jawab} ({asset.lokasi})"
+    asset.updated_at = utcnow()
+    session.add(asset)
+
+    movement = AssetMovement(
+        asset_id=asset.id_aset,
+        jenis=jenis_mutasi,
+        dari=dari_str[:150],
+        ke=ke_str[:150],
+        alasan=alasan[:150],
+        catatan=catatan[:500],
+        tanggal=tgl_mutasi,
+        oleh=current_user.username,
+    )
+    session.add(movement)
+
+    record_audit_log(
+        session,
+        username=current_user.username,
+        nama_pengguna=getattr(current_user, "full_name", current_user.username),
+        role=current_user.role,
+        aksi="Serah Terima / Pindah Aset",
+        modul="Inventory",
+        target_id=asset.id_aset,
+        detail=f"{jenis_mutasi}: {dari_str} -> {ke_str}. Catatan: {catatan}",
+        level_risiko="Rendah",
+    )
+    session.commit()
+    session.refresh(asset)
+    return {"status": "ok", "id_aset": asset.id_aset, "ke": ke_str}
+
+
+@router.post("/{id_aset}/links")
+def manage_asset_relation_link(
+    id_aset: str,
+    payload: dict[str, Any],
+    session: SessionDep,
+    current_user: EditorUserDep,
+) -> dict[str, Any]:
+    """Menautkan atau melepas relasi Monitor <-> PC atau UPS <-> Server (Seksi 4.4 & 9)."""
+    source = session.exec(
+        select(Asset).where(
+            func.lower(Asset.id_aset) == id_aset.strip().lower(),
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    target_tag = str(payload.get("target_asset_id") or "").strip().upper()
+    action = str(payload.get("action") or "link").strip().lower()
+    rel_type = str(payload.get("tipe") or "terpasang").strip().lower()
+
+    if source is None:
+        raise HTTPException(status_code=404, detail="Aset sumber tidak ditemukan")
+
+    if action == "unlink":
+        if source.kategori.lower() == "monitor":
+            old_parent = source.parent_asset_id or "—"
+            source.parent_asset_id = None
+            source.status = "Cadangan"
+            source.pemakai_text = "Cadangan Gudang IT"
+            source.penanggung_jawab = "Cadangan Gudang IT"
+            session.add(source)
+            session.add(
+                AssetMovement(
+                    asset_id=source.id_aset,
+                    jenis="lepas",
+                    dari=old_parent,
+                    ke="Cadangan (Gudang)",
+                    alasan="Lepas tautan monitor",
+                    oleh=current_user.username,
+                )
+            )
+        elif target_tag:
+            child_mon = session.exec(
+                select(Asset).where(
+                    func.upper(Asset.id_aset) == target_tag,
+                    col(Asset.parent_asset_id) == source.id_aset,
+                )
+            ).first()
+            if child_mon:
+                child_mon.parent_asset_id = None
+                child_mon.status = "Cadangan"
+                child_mon.pemakai_text = "Cadangan Gudang IT"
+                child_mon.penanggung_jawab = "Cadangan Gudang IT"
+                session.add(child_mon)
+            existing_lnk = session.exec(
+                select(AssetLink).where(
+                    or_(
+                        and_(
+                            col(AssetLink.asset_id) == source.id_aset,
+                            col(AssetLink.linked_asset_id) == target_tag,
+                        ),
+                        and_(
+                            col(AssetLink.asset_id) == target_tag,
+                            col(AssetLink.linked_asset_id) == source.id_aset,
+                        ),
+                    )
+                )
+            ).first()
+            if existing_lnk:
+                session.delete(existing_lnk)
+        session.commit()
+        return {"status": "ok", "action": "unlink"}
+
+    target = session.exec(
+        select(Asset).where(
+            func.upper(Asset.id_aset) == target_tag,
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    if target is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Aset tujuan '{target_tag}' tidak ditemukan",
+        )
+
+    # Jika menautkan Monitor ke PC
+    if (
+        source.kategori.lower() in ("pc", "laptop", "server")
+        and target.kategori.lower() == "monitor"
+    ):
+        target.parent_asset_id = source.id_aset
+        target.status = "Digunakan"
+        target.lokasi = source.lokasi
+        target.pemakai_text = f"Terpasang di {source.id_aset}"
+        target.penanggung_jawab = f"Terpasang di {source.id_aset}"
+        session.add(target)
+        session.add(
+            AssetMovement(
+                asset_id=target.id_aset,
+                jenis="pasang",
+                dari="Cadangan",
+                ke=source.id_aset,
+                alasan=f"Dipasang ke {source.id_aset}",
+                oleh=current_user.username,
+            )
+        )
+    elif source.kategori.lower() == "monitor" and target.kategori.lower() in (
+        "pc",
+        "laptop",
+        "server",
+    ):
+        source.parent_asset_id = target.id_aset
+        source.status = "Digunakan"
+        source.lokasi = target.lokasi
+        source.pemakai_text = f"Terpasang di {target.id_aset}"
+        source.penanggung_jawab = f"Terpasang di {target.id_aset}"
+        session.add(source)
+    else:
+        # Tautan UPS <-> Server melalui asset_links
+        ups_asset = source if source.kategori.lower() == "ups" else target
+        srv_asset = target if source.kategori.lower() == "ups" else source
+        existing = session.exec(
+            select(AssetLink).where(
+                col(AssetLink.asset_id) == ups_asset.id_aset,
+                col(AssetLink.linked_asset_id) == srv_asset.id_aset,
+            )
+        ).first()
+        if existing is None:
+            session.add(
+                AssetLink(
+                    asset_id=ups_asset.id_aset,
+                    linked_asset_id=srv_asset.id_aset,
+                    tipe=rel_type if rel_type != "terpasang" else "menyuplai_daya",
+                )
+            )
+        ups_asset.beban_perangkat = srv_asset.nama_aset
+        ups_asset.pemakai_text = f"Menyuplai {srv_asset.nama_aset}"
+        ups_asset.penanggung_jawab = ups_asset.pemakai_text
+        ups_asset.status = "Digunakan"
+        session.add(ups_asset)
+
+    session.commit()
+    return {"status": "ok", "source": source.id_aset, "target": target.id_aset}
+
+
 @router.post("/bulk", status_code=status.HTTP_201_CREATED)
 def create_assets_bulk(
     payload: dict,
@@ -808,3 +1452,405 @@ def delete_asset(
     session.add(asset)
     session.commit()
     return {"status": "ok", "id_aset": asset.id_aset}
+
+
+@router.get("/{id_aset}/components/preview-impact")
+def preview_component_move_impact(
+    id_aset: str,
+    session: SessionDep,
+    _: CurrentUserDep,
+    action: str = Query(default="pindah"),
+    target_pc_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    """Menghitung dampak kapasitas sebelum & sesudah pemindahan komponen (Artboard 12)."""
+    comp = session.exec(
+        select(Asset).where(
+            func.upper(Asset.id_aset) == id_aset.strip().upper(),
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    if comp is None:
+        raise HTTPException(status_code=404, detail="Komponen tidak ditemukan")
+
+    sp = {**(comp.extra_specs or {}), **(comp.specs or {})}
+    cap = _parse_capacity_gb(sp.get("kapasitas_gb") or comp.ram or comp.storage or comp.nama_aset)
+    is_ram = comp.kategori.strip().lower() == "ram"
+    label_metric = "RAM" if is_ram else "Storage"
+    default_cap = 8 if is_ram else 256
+    delta = cap or default_cap
+
+    source_id = comp.parent_asset_id
+    impacts: list[dict[str, str]] = []
+    warning_msg = ""
+
+    if source_id:
+        src_totals = _compute_pc_component_totals(session, source_id)
+        before_src = src_totals["ram_total_gb"] if is_ram else src_totals["storage_total_gb"]
+        if before_src == 0:
+            before_src = delta * 2
+        after_src = max(0, before_src - delta)
+        impacts.append(
+            {
+                "label": f"{source_id} {label_metric}",
+                "change": f"{before_src} GB → {after_src} GB",
+            }
+        )
+
+    clean_target = (target_pc_id or "").split("·")[0].strip().upper()
+    if action.lower() in ("pindah", "pasang") and clean_target:
+        tgt_asset = session.exec(
+            select(Asset).where(
+                func.upper(Asset.id_aset) == clean_target,
+                col(Asset.deleted_at).is_(None),
+            )
+        ).first()
+        if tgt_asset:
+            tgt_totals = _compute_pc_component_totals(session, tgt_asset.id_aset)
+            before_tgt = tgt_totals["ram_total_gb"] if is_ram else tgt_totals["storage_total_gb"]
+            if before_tgt == 0:
+                raw_spec = tgt_asset.ram if is_ram else tgt_asset.storage
+                before_tgt = _parse_capacity_gb(raw_spec) or delta
+            after_tgt = before_tgt + delta
+            impacts.append(
+                {
+                    "label": f"{tgt_asset.id_aset} {label_metric}",
+                    "change": f"{before_tgt} GB → {after_tgt} GB",
+                }
+            )
+            # Peringatan non-blocking jika tipe DDR tidak cocok (Seksi 6)
+            comp_tipe = str(sp.get("tipe") or "").upper()
+            if is_ram and comp_tipe and tgt_asset.ram and comp_tipe not in tgt_asset.ram.upper():
+                warning_msg = (
+                    f"Peringatan: Tipe memori {comp_tipe} mungkin berbeda dengan spesifikasi "
+                    f"induk {tgt_asset.id_aset} ({tgt_asset.ram})."
+                )
+
+    return {
+        "component_id": comp.id_aset,
+        "impacts": impacts,
+        "warning": warning_msg,
+        "needs_wipe_confirmation": (
+            comp.kategori.strip().lower() in ("ssd", "hdd", "ssd/hdd")
+            and str(sp.get("data_status") or "").lower() == "berisi data"
+        ),
+    }
+
+
+@router.post("/components/mutate")
+def mutate_component_unit(
+    payload: dict[str, Any],
+    session: SessionDep,
+    current_user: EditorUserDep,
+) -> dict[str, Any]:
+    """Operasi atomik Pasang, Lepas, Pindah, dan Tandai Rusak komponen per unit (Seksi 6)."""
+    comp_id = str(payload.get("component_id") or "").strip().upper()
+    action = str(payload.get("action") or "pindah").strip().lower()
+    raw_target = str(payload.get("target_pc_id") or "").strip()
+    target_pc_id = raw_target.split("·")[0].strip().upper() if raw_target else ""
+    slot = str(payload.get("slot") or "").strip()
+    lokasi_cadangan = str(payload.get("lokasi") or "Gudang").strip()
+    alasan = str(payload.get("alasan") or "Upgrade / Mutasi Komponen").strip()
+    catatan = str(payload.get("catatan") or "").strip()
+    raw_tgl = str(payload.get("tanggal") or "").strip()
+    confirm_wipe = bool(payload.get("confirm_wipe", False))
+    data_status_new = str(payload.get("data_status") or "").strip()
+
+    try:
+        tgl_mutasi = date.fromisoformat(raw_tgl) if raw_tgl else date.today()
+    except ValueError:
+        tgl_mutasi = date.today()
+
+    # Kunci baris komponen (FOR UPDATE) agar tidak bisa dipasang ke 2 PC bersamaan (Seksi 6 & 19)
+    comp = session.exec(
+        select(Asset)
+        .where(
+            func.upper(Asset.id_aset) == comp_id,
+            col(Asset.deleted_at).is_(None),
+        )
+        .with_for_update()
+    ).first()
+    if comp is None:
+        raise HTTPException(status_code=404, detail=f"Komponen '{comp_id}' tidak ditemukan")
+
+    old_parent_id = comp.parent_asset_id
+    sp = {**(comp.extra_specs or {}), **(comp.specs or {})}
+    is_disk = comp.kategori.strip().lower() in ("ssd", "hdd", "ssd/hdd")
+    current_data_status = str(sp.get("data_status") or "Kosong").strip()
+
+    if action in ("pasang", "pindah"):
+        if not target_pc_id:
+            raise HTTPException(status_code=422, detail="PC atau Server tujuan wajib dipilih")
+        if old_parent_id and target_pc_id == old_parent_id.upper():
+            raise HTTPException(
+                status_code=422,
+                detail="PC tujuan tidak boleh sama dengan PC asal",
+            )
+        target_pc = session.exec(
+            select(Asset)
+            .where(
+                func.upper(Asset.id_aset) == target_pc_id,
+                col(Asset.deleted_at).is_(None),
+            )
+            .with_for_update()
+        ).first()
+        if target_pc is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"PC tujuan '{target_pc_id}' tidak ditemukan",
+            )
+        if target_pc.kategori.strip().lower() not in ("pc", "laptop", "server"):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Aset tujuan '{target_pc.id_aset}' ({target_pc.kategori}) bukan "
+                    "PC/Laptop/Server"
+                ),
+            )
+        # Validasi ketat Wipe Disk SSD/HDD (Seksi 6 & 19)
+        if is_disk and current_data_status.lower() == "berisi data" and not confirm_wipe:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Disk {comp.id_aset} berstatus 'Berisi data'. Harap centang konfirmasi "
+                    "bahwa data pada disk sudah dihapus (wipe) atau dipindah dengan aman."
+                ),
+            )
+        if is_disk and confirm_wipe:
+            sp["data_status"] = "Sudah di-wipe"
+
+        if slot:
+            sp["slot"] = slot
+        sp["dipasang_sejak"] = format_date_id(tgl_mutasi.isoformat())
+
+        comp.parent_asset_id = target_pc.id_aset
+        comp.status = "Digunakan"
+        comp.lokasi = target_pc.lokasi
+        comp.pemakai_text = f"Terpasang di {target_pc.id_aset}"
+        comp.penanggung_jawab = comp.pemakai_text
+        dari_label = old_parent_id or f"Cadangan ({comp.lokasi})"
+        ke_label = f"{target_pc.id_aset} ({slot or 'Slot Default'})"
+        jenis_mv = "pindah" if old_parent_id else "pasang"
+
+    elif action == "lepas":
+        comp.parent_asset_id = None
+        comp.status = "Cadangan"
+        comp.lokasi = lokasi_cadangan or "Head Office (Office Blok 14)"
+        comp.pemakai_text = "Cadangan · Gudang"
+        comp.penanggung_jawab = "Cadangan · Gudang"
+        if is_disk:
+            sp["data_status"] = data_status_new or (
+                "Sudah di-wipe" if confirm_wipe else "Berisi data"
+            )
+        dari_label = old_parent_id or "PC Induk"
+        ke_label = f"Cadangan · {lokasi_cadangan}"
+        jenis_mv = "lepas"
+
+    elif action in ("rusak", "tandai_rusak"):
+        comp.parent_asset_id = None
+        comp.status = "Rusak"
+        comp.kondisi = "Rusak"
+        comp.pemakai_text = "Rusak · Gudang"
+        comp.penanggung_jawab = "Rusak · Gudang"
+        dari_label = old_parent_id or comp.lokasi
+        ke_label = "Status: Rusak"
+        jenis_mv = "ubah_status"
+    else:
+        raise HTTPException(status_code=422, detail=f"Tindakan '{action}' tidak dikenal")
+
+    comp.specs = sp
+    comp.extra_specs = sp
+    comp.updated_at = utcnow()
+    session.add(comp)
+    session.flush()
+
+    # Rekalkulasi otomatis kapasitas RAM & Storage pada PC asal dan PC tujuan
+    if old_parent_id:
+        _recalculate_parent_component_totals(session, old_parent_id)
+    if comp.parent_asset_id:
+        _recalculate_parent_component_totals(session, comp.parent_asset_id)
+
+    session.add(
+        AssetMovement(
+            asset_id=comp.id_aset,
+            jenis=jenis_mv,
+            dari=dari_label[:150],
+            ke=ke_label[:150],
+            alasan=alasan[:150],
+            catatan=catatan[:500],
+            tanggal=tgl_mutasi,
+            oleh=current_user.username,
+        )
+    )
+    if old_parent_id:
+        session.add(
+            AssetMovement(
+                asset_id=old_parent_id,
+                jenis=jenis_mv,
+                dari=f"{comp.id_aset} ({old_parent_id})",
+                ke=ke_label[:150],
+                alasan=alasan[:150],
+                catatan=f"Komponen {comp.id_aset}: {catatan}"[:500],
+                tanggal=tgl_mutasi,
+                oleh=current_user.username,
+            )
+        )
+    if comp.parent_asset_id and comp.parent_asset_id != old_parent_id:
+        session.add(
+            AssetMovement(
+                asset_id=comp.parent_asset_id,
+                jenis=jenis_mv,
+                dari=dari_label[:150],
+                ke=f"{comp.id_aset} -> {comp.parent_asset_id}",
+                alasan=alasan[:150],
+                catatan=f"Komponen {comp.id_aset}: {catatan}"[:500],
+                tanggal=tgl_mutasi,
+                oleh=current_user.username,
+            )
+        )
+
+    record_audit_log(
+        session,
+        username=current_user.username,
+        nama_pengguna=getattr(current_user, "full_name", current_user.username),
+        role=current_user.role,
+        aksi=f"Komponen {jenis_mv.title()}",
+        modul="Inventory",
+        target_id=comp.id_aset,
+        detail=f"{comp.id_aset}: {dari_label} -> {ke_label} ({alasan})",
+        level_risiko="Sedang",
+    )
+    session.commit()
+    return {"status": "ok", "component_id": comp.id_aset, "action": jenis_mv}
+
+
+@router.post("/{id_aset}/components/convert-wizard")
+def convert_legacy_specs_to_components(
+    id_aset: str,
+    payload: dict[str, Any],
+    session: SessionDep,
+    current_user: EditorUserDep,
+) -> dict[str, Any]:
+    """Wizard Konversi spesifikasi teks lama PC/Server menjadi komponen per unit (Seksi 15.5)."""
+    parent = session.exec(
+        select(Asset).where(
+            func.upper(Asset.id_aset) == id_aset.strip().lower().upper(),
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Aset induk tidak ditemukan")
+
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        # Buat usulan otomatis dari teks parent.ram dan parent.storage
+        ram_cap = _parse_capacity_gb(parent.ram) or 16
+        parent_ram_u = (parent.ram or "").upper()
+        if "DDR5" in parent_ram_u:
+            ram_type = "DDR5"
+        elif "DDR3" in parent_ram_u:
+            ram_type = "DDR3"
+        else:
+            ram_type = "DDR4"
+
+        st_cap = _parse_capacity_gb(parent.storage) or 512
+        parent_st_u = (parent.storage or "").upper()
+        if "NVME" in parent_st_u:
+            st_type = "NVMe"
+        elif "HDD" in parent_st_u:
+            st_type = "HDD"
+        else:
+            st_type = "SATA"
+
+        if ram_cap >= 16:
+            items = [
+                {
+                    "kategori": "RAM",
+                    "tipe": ram_type,
+                    "kapasitas_gb": ram_cap // 2,
+                    "slot": "DIMM 1",
+                },
+                {
+                    "kategori": "RAM",
+                    "tipe": ram_type,
+                    "kapasitas_gb": ram_cap // 2,
+                    "slot": "DIMM 2",
+                },
+            ]
+        else:
+            items = [
+                {
+                    "kategori": "RAM",
+                    "tipe": ram_type,
+                    "kapasitas_gb": ram_cap,
+                    "slot": "DIMM 1",
+                },
+            ]
+        items.append(
+            {
+                "kategori": "SSD",
+                "tipe": st_type,
+                "kapasitas_gb": st_cap,
+                "slot": "M.2" if st_type == "NVMe" else "SATA 1",
+            }
+        )
+
+    created_tags: list[str] = []
+    for it in items:
+        kat = str(it.get("kategori") or "RAM").strip().upper()
+        if kat not in ("RAM", "SSD", "HDD", "VGA", "PSU"):
+            kat = "RAM"
+        tipe = str(it.get("tipe") or ("DDR4" if kat == "RAM" else "NVMe")).strip()
+        cap_gb = int(it.get("kapasitas_gb") or (8 if kat == "RAM" else 512))
+        slot = str(it.get("slot") or ("DIMM 1" if kat == "RAM" else "M.2")).strip()
+        new_tag = generate_next_asset_id(session, kat)
+        nama_comp = f"{kat} {tipe} {cap_gb} GB"
+        sp_comp = {
+            "tipe": tipe,
+            "kapasitas_gb": cap_gb,
+            "slot": slot,
+            "dipasang_sejak": "Jun 2025",
+            "data_status": "Berisi data" if kat in ("SSD", "HDD") else "Kosong",
+            "kepemilikan": "XML",
+        }
+        comp_asset = Asset(
+            id_aset=new_tag,
+            asset_tag=new_tag,
+            nama_aset=nama_comp,
+            nama=nama_comp,
+            kategori=kat,
+            merek="Kingston" if kat == "RAM" else "Samsung",
+            model=f"{tipe} {cap_gb}GB",
+            lokasi=parent.lokasi,
+            penanggung_jawab=f"Terpasang di {parent.id_aset}",
+            pemakai_text=f"Terpasang di {parent.id_aset}",
+            parent_asset_id=parent.id_aset,
+            status="Digunakan",
+            kondisi="Baik",
+            tanggal_masuk=parent.tanggal_masuk or date.today(),
+            tanggal_perolehan=parent.tanggal_perolehan or date.today(),
+            ram=f"{cap_gb}GB {tipe}" if kat == "RAM" else "",
+            storage=f"{tipe} {cap_gb}GB" if kat in ("SSD", "HDD") else "",
+            specs=sp_comp,
+            extra_specs=sp_comp,
+            tracking="unit",
+            qty=1,
+            created_by=current_user.username,
+        )
+        session.add(comp_asset)
+        session.flush()
+        created_tags.append(new_tag)
+
+    _recalculate_parent_component_totals(session, parent.id_aset)
+    session.add(
+        AssetMovement(
+            asset_id=parent.id_aset,
+            jenis="pasang",
+            dari="Konversi Spesifikasi Teks",
+            ke=", ".join(created_tags),
+            alasan="Wizard Konversi Komponen per Unit",
+            tanggal=date.today(),
+            oleh=current_user.username,
+        )
+    )
+    session.commit()
+    return {"status": "ok", "parent_id": parent.id_aset, "created_components": created_tags}

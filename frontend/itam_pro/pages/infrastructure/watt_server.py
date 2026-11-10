@@ -18,7 +18,6 @@ from itam_pro.components.tables import (
 )
 from itam_pro.components.ui import (
     TabItemConfig,
-    action_primary_button,
     app_tabs,
     detail_drawer,
     secondary_button,
@@ -128,7 +127,7 @@ WATT_COLUMN_OPTIONS: list[ColumnToggleOption] = [
 
 
 def _watt_header() -> rx.Component:
-    """Header halaman Rekap Watt Server dengan tombol Export dan + Tambah Server."""
+    """Header Laporan Rekap Watt Server (tanpa tombol + Tambah Watt Server sesuai Seksi 11)."""
     return rx.box(
         rx.vstack(
             rx.heading(
@@ -140,8 +139,8 @@ def _watt_header() -> rx.Component:
                 letter_spacing="-0.02em",
             ),
             rx.text(
-                "Pemantauan spesifikasi perangkat keras, konsumsi daya TDP (Watt), "
-                "serta rekomendasi kapasitas PSU per server fisik.",
+                "Laporan turunan otomatis dari data spesifikasi aset Server "
+                "(TDP, estimasi kWh bulanan, dan rekomendasi PSU).",
                 font_size=FontSize.BASE,
                 font_weight=FontWeight.REGULAR,
                 color=Color.MUTED,
@@ -154,9 +153,9 @@ def _watt_header() -> rx.Component:
                 label="Export CSV",
                 on_click=rx.toast.info("Data siap diekspor ke format CSV"),
             ),
-            action_primary_button(
-                label="+ Tambah Watt Server",
-                on_click=PowerState.open_add_modal,
+            secondary_button(
+                label="Edit Spesifikasi di Semua Aset →",
+                on_click=rx.redirect("/assets?category=server"),
             ),
             spacing="3",
             align="center",
@@ -629,6 +628,12 @@ def _watt_table_card() -> rx.Component:
 
     dropdowns: list[FilterDropdownConfig] = [
         {
+            "label": "Cakupan: Server",
+            "value": PowerState.scope_filter,
+            "options": PowerState.scope_options,
+            "on_change": PowerState.set_scope_filter,
+        },
+        {
             "label": "Semua prosesor",
             "value": PowerState.cpu_brand_filter,
             "options": PowerState.cpu_brand_options,
@@ -748,7 +753,7 @@ def watt_server_page() -> rx.Component:
     )
     return base_layout(
         content=content,
-        breadcrumb=("Infrastructure", "Rekap Watt Server"),
+        breadcrumb=("Laporan", "Rekap Watt Server"),
     )
 
 
