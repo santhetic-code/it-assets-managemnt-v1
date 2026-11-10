@@ -44,6 +44,23 @@ def _is_power_consumer(
     return kat == "server"
 
 
+def _effective_asset_watt(asset: Asset) -> int:
+    """Hitung TDP (W) dari specs (tdp_cpu_w + tdp_gpu_w), kolom watt, atau default PC."""
+    sp = {**(asset.extra_specs or {}), **(asset.specs or {})}
+    cpu_w = int(float(sp.get("tdp_cpu_w") or 0))
+    gpu_w = int(float(sp.get("tdp_gpu_w") or 0))
+    if cpu_w + gpu_w > 0:
+        return cpu_w + gpu_w
+    if asset.watt > 0:
+        return asset.watt
+    raw_tdp = sp.get("tdp_total_w")
+    if raw_tdp and str(raw_tdp).isdigit() and int(raw_tdp) > 0:
+        return int(raw_tdp)
+    if asset.kategori.strip().lower() in ("pc", "laptop"):
+        return 95
+    return 120
+
+
 def _build_power_analytics(
     all_assets: list[Asset],
     tarif_per_kwh: float,
@@ -56,8 +73,21 @@ def _build_power_analytics(
     dict[str, int],
     dict[str, Any],
 ]:
-    """Menghitung seluruh metrik daya, UPS, lokasi, tab_counts, dan KPI dari daftar Asset."""
-    consumers = [a for a in all_assets if _is_power_consumer(a, include_all_consumers, scope=scope)]
+    """Menghitung seluruh metrik daya, UPS, lokasi, tab_counts, dan KPI tanpa duplikat."""
+    raw_consumers = [
+        a for a in all_assets if _is_power_consumer(a, include_all_consumers, scope=scope)
+    ]
+    # Deduplikasi ketat berdasarkan id_aset (Seksi 11: tidak boleh ada aset muncul dua kali)
+    seen_tags: set[str] = set()
+    consumers: list[Asset] = []
+    for a in raw_consumers:
+        tag_up = a.id_aset.strip().upper()
+        if tag_up in seen_tags:
+            continue
+        seen_tags.add(tag_up)
+        if a.watt <= 0:
+            a.watt = _effective_asset_watt(a)
+        consumers.append(a)
     ups_assets = [a for a in all_assets if a.kategori.strip().lower() == "ups"]
 
     active_consumers = [a for a in consumers if a.status.strip().lower() in ("aktif", "digunakan")]

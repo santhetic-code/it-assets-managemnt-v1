@@ -361,6 +361,38 @@ def _pc_spec_fields_section() -> rx.Component:
                 }
             ),
         ),
+        rx.box(
+            rx.vstack(
+                _field_label("TDP CPU (Watt)"),
+                _text_input(
+                    value=attrs["tdp_cpu_w"],
+                    on_change=lambda v: AssetState.set_form_attr("tdp_cpu_w", v),
+                    placeholder="Contoh: 65",
+                ),
+                spacing="1",
+                align="start",
+                width="100%",
+            ),
+            rx.vstack(
+                _field_label("TDP GPU (Watt)"),
+                _text_input(
+                    value=attrs["tdp_gpu_w"],
+                    on_change=lambda v: AssetState.set_form_attr("tdp_gpu_w", v),
+                    placeholder="Contoh: 30",
+                ),
+                spacing="1",
+                align="start",
+                width="100%",
+            ),
+            style=rx.Style(
+                {
+                    "width": "100%",
+                    "display": "grid",
+                    "grid_template_columns": "1fr 1fr",
+                    "gap": Space.S4,
+                }
+            ),
+        ),
         spacing="3",
         width="100%",
     )
@@ -451,6 +483,165 @@ def _monitor_spec_fields_section() -> rx.Component:
             spacing="2",
             align="start",
             width="100%",
+        ),
+        spacing="3",
+        width="100%",
+    )
+
+
+def _non_it_spec_fields_section() -> rx.Component:
+    """Bagian spesifikasi dinamis untuk Kendaraan (Mobil/Motor), AC, dan Furnitur."""
+    attrs: Any = AssetState.form_attributes
+    return rx.vstack(
+        _section_divider("2. Spesifikasi Kategori Non-IT"),
+        rx.cond(
+            (AssetState.form_kategori == "Mobil") | (AssetState.form_kategori == "Motor"),
+            rx.vstack(
+                rx.box(
+                    rx.vstack(
+                        _field_label("Nomor Polisi", required=True),
+                        _text_input(
+                            value=attrs["nomor_polisi"],
+                            on_change=lambda v: AssetState.set_form_attr("nomor_polisi", v),
+                            placeholder="Contoh: R 1234 AB",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    rx.vstack(
+                        _field_label("Nomor Rangka", required=True),
+                        _text_input(
+                            value=attrs["nomor_rangka"],
+                            on_change=lambda v: AssetState.set_form_attr("nomor_rangka", v),
+                            placeholder="Nomor rangka STNK",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    rx.vstack(
+                        _field_label("Nomor Mesin", required=True),
+                        _text_input(
+                            value=attrs["nomor_mesin"],
+                            on_change=lambda v: AssetState.set_form_attr("nomor_mesin", v),
+                            placeholder="Nomor mesin STNK",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    style=rx.Style(
+                        {
+                            "width": "100%",
+                            "display": "grid",
+                            "grid_template_columns": "1fr 1fr 1fr",
+                            "gap": Space.S4,
+                        }
+                    ),
+                ),
+                rx.box(
+                    rx.vstack(
+                        _field_label("Masa Pajak Tahunan", required=True),
+                        _text_input(
+                            value=attrs["masa_pajak"],
+                            on_change=lambda v: AssetState.set_form_attr("masa_pajak", v),
+                            input_type="date",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    rx.vstack(
+                        _field_label("Masa STNK (5 Tahunan)", required=True),
+                        _text_input(
+                            value=attrs["masa_stnk"],
+                            on_change=lambda v: AssetState.set_form_attr("masa_stnk", v),
+                            input_type="date",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    style=rx.Style(
+                        {
+                            "width": "100%",
+                            "display": "grid",
+                            "grid_template_columns": "1fr 1fr",
+                            "gap": Space.S4,
+                        }
+                    ),
+                ),
+                spacing="3",
+                width="100%",
+            ),
+            rx.cond(
+                AssetState.form_kategori == "AC",
+                rx.box(
+                    rx.vstack(
+                        _field_label("Kapasitas PK", required=True),
+                        _text_input(
+                            value=attrs["kapasitas_pk"],
+                            on_change=lambda v: AssetState.set_form_attr("kapasitas_pk", v),
+                            placeholder="Contoh: 1 PK / 2 PK",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    rx.vstack(
+                        _field_label("Jenis Freon"),
+                        _text_input(
+                            value=attrs["jenis_freon"],
+                            on_change=lambda v: AssetState.set_form_attr("jenis_freon", v),
+                            placeholder="Contoh: R32 / R410A",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    style=rx.Style(
+                        {
+                            "width": "100%",
+                            "display": "grid",
+                            "grid_template_columns": "1fr 1fr",
+                            "gap": Space.S4,
+                        }
+                    ),
+                ),
+                rx.box(
+                    rx.vstack(
+                        _field_label("Material / Bahan"),
+                        _text_input(
+                            value=attrs["material"],
+                            on_change=lambda v: AssetState.set_form_attr("material", v),
+                            placeholder="Contoh: Kayu / Besi",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    rx.vstack(
+                        _field_label("Dimensi / Ukuran"),
+                        _text_input(
+                            value=attrs["dimensi"],
+                            on_change=lambda v: AssetState.set_form_attr("dimensi", v),
+                            placeholder="Contoh: 120 x 60 cm",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+                    style=rx.Style(
+                        {
+                            "width": "100%",
+                            "display": "grid",
+                            "grid_template_columns": "1fr 1fr",
+                            "gap": Space.S4,
+                        }
+                    ),
+                ),
+            ),
         ),
         spacing="3",
         width="100%",
@@ -770,7 +961,14 @@ def asset_form_modal() -> rx.Component:
                         rx.match(
                             AssetState.form_active_category_slug,
                             ("pc", _pc_spec_fields_section()),
+                            ("server", _pc_spec_fields_section()),
                             ("monitor", _monitor_spec_fields_section()),
+                            ("mobil", _non_it_spec_fields_section()),
+                            ("motor", _non_it_spec_fields_section()),
+                            ("ac", _non_it_spec_fields_section()),
+                            ("meja", _non_it_spec_fields_section()),
+                            ("kursi", _non_it_spec_fields_section()),
+                            ("lemari", _non_it_spec_fields_section()),
                             rx.fragment(),
                         ),
                         rx.vstack(

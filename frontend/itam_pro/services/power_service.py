@@ -118,9 +118,35 @@ def query_server_power(
     sort_by = str(filters.get("sort_by", "")).strip()
     sort_dir = str(filters.get("sort_dir", "asc")).strip().lower()
 
-    all_servers: list[dict[str, Any]] = [
-        enrich_server_power_row(a) for a in MOCK_ASSETS if str(a.get("kategori", "")) == "Server"
-    ]
+    scope = str(filters.get("scope") or "server").strip().lower()
+
+    seen_ids: set[str] = set()
+    all_servers: list[dict[str, Any]] = []
+    for a in MOCK_ASSETS:
+        kat = str(a.get("kategori", "")).strip().lower()
+        tag = str(a.get("id_aset", "")).strip().upper()
+        if not tag or tag in seen_ids:
+            continue
+
+        is_match = False
+        if scope in ("server", ""):
+            is_match = kat == "server"
+        elif scope in ("pc", "pc operasional"):
+            is_match = kat in ("pc", "laptop")
+        elif scope in ("all", "semua"):
+            is_match = kat in ("server", "pc", "laptop")
+
+        if is_match:
+            seen_ids.add(tag)
+            row = enrich_server_power_row(a)
+            if kat in ("pc", "laptop"):
+                if row.get("tdp_total_w", 0) <= 0:
+                    row["tdp_total_w"] = 95
+                if row.get("psu_min_w", 0) <= 0:
+                    row["psu_min_w"] = 250
+                if row.get("psu_rekomendasi_w", 0) <= 0:
+                    row["psu_rekomendasi_w"] = 450
+            all_servers.append(row)
 
     tab_counts = {
         "Semua": len(all_servers),

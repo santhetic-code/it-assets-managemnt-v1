@@ -99,6 +99,18 @@ CATEGORY_TREE: list[dict[str, Any]] = [
                         {"key": "vga", "label": "VGA", "type": "text", "required": False},
                         {"key": "storage", "label": "Storage", "type": "text", "required": True},
                         {"key": "os", "label": "OS", "type": "text", "required": True},
+                        {
+                            "key": "tdp_cpu_w",
+                            "label": "TDP CPU (W)",
+                            "type": "number",
+                            "required": False,
+                        },
+                        {
+                            "key": "tdp_gpu_w",
+                            "label": "TDP GPU (W)",
+                            "type": "number",
+                            "required": False,
+                        },
                     ]
                 },
             },
@@ -115,6 +127,18 @@ CATEGORY_TREE: list[dict[str, Any]] = [
                         {"key": "vga", "label": "VGA", "type": "text", "required": False},
                         {"key": "storage", "label": "Storage", "type": "text", "required": True},
                         {"key": "os", "label": "OS", "type": "text", "required": True},
+                        {
+                            "key": "tdp_cpu_w",
+                            "label": "TDP CPU (W)",
+                            "type": "number",
+                            "required": False,
+                        },
+                        {
+                            "key": "tdp_gpu_w",
+                            "label": "TDP GPU (W)",
+                            "type": "number",
+                            "required": False,
+                        },
                     ]
                 },
             },
@@ -303,7 +327,40 @@ CATEGORY_TREE: list[dict[str, Any]] = [
                 "nama": "Mobil",
                 "ikon": "car",
                 "tracking": "unit",
-                "spec_schema": {},
+                "spec_schema": {
+                    "fields": [
+                        {
+                            "key": "nomor_polisi",
+                            "label": "Nomor Polisi",
+                            "type": "text",
+                            "required": True,
+                        },
+                        {
+                            "key": "nomor_rangka",
+                            "label": "Nomor Rangka",
+                            "type": "text",
+                            "required": True,
+                        },
+                        {
+                            "key": "nomor_mesin",
+                            "label": "Nomor Mesin",
+                            "type": "text",
+                            "required": True,
+                        },
+                        {
+                            "key": "masa_pajak",
+                            "label": "Masa Pajak",
+                            "type": "date",
+                            "required": True,
+                        },
+                        {
+                            "key": "masa_stnk",
+                            "label": "Masa STNK",
+                            "type": "date",
+                            "required": True,
+                        },
+                    ]
+                },
             },
             {
                 "kode": "MTR",
@@ -311,7 +368,40 @@ CATEGORY_TREE: list[dict[str, Any]] = [
                 "nama": "Motor",
                 "ikon": "bike",
                 "tracking": "unit",
-                "spec_schema": {},
+                "spec_schema": {
+                    "fields": [
+                        {
+                            "key": "nomor_polisi",
+                            "label": "Nomor Polisi",
+                            "type": "text",
+                            "required": True,
+                        },
+                        {
+                            "key": "nomor_rangka",
+                            "label": "Nomor Rangka",
+                            "type": "text",
+                            "required": True,
+                        },
+                        {
+                            "key": "nomor_mesin",
+                            "label": "Nomor Mesin",
+                            "type": "text",
+                            "required": True,
+                        },
+                        {
+                            "key": "masa_pajak",
+                            "label": "Masa Pajak",
+                            "type": "date",
+                            "required": True,
+                        },
+                        {
+                            "key": "masa_stnk",
+                            "label": "Masa STNK",
+                            "type": "date",
+                            "required": True,
+                        },
+                    ]
+                },
             },
         ],
     },
@@ -328,7 +418,22 @@ CATEGORY_TREE: list[dict[str, Any]] = [
                 "nama": "AC",
                 "ikon": "air-vent",
                 "tracking": "unit",
-                "spec_schema": {},
+                "spec_schema": {
+                    "fields": [
+                        {
+                            "key": "kapasitas_pk",
+                            "label": "Kapasitas (PK)",
+                            "type": "text",
+                            "required": True,
+                        },
+                        {
+                            "key": "jenis_freon",
+                            "label": "Jenis Freon",
+                            "type": "text",
+                            "required": False,
+                        },
+                    ]
+                },
             },
         ],
     },
@@ -345,7 +450,12 @@ CATEGORY_TREE: list[dict[str, Any]] = [
                 "nama": "Meja",
                 "ikon": "table",
                 "tracking": "threshold",
-                "spec_schema": {},
+                "spec_schema": {
+                    "fields": [
+                        {"key": "material", "label": "Material", "type": "text", "required": False},
+                        {"key": "dimensi", "label": "Dimensi", "type": "text", "required": False},
+                    ]
+                },
             },
             {
                 "kode": "KRS",
@@ -353,7 +463,12 @@ CATEGORY_TREE: list[dict[str, Any]] = [
                 "nama": "Kursi",
                 "ikon": "armchair",
                 "tracking": "threshold",
-                "spec_schema": {},
+                "spec_schema": {
+                    "fields": [
+                        {"key": "material", "label": "Material", "type": "text", "required": False},
+                        {"key": "dimensi", "label": "Dimensi", "type": "text", "required": False},
+                    ]
+                },
             },
             {
                 "kode": "LMR",
@@ -361,7 +476,12 @@ CATEGORY_TREE: list[dict[str, Any]] = [
                 "nama": "Lemari",
                 "ikon": "archive",
                 "tracking": "threshold",
-                "spec_schema": {},
+                "spec_schema": {
+                    "fields": [
+                        {"key": "material", "label": "Material", "type": "text", "required": False},
+                        {"key": "dimensi", "label": "Dimensi", "type": "text", "required": False},
+                    ]
+                },
             },
         ],
     },

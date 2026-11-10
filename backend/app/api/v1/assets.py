@@ -1,10 +1,12 @@
 """Endpoint CRUD Aset TI, pencarian, filter, dan generator ID otomatis."""
 
+import csv
+import io
 import re
 from datetime import date, timedelta
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import and_, func, or_
 from sqlmodel import Session, col, select
 
@@ -320,7 +322,7 @@ def list_assets(
     kondisi: str | None = Query(default=None),
     kepemilikan: str | None = Query(default=None),
     warranty: str | None = Query(default=None),
-    no_purchase: int | None = Query(default=None),
+    no_purchase: str | int | None = Query(default=None),
     sort_by: str | None = Query(default=None),
     sort_dir: str | None = Query(default="asc"),
     attr_os: str | None = Query(default=None),
@@ -395,7 +397,7 @@ def list_assets(
     if pengguna and pengguna.strip().lower() not in ("semua", "all", ""):
         stmt = stmt.where(col(Asset.penanggung_jawab).ilike(f"%{pengguna.strip()}%"))
 
-    if no_purchase == 1:
+    if str(no_purchase or "").strip().lower() in ("1", "true", "yes"):
         stmt = stmt.where(col(Asset.purchase_item_id).is_(None))
 
     if warranty and warranty.strip().lower() == "expiring":
@@ -499,6 +501,491 @@ def list_assets(
             "ups": category_counts.get("ups", 0),
         },
     )
+
+
+# Status Stock Opname in-memory / session-backed
+_STOCK_OPNAME_STATE: dict[str, dict[str, Any]] = {}
+
+
+def _compute_depreciation_info(asset: Asset) -> dict[str, Any]:
+    """Menghitung depresiasi garis lurus (4 tahun / 48 bulan) dan nilai buku saat ini (Seksi 14)."""
+    harga = asset.nilai_perolehan or 0
+    tgl_awal = asset.tanggal_perolehan or asset.tanggal_masuk
+    if harga <= 0 or tgl_awal is None:
+        return {
+            "nilai_perolehan": harga,
+            "umur_ekonomis_bulan": 48,
+            "bulan_berjalan": 0,
+            "akumulasi_depresiasi": 0,
+            "nilai_buku": harga,
+            "persentase_sisa": 100.0 if harga > 0 else 0.0,
+        }
+    today = date.today()
+    months_elapsed = max(0, (today.year - tgl_awal.year) * 12 + (today.month - tgl_awal.month))
+    useful_months = 48
+    dep_per_month = harga / useful_months
+    accumulated = min(harga, round(dep_per_month * min(months_elapsed, useful_months)))
+    book_value = max(0, harga - accumulated)
+    pct_left = round((book_value / harga) * 100.0, 1) if harga > 0 else 0.0
+    return {
+        "nilai_perolehan": harga,
+        "umur_ekonomis_bulan": useful_months,
+        "bulan_berjalan": months_elapsed,
+        "akumulasi_depresiasi": accumulated,
+        "nilai_buku": book_value,
+        "persentase_sisa": pct_left,
+    }
+
+
+@router.get("/check-duplicate")
+def check_potential_duplicate_asset(
+    session: SessionDep,
+    _: CurrentUserDep,
+    nama_aset: str = Query(default=""),
+    kategori: str = Query(default=""),
+    pengguna: str = Query(default=""),
+    exclude_id: str = Query(default=""),
+) -> dict[str, Any]:
+    """Mendeteksi kemungkinan duplikat jika nama, kategori, dan pengguna mirip (Seksi 13)."""
+    nama_clean = nama_aset.strip().lower()
+    kat_clean = kategori.strip().lower()
+    user_clean = pengguna.strip().lower()
+    if not nama_clean:
+        return {"has_duplicate": False, "matches": [], "warning": ""}
+
+    candidates = list(
+        session.exec(
+            select(Asset).where(
+                col(Asset.deleted_at).is_(None),
+                func.lower(Asset.kategori) == kat_clean if kat_clean else True,
+            )
+        ).all()
+    )
+    matches: list[dict[str, str]] = []
+    for c in candidates:
+        if exclude_id and c.id_aset.lower() == exclude_id.strip().lower():
+            continue
+        c_nama = c.nama_aset.strip().lower()
+        c_user = (c.pemakai_text or c.penanggung_jawab or "").strip().lower()
+        if c_nama == nama_clean or (
+            nama_clean in c_nama and user_clean and user_clean in c_user
+        ):
+            matches.append(
+                {
+                    "id_aset": c.id_aset,
+                    "nama_aset": c.nama_aset,
+                    "pengguna": c.pemakai_text or c.penanggung_jawab or "—",
+                    "lokasi": c.lokasi,
+                }
+            )
+    warn = (
+        f"Kemungkinan duplikat dengan {matches[0]['id_aset']} ({matches[0]['nama_aset']})"
+        if matches
+        else ""
+    )
+    return {"has_duplicate": len(matches) > 0, "matches": matches[:5], "warning": warn}
+
+
+@router.get("/export/csv")
+def export_assets_csv(
+    session: SessionDep,
+    _: CurrentUserDep,
+    category: str | None = Query(default=None),
+    group: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    search: str | None = Query(default=None),
+) -> Response:
+    """Export daftar aset sesuai filter aktif ke format CSV (Seksi 7 & 14)."""
+    stmt = select(Asset).where(col(Asset.deleted_at).is_(None))
+    if category and category.strip().lower() not in ("", "all", "semua"):
+        c_low = category.strip().lower()
+        if c_low == "pc":
+            stmt = stmt.where(col(Asset.kategori).in_(["PC", "Laptop"]))
+        else:
+            stmt = stmt.where(func.lower(Asset.kategori) == c_low)
+    if status_filter and status_filter.strip().lower() not in ("", "all", "semua"):
+        st_norm = normalize_asset_status(status_filter)
+        stmt = stmt.where(func.lower(Asset.status) == st_norm.lower())
+    if search and search.strip():
+        pat = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(
+                col(Asset.id_aset).ilike(pat),
+                col(Asset.nama_aset).ilike(pat),
+                col(Asset.penanggung_jawab).ilike(pat),
+            )
+        )
+
+    rows = list(session.exec(stmt.order_by(col(Asset.id_aset).asc())).all())
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "Aset ID",
+            "Nama",
+            "Kategori",
+            "Pengguna / Penempatan",
+            "Lokasi",
+            "Status",
+            "Kondisi",
+            "Serial Number",
+            "Tanggal Perolehan",
+            "Nilai Perolehan",
+        ]
+    )
+    for r in rows:
+        writer.writerow(
+            [
+                r.id_aset,
+                r.nama_aset,
+                r.kategori,
+                r.pemakai_text or r.penanggung_jawab or "—",
+                r.lokasi,
+                normalize_asset_status(r.status),
+                normalize_asset_condition(r.kondisi),
+                r.serial_number or "",
+                (r.tanggal_perolehan or r.tanggal_masuk or ""),
+                r.nilai_perolehan or "",
+            ]
+        )
+    return Response(
+        content=buf.getvalue().encode("utf-8-sig"),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="Export_Aset_ITAM_Pro.csv"'},
+    )
+
+
+@router.get("/stock-opname")
+def get_stock_opname_report(
+    session: SessionDep,
+    _: CurrentUserDep,
+    lokasi: str | None = Query(default=None),
+) -> dict[str, Any]:
+    """Mengambil laporan Stock Opname & selisih hasil pindai QR (Seksi 14 & 18)."""
+    stmt = select(Asset).where(col(Asset.deleted_at).is_(None))
+    if lokasi and lokasi.strip().lower() not in ("", "semua", "all"):
+        stmt = stmt.where(func.lower(Asset.lokasi) == lokasi.strip().lower())
+    assets = list(session.exec(stmt.order_by(col(Asset.id_aset).asc())).all())
+
+    items: list[dict[str, Any]] = []
+    found_cnt = 0
+    missing_cnt = 0
+    unscanned_cnt = 0
+
+    for a in assets:
+        rec = _STOCK_OPNAME_STATE.get(a.id_aset.upper())
+        st_scan = rec["status"] if rec else "Belum dipindai"
+        if st_scan == "Ditemukan":
+            found_cnt += 1
+        elif st_scan == "Tidak ditemukan":
+            missing_cnt += 1
+        else:
+            unscanned_cnt += 1
+        items.append(
+            {
+                "id_aset": a.id_aset,
+                "nama_aset": a.nama_aset,
+                "kategori": a.kategori,
+                "lokasi": a.lokasi,
+                "pengguna": a.pemakai_text or a.penanggung_jawab or "—",
+                "opname_status": st_scan,
+                "scanned_at": rec["scanned_at"] if rec else "—",
+                "catatan": rec["catatan"] if rec else "",
+            }
+        )
+
+    return {
+        "summary": {
+            "total_terdaftar": len(assets),
+            "ditemukan": found_cnt,
+            "tidak_ditemukan": missing_cnt,
+            "belum_dipindai": unscanned_cnt,
+            "selisih": missing_cnt + unscanned_cnt,
+        },
+        "items": items,
+    }
+
+
+@router.post("/stock-opname/scan")
+def scan_stock_opname_qr(
+    payload: dict[str, Any],
+    session: SessionDep,
+    current_user: EditorUserDep,
+) -> dict[str, Any]:
+    """Memproses pindai QR (URL detail aset atau Aset ID) pada Stock Opname (Seksi 9 & 14)."""
+    raw_input = str(payload.get("qr_code") or payload.get("id_aset") or "").strip()
+    if "/assets/" in raw_input:
+        raw_input = raw_input.split("/assets/", 1)[1].split("?")[0].strip("/")
+    clean_tag = raw_input.upper()
+    if not clean_tag:
+        raise HTTPException(status_code=422, detail="Kode QR atau Aset ID tidak boleh kosong")
+
+    asset = session.exec(
+        select(Asset).where(
+            func.upper(Asset.id_aset) == clean_tag,
+            col(Asset.deleted_at).is_(None),
+        )
+    ).first()
+    if asset is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Aset '{clean_tag}' tidak ditemukan di daftar induk",
+        )
+
+    opname_status = str(payload.get("status") or "Ditemukan").strip()
+    if opname_status not in ("Ditemukan", "Tidak ditemukan"):
+        opname_status = "Ditemukan"
+    catatan = str(payload.get("catatan") or "").strip()
+
+    _STOCK_OPNAME_STATE[asset.id_aset.upper()] = {
+        "status": opname_status,
+        "scanned_at": date.today().isoformat(),
+        "scanned_by": current_user.username,
+        "catatan": catatan,
+    }
+    return {
+        "status": "ok",
+        "id_aset": asset.id_aset,
+        "nama_aset": asset.nama_aset,
+        "opname_status": opname_status,
+    }
+
+
+@router.post("/import-preview")
+def preview_assets_import(
+    payload: dict[str, Any],
+    session: SessionDep,
+    _: EditorUserDep,
+) -> dict[str, Any]:
+    """Validasi CSV/baris impor aset lama dengan laporan baris valid & error (Seksi 14)."""
+    csv_text = str(payload.get("csv_text") or "").strip()
+    if not csv_text:
+        return {
+            "valid_count": 0,
+            "error_count": 1,
+            "valid_rows": [],
+            "errors": [{"row": 1, "reason": "Data CSV kosong"}],
+        }
+
+    first_line = csv_text.split("\n", 1)[0]
+    delim = ";" if first_line.count(";") > first_line.count(",") else ","
+    reader = list(csv.reader(io.StringIO(csv_text), delimiter=delim))
+    if len(reader) <= 1:
+        return {
+            "valid_count": 0,
+            "error_count": 1,
+            "valid_rows": [],
+            "errors": [{"row": 1, "reason": "Tidak ada baris data setelah header"}],
+        }
+
+    existing_sns = {
+        (sn or "").lower()
+        for sn in session.exec(
+            select(Asset.serial_number).where(col(Asset.serial_number).is_not(None))
+        ).all()
+        if sn
+    }
+    seen_sns: set[str] = set()
+    valid_rows: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+
+    for idx, cols in enumerate(reader[1:], start=2):
+        padded = [*cols, "", "", "", "", "", "", ""][:7]
+        nama_val, kat_val, user_val, lok_val, st_val, kd_val, sn_val = [c.strip() for c in padded]
+        if not any([nama_val, kat_val]):
+            continue
+        if not nama_val:
+            errors.append({"row": idx, "nama": "—", "reason": "Nama aset wajib diisi"})
+            continue
+        if not kat_val:
+            errors.append({"row": idx, "nama": nama_val, "reason": "Kategori wajib diisi"})
+            continue
+        if sn_val and sn_val not in ("-", "—"):
+            if sn_val.lower() in existing_sns or sn_val.lower() in seen_sns:
+                errors.append(
+                    {"row": idx, "nama": nama_val, "reason": f"Serial number '{sn_val}' duplikat"}
+                )
+                continue
+            seen_sns.add(sn_val.lower())
+
+        valid_rows.append(
+            {
+                "row": idx,
+                "nama_aset": nama_val,
+                "kategori": kat_val,
+                "penanggung_jawab": user_val or "Operasional",
+                "lokasi": lok_val or "Head Office (Office Blok 14)",
+                "status": normalize_asset_status(st_val or "Digunakan"),
+                "kondisi": normalize_asset_condition(kd_val or "Baik"),
+                "serial_number": sn_val if sn_val not in ("", "-", "—") else None,
+            }
+        )
+
+    return {
+        "valid_count": len(valid_rows),
+        "error_count": len(errors),
+        "valid_rows": valid_rows,
+        "errors": errors,
+    }
+
+
+@router.post("/import-commit")
+def commit_assets_import(
+    payload: dict[str, Any],
+    session: SessionDep,
+    current_user: EditorUserDep,
+) -> dict[str, Any]:
+    """Menyimpan seluruh baris valid hasil import aset lama dalam satu transaksi (Seksi 13 & 14)."""
+    rows = payload.get("valid_rows") or []
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=400, detail="Tidak ada baris valid untuk diimpor")
+
+    created_tags: list[str] = []
+    for r in rows:
+        kat = str(r.get("kategori") or "PC").strip()
+        new_tag = generate_next_asset_id(session, kat)
+        nama_v = str(r.get("nama_aset") or new_tag).strip()
+        user_v = str(r.get("penanggung_jawab") or "Operasional").strip()
+        lok_v = str(r.get("lokasi") or "Head Office (Office Blok 14)").strip()
+        asset = Asset(
+            id_aset=new_tag,
+            asset_tag=new_tag,
+            nama_aset=nama_v,
+            nama=nama_v,
+            kategori=kat,
+            serial_number=r.get("serial_number") or None,
+            lokasi=lok_v,
+            penanggung_jawab=user_v,
+            pemakai_text=user_v,
+            status=normalize_asset_status(r.get("status")),
+            kondisi=normalize_asset_condition(r.get("kondisi")),
+            tanggal_masuk=date.today(),
+            tanggal_perolehan=date.today(),
+            tracking="unit",
+            qty=1,
+            created_by=current_user.username,
+        )
+        session.add(asset)
+        session.flush()
+        created_tags.append(new_tag)
+
+    record_audit_log(
+        session,
+        username=current_user.username,
+        nama_pengguna=getattr(current_user, "full_name", current_user.username),
+        role=current_user.role,
+        aksi="Import Aset Lama",
+        modul="Inventory",
+        target_id="IMPORT-ASET",
+        detail=f"Berhasil mengimpor {len(created_tags)} aset baru",
+        level_risiko="Sedang",
+    )
+    session.commit()
+    return {"status": "ok", "imported_count": len(created_tags), "created_assets": created_tags}
+
+
+@router.post("/merge")
+def merge_duplicate_assets(
+    payload: dict[str, Any],
+    session: SessionDep,
+    current_user: AdminUserDep,
+) -> dict[str, Any]:
+    """Menggabungkan aset ganda (source -> target) dalam satu transaksi atomik (Seksi 13)."""
+    src_tag = str(payload.get("source_id_aset") or "").strip().upper()
+    tgt_tag = str(payload.get("target_id_aset") or "").strip().upper()
+    if not src_tag or not tgt_tag or src_tag == tgt_tag:
+        raise HTTPException(
+            status_code=422,
+            detail="Pilih aset duplikat (sumber) dan aset induk (tujuan) yang berbeda",
+        )
+
+    source = session.exec(
+        select(Asset)
+        .where(func.upper(Asset.id_aset) == src_tag, col(Asset.deleted_at).is_(None))
+        .with_for_update()
+    ).first()
+    target = session.exec(
+        select(Asset)
+        .where(func.upper(Asset.id_aset) == tgt_tag, col(Asset.deleted_at).is_(None))
+        .with_for_update()
+    ).first()
+    if source is None or target is None:
+        raise HTTPException(status_code=404, detail="Aset sumber atau tujuan tidak ditemukan")
+
+    # 1. Pindahkan child assets (Monitor & Komponen)
+    for child in session.exec(
+        select(Asset).where(col(Asset.parent_asset_id) == source.id_aset)
+    ).all():
+        child.parent_asset_id = target.id_aset
+        child.pemakai_text = f"Terpasang di {target.id_aset}"
+        child.penanggung_jawab = child.pemakai_text
+        session.add(child)
+
+    # 2. Pindahkan AssetLink
+    for lnk in session.exec(
+        select(AssetLink).where(col(AssetLink.asset_id) == source.id_aset)
+    ).all():
+        lnk.asset_id = target.id_aset
+        session.add(lnk)
+    for lnk2 in session.exec(
+        select(AssetLink).where(col(AssetLink.linked_asset_id) == source.id_aset)
+    ).all():
+        lnk2.linked_asset_id = target.id_aset
+        session.add(lnk2)
+
+    # 3. Pindahkan IPAllocation, Credential, & Maintenance
+    for ip_r in session.exec(
+        select(IPAllocation).where(col(IPAllocation.id_aset) == source.id_aset)
+    ).all():
+        ip_r.id_aset = target.id_aset
+        session.add(ip_r)
+    for vm_r in session.exec(
+        select(IPAllocation).where(col(IPAllocation.id_aset_host) == source.id_aset)
+    ).all():
+        vm_r.id_aset_host = target.id_aset
+        session.add(vm_r)
+    for crd in session.exec(
+        select(Credential).where(col(Credential.linked_asset_id) == source.id_aset)
+    ).all():
+        crd.linked_asset_id = target.id_aset
+        session.add(crd)
+    for mnt in session.exec(
+        select(Maintenance).where(col(Maintenance.id_aset) == source.id_aset)
+    ).all():
+        mnt.id_aset = target.id_aset
+        session.add(mnt)
+
+    # 4. Catat di AssetMovement & Soft-delete source
+    source.deleted_at = utcnow()
+    source.status = "Dihapusbukukan"
+    source.catatan = f"{source.catatan or ''} [Digabungkan ke {target.id_aset}]".strip()
+    session.add(source)
+
+    session.add(
+        AssetMovement(
+            asset_id=target.id_aset,
+            jenis="ubah_status",
+            dari=source.id_aset,
+            ke=target.id_aset,
+            alasan="Gabungkan aset duplikat",
+            catatan=f"Seluruh relasi dari {source.id_aset} digabung ke {target.id_aset}",
+            tanggal=date.today(),
+            oleh=current_user.username,
+        )
+    )
+    record_audit_log(
+        session,
+        username=current_user.username,
+        nama_pengguna=getattr(current_user, "full_name", current_user.username),
+        role=current_user.role,
+        aksi="Gabungkan Aset",
+        modul="Inventory",
+        target_id=target.id_aset,
+        detail=f"Menggabungkan aset duplikat {source.id_aset} ke {target.id_aset}",
+        level_risiko="Tinggi",
+    )
+    session.commit()
+    return {"status": "ok", "merged_from": source.id_aset, "merged_into": target.id_aset}
 
 
 @router.get("/{id_aset}", response_model=AssetPublic)
@@ -941,6 +1428,7 @@ def get_asset_full_detail(
             "spares": spare_components,
             "pc_targets": pc_targets,
         },
+        "depreciation": _compute_depreciation_info(asset),
     }
 
 

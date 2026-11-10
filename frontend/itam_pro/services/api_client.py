@@ -701,7 +701,11 @@ class APIClient:
         params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
-            **clean_filters,
+            **{
+                k: v
+                for k, v in clean_filters.items()
+                if v is not None and str(v).strip() != ""
+            },
         }
         if isinstance(attr_filters, dict):
             for k, v in attr_filters.items():
@@ -1252,6 +1256,213 @@ class APIClient:
             count=1,
         )
         return {"status": "ok"}
+
+    async def get_stock_opname(
+        self,
+        lokasi: str = "",
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Ambil laporan Stock Opname beserta selisih hasil pindai QR."""
+        if not USE_MOCK:
+            try:
+                res = await self.request(
+                    method="GET",
+                    endpoint="/api/v1/assets/stock-opname",
+                    token=token,
+                    params={"lokasi": lokasi} if lokasi else None,
+                )
+                if isinstance(res, dict):
+                    return res
+            except ServiceUnavailableError:
+                pass
+
+        from itam_pro.services.mock.seed import MOCK_ASSETS
+
+        items = []
+        found = 0
+        missing = 0
+        unscanned = 0
+        for a in MOCK_ASSETS:
+            st = str(a.get("opname_status") or "Belum dipindai")
+            if st == "Ditemukan":
+                found += 1
+            elif st == "Tidak ditemukan":
+                missing += 1
+            else:
+                unscanned += 1
+            items.append(
+                {
+                    "id_aset": str(a.get("id_aset", "")),
+                    "nama_aset": str(a.get("nama_aset", "")),
+                    "kategori": str(a.get("kategori", "")),
+                    "lokasi": str(a.get("lokasi", "")),
+                    "pengguna": str(a.get("digunakan_oleh") or "—"),
+                    "opname_status": st,
+                    "scanned_at": str(a.get("scanned_at") or "—"),
+                    "catatan": str(a.get("opname_note") or ""),
+                }
+            )
+        return {
+            "summary": {
+                "total_terdaftar": len(MOCK_ASSETS),
+                "ditemukan": found,
+                "tidak_ditemukan": missing,
+                "belum_dipindai": unscanned,
+                "selisih": missing + unscanned,
+            },
+            "items": items,
+        }
+
+    async def scan_stock_opname_qr(
+        self,
+        qr_code: str,
+        status: str = "Ditemukan",
+        catatan: str = "",
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Pindai QR aset untuk menandai Ditemukan atau Tidak ditemukan."""
+        if not USE_MOCK:
+            res = await self.request(
+                method="POST",
+                endpoint="/api/v1/assets/stock-opname/scan",
+                token=token,
+                json_data={"qr_code": qr_code, "status": status, "catatan": catatan},
+            )
+            return res if isinstance(res, dict) else {}
+
+        from itam_pro.services.mock.seed import MOCK_ASSETS
+
+        clean = qr_code.strip()
+        if "/assets/" in clean:
+            clean = clean.split("/assets/", 1)[1].split("?")[0].strip("/")
+        clean = clean.upper()
+        target = next(
+            (a for a in MOCK_ASSETS if str(a.get("id_aset", "")).upper() == clean),
+            None,
+        )
+        if not target:
+            raise Exception(f"Aset '{clean}' tidak ditemukan di daftar induk.")
+        target["opname_status"] = status
+        target["scanned_at"] = "2026-11-10"
+        target["opname_note"] = catatan
+        return {"status": "ok", "id_aset": clean, "opname_status": status}
+
+    async def preview_assets_import(
+        self,
+        csv_text: str,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Validasi baris CSV untuk impor aset lama."""
+        if not USE_MOCK:
+            res = await self.request(
+                method="POST",
+                endpoint="/api/v1/assets/import-preview",
+                token=token,
+                json_data={"csv_text": csv_text},
+            )
+            return res if isinstance(res, dict) else {}
+
+        lines = [ln.strip() for ln in csv_text.splitlines() if ln.strip()]
+        if len(lines) <= 1:
+            return {
+                "valid_count": 0,
+                "error_count": 1,
+                "valid_rows": [],
+                "errors": [{"row": 1, "nama": "—", "reason": "Data CSV kosong"}],
+            }
+        valid_rows = []
+        errors = []
+        delim = ";" if ";" in lines[0] else ","
+        for idx, row in enumerate(csv.reader(lines[1:], delimiter=delim), start=2):
+            padded = [*row, "", "", "", "", "", "", ""][:7]
+            nama_v, kat_v, user_v, lok_v, st_v, kd_v, sn_v = [x.strip() for x in padded]
+            if not nama_v or not kat_v:
+                errors.append(
+                    {"row": idx, "nama": nama_v or "—", "reason": "Nama dan Kategori wajib diisi"}
+                )
+                continue
+            valid_rows.append(
+                {
+                    "row": idx,
+                    "nama_aset": nama_v,
+                    "kategori": kat_v,
+                    "penanggung_jawab": user_v or "Operasional",
+                    "lokasi": lok_v or "Head Office",
+                    "status": st_v or "Digunakan",
+                    "kondisi": kd_v or "Baik",
+                    "serial_number": sn_v,
+                }
+            )
+        return {
+            "valid_count": len(valid_rows),
+            "error_count": len(errors),
+            "valid_rows": valid_rows,
+            "errors": errors,
+        }
+
+    async def commit_assets_import(
+        self,
+        valid_rows: list[dict[str, Any]],
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Simpan seluruh baris valid hasil import aset lama."""
+        if not USE_MOCK:
+            res = await self.request(
+                method="POST",
+                endpoint="/api/v1/assets/import-commit",
+                token=token,
+                json_data={"valid_rows": valid_rows},
+            )
+            return res if isinstance(res, dict) else {}
+
+        from itam_pro.services.mock.seed import create_mock_assets
+
+        for r in valid_rows:
+            create_mock_assets(
+                {
+                    "nama_aset": r.get("nama_aset", "Aset Impor"),
+                    "kategori": r.get("kategori", "PC"),
+                    "sn_pid": r.get("serial_number", ""),
+                    "lokasi": r.get("lokasi", "Head Office"),
+                    "status": r.get("status", "Digunakan"),
+                    "kondisi": r.get("kondisi", "Baik"),
+                    "digunakan_oleh": r.get("penanggung_jawab", "Operasional"),
+                },
+                count=1,
+            )
+        return {"status": "ok", "imported_count": len(valid_rows)}
+
+    async def merge_assets(
+        self,
+        source_id_aset: str,
+        target_id_aset: str,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Gabungkan aset duplikat (source_id_aset) ke aset utama (target_id_aset)."""
+        if not USE_MOCK:
+            res = await self.request(
+                method="POST",
+                endpoint="/api/v1/assets/merge",
+                token=token,
+                json_data={
+                    "source_id_aset": source_id_aset,
+                    "target_id_aset": target_id_aset,
+                },
+            )
+            return res if isinstance(res, dict) else {}
+
+        from itam_pro.services.mock.seed import MOCK_ASSETS, delete_mock_asset
+
+        src = source_id_aset.strip().upper()
+        tgt = target_id_aset.strip().upper()
+        if not src or not tgt or src == tgt:
+            raise Exception("Pilih ID Aset sumber dan tujuan yang berbeda.")
+        for a in MOCK_ASSETS:
+            if str(a.get("parent_asset_id", "")).upper() == src:
+                a["parent_asset_id"] = tgt
+                a["digunakan_oleh"] = f"Terpasang di {tgt}"
+        delete_mock_asset(src)
+        return {"status": "ok", "merged_from": src, "merged_into": tgt}
 
     def check_sn_duplicate_sync(self, sn_pid: str, exclude_id: str = "") -> str | None:
         return find_sn_duplicate(sn_pid=sn_pid, exclude_id=exclude_id)

@@ -78,18 +78,26 @@ def _inventory_header() -> rx.Component:
         ),
         rx.hstack(
             secondary_button(
+                label="Stock Opname QR",
+                on_click=AssetState.open_opname_modal,
+            ),
+            secondary_button(
+                label="Gabungkan Aset",
+                on_click=AssetState.open_merge_modal,
+            ),
+            secondary_button(
                 label="Export",
-                on_click=rx.toast.info("Fitur Export sedang disiapkan"),
+                on_click=AssetState.export_active_filtered_csv,
             ),
             secondary_button(
                 label="Import",
-                on_click=rx.toast.info("Fitur Import Aset sedang disiapkan"),
+                on_click=AssetState.open_import_modal,
             ),
             action_primary_button(
                 label=AssetState.add_button_label,
                 on_click=AssetState.open_add_modal,
             ),
-            spacing="3",
+            spacing="2",
             align="center",
             wrap="wrap",
         ),
@@ -236,8 +244,15 @@ def _four_kpi_cards_row() -> rx.Component:
     )
 
 
-def _category_group_chip(group_key: str, label: str, icon_tag: str, count_key: str) -> rx.Component:
+def _category_group_chip(
+    group_key: str, label: str, icon_tag: str, count_key: str
+) -> rx.Component:
     is_active = AssetState.active_group == group_key
+    safe_count = rx.cond(
+        AssetState.sidebar_counts[count_key],
+        AssetState.sidebar_counts[count_key],
+        0,
+    )
     return rx.box(
         rx.hstack(
             rx.center(
@@ -256,7 +271,7 @@ def _category_group_chip(group_key: str, label: str, icon_tag: str, count_key: s
                     line_height="1.15",
                 ),
                 rx.text(
-                    f"{AssetState.sidebar_counts[count_key]} aset",
+                    f"{safe_count} aset",
                     font_size=FontSize.XS,
                     color=Color.MUTED,
                 ),
@@ -285,9 +300,14 @@ def _category_group_chip(group_key: str, label: str, icon_tag: str, count_key: s
 
 def _subcategory_pill(slug_val: str, label: str, count_var: Any) -> rx.Component:
     is_active = AssetState.current_slug == slug_val
+    safe_count = (
+        rx.cond(count_var, count_var, 0)
+        if isinstance(count_var, rx.Var)
+        else count_var
+    )
     return rx.box(
         rx.text(
-            f"{label} {count_var}",
+            f"{label} {safe_count}".strip(),
             font_size=FontSize.XS,
             font_weight=FontWeight.BOLD,
             color=rx.cond(is_active, Color.ACCENT, Color.TEXT),
@@ -350,6 +370,58 @@ def _category_hierarchy_bars() -> rx.Component:
             align="center",
             wrap="wrap",
             width="100%",
+        ),
+        rx.cond(
+            AssetState.active_group == "kendaraan",
+            rx.hstack(
+                rx.text(
+                    "Kendaraan ›",
+                    font_size=FontSize.XS,
+                    font_weight=FontWeight.SEMIBOLD,
+                    color=Color.MUTED,
+                ),
+                _subcategory_pill("", "Semua Kendaraan", AssetState.sidebar_counts["kendaraan"]),
+                _subcategory_pill("mobil", "Mobil", ""),
+                _subcategory_pill("motor", "Motor", ""),
+                spacing="2",
+                align="center",
+                wrap="wrap",
+            ),
+            rx.cond(
+                AssetState.active_group == "peralatan-kantor",
+                rx.hstack(
+                    rx.text(
+                        "Peralatan Kantor ›",
+                        font_size=FontSize.XS,
+                        font_weight=FontWeight.SEMIBOLD,
+                        color=Color.MUTED,
+                    ),
+                    _subcategory_pill("ac", "AC", AssetState.sidebar_counts["peralatan-kantor"]),
+                    spacing="2",
+                    align="center",
+                ),
+                rx.cond(
+                    AssetState.active_group == "furnitur",
+                    rx.hstack(
+                        rx.text(
+                            "Furnitur ›",
+                            font_size=FontSize.XS,
+                            font_weight=FontWeight.SEMIBOLD,
+                            color=Color.MUTED,
+                        ),
+                        _subcategory_pill(
+                            "", "Semua Furnitur", AssetState.sidebar_counts["furnitur"]
+                        ),
+                        _subcategory_pill("meja", "Meja", ""),
+                        _subcategory_pill("kursi", "Kursi", ""),
+                        _subcategory_pill("lemari", "Lemari", ""),
+                        spacing="2",
+                        align="center",
+                        wrap="wrap",
+                    ),
+                    rx.fragment(),
+                ),
+            ),
         ),
         spacing="3",
         width="100%",
@@ -647,6 +719,9 @@ def assets_view_page() -> rx.Component:
             ),
         ),
         asset_form_modal(),
+        _stock_opname_modal(),
+        _import_assets_modal(),
+        _merge_assets_modal(),
         confirm_delete_dialog(
             is_open=AssetState.delete_dialog_open,
             title="Hapus Unit Aset?",
@@ -1478,6 +1553,357 @@ def _component_move_modal() -> rx.Component:
     )
 
 
+def _stock_opname_modal() -> rx.Component:
+    """Modal Stock Opname QR & Laporan Selisih (Seksi 14 & 18)."""
+    return rx.cond(
+        AssetState.opname_modal_open,
+        rx.box(
+            rx.box(
+                on_click=AssetState.close_opname_modal,
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "inset": "0",
+                        "background_color": Color.SCRIM,
+                        "z_index": "80",
+                    }
+                ),
+            ),
+            rx.box(
+                rx.vstack(
+                    rx.hstack(
+                        rx.heading(
+                            "Stock Opname (Pindai QR & Laporan Selisih)",
+                            font_size=FontSize.SUBTITLE,
+                            font_weight=FontWeight.EXTRABOLD,
+                        ),
+                        rx.spacer(),
+                        rx.el.button(
+                            rx.icon(tag="x", size=16, color=Color.MUTED),
+                            type="button",
+                            on_click=AssetState.close_opname_modal,
+                            style=rx.Style(
+                                {
+                                    "background": "transparent",
+                                    "border": "none",
+                                    "cursor": "pointer",
+                                }
+                            ),
+                        ),
+                        width="100%",
+                        align="center",
+                    ),
+                    rx.hstack(
+                        _detail_field_card(
+                            "TERDAFTAR", AssetState.opname_summary["total_terdaftar"]
+                        ),
+                        _detail_field_card(
+                            "DITEMUKAN", AssetState.opname_summary["ditemukan"]
+                        ),
+                        _detail_field_card(
+                            "TIDAK DITEMUKAN", AssetState.opname_summary["tidak_ditemukan"]
+                        ),
+                        _detail_field_card(
+                            "SELISIH / BELUM SCAN", AssetState.opname_summary["selisih"]
+                        ),
+                        spacing="2",
+                        width="100%",
+                    ),
+                    rx.cond(
+                        AssetState.opname_error != "",
+                        rx.text(
+                            AssetState.opname_error,
+                            font_size=FontSize.XS,
+                            color=Color.DANGER_FG,
+                            font_weight=FontWeight.BOLD,
+                        ),
+                    ),
+                    rx.cond(
+                        AssetState.opname_feedback != "",
+                        rx.text(
+                            AssetState.opname_feedback,
+                            font_size=FontSize.XS,
+                            color=Color.SUCCESS_FG,
+                            font_weight=FontWeight.BOLD,
+                        ),
+                    ),
+                    rx.hstack(
+                        rx.el.input(
+                            value=AssetState.opname_qr_input,
+                            on_change=AssetState.set_opname_qr_input,
+                            placeholder="Pindai URL QR atau ketik Aset ID (mis. PC-003)...",
+                            style=rx.Style(
+                                {
+                                    "flex": "1",
+                                    "height": "38px",
+                                    "padding": "0 12px",
+                                    "border": f"1px solid {Color.INPUT_BORDER}",
+                                    "border_radius": Radius.CONTROL,
+                                }
+                            ),
+                        ),
+                        rx.el.select(
+                            rx.el.option("Ditemukan", value="Ditemukan"),
+                            rx.el.option("Tidak ditemukan", value="Tidak ditemukan"),
+                            value=AssetState.opname_status_choice,
+                            on_change=AssetState.set_opname_status_choice,
+                            style=rx.Style(
+                                {
+                                    "height": "38px",
+                                    "padding": "0 12px",
+                                    "border": f"1px solid {Color.INPUT_BORDER}",
+                                    "border_radius": Radius.CONTROL,
+                                }
+                            ),
+                        ),
+                        action_primary_button("Tandai", on_click=AssetState.submit_opname_scan),
+                        spacing="2",
+                        width="100%",
+                    ),
+                    rx.hstack(
+                        secondary_button("Tutup", on_click=AssetState.close_opname_modal),
+                        justify="end",
+                        width="100%",
+                    ),
+                    spacing="3",
+                    width="100%",
+                ),
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "top": "50%",
+                        "left": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "620px",
+                        "max_width": "94vw",
+                        "background_color": Color.SURFACE,
+                        "border": f"1px solid {Color.BORDER}",
+                        "border_radius": Radius.CARD,
+                        "padding": "24px",
+                        "z_index": "90",
+                    }
+                ),
+            ),
+        ),
+        rx.fragment(),
+    )
+
+
+def _import_assets_modal() -> rx.Component:
+    """Modal Import CSV Aset Lama dengan Pratinjau Validasi (Seksi 14 & 18)."""
+    return rx.cond(
+        AssetState.import_modal_open,
+        rx.box(
+            rx.box(
+                on_click=AssetState.close_import_modal,
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "inset": "0",
+                        "background_color": Color.SCRIM,
+                        "z_index": "80",
+                    }
+                ),
+            ),
+            rx.box(
+                rx.vstack(
+                    rx.hstack(
+                        rx.heading(
+                            "Import Aset Lama (CSV / Excel)",
+                            font_size=FontSize.SUBTITLE,
+                            font_weight=FontWeight.EXTRABOLD,
+                        ),
+                        rx.spacer(),
+                        rx.el.button(
+                            rx.icon(tag="x", size=16, color=Color.MUTED),
+                            type="button",
+                            on_click=AssetState.close_import_modal,
+                            style=rx.Style(
+                                {
+                                    "background": "transparent",
+                                    "border": "none",
+                                    "cursor": "pointer",
+                                }
+                            ),
+                        ),
+                        width="100%",
+                        align="center",
+                    ),
+                    rx.text(
+                        "Format kolom: Nama Aset, Kategori, Pengguna, Lokasi, Status, Kondisi,"
+                        " Serial Number",
+                        font_size=FontSize.XS,
+                        color=Color.MUTED,
+                    ),
+                    rx.el.textarea(
+                        value=AssetState.import_csv_text,
+                        on_change=AssetState.set_import_csv_text,
+                        rows=5,
+                        style=rx.Style(
+                            {
+                                "width": "100%",
+                                "padding": "10px",
+                                "font_family": "monospace",
+                                "font_size": FontSize.XS,
+                                "border": f"1px solid {Color.INPUT_BORDER}",
+                                "border_radius": Radius.CONTROL,
+                            }
+                        ),
+                    ),
+                    rx.cond(
+                        AssetState.import_preview_done,
+                        rx.text(
+                            AssetState.import_validation_summary,
+                            font_size=FontSize.XS,
+                            font_weight=FontWeight.BOLD,
+                            color=Color.ACCENT,
+                        ),
+                    ),
+                    rx.hstack(
+                        secondary_button("Batal", on_click=AssetState.close_import_modal),
+                        secondary_button(
+                            "Validasi & Pratinjau", on_click=AssetState.run_import_preview
+                        ),
+                        action_primary_button(
+                            "Simpan Baris Valid", on_click=AssetState.execute_import_commit
+                        ),
+                        justify="end",
+                        spacing="2",
+                        width="100%",
+                    ),
+                    spacing="3",
+                    width="100%",
+                ),
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "top": "50%",
+                        "left": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "560px",
+                        "max_width": "94vw",
+                        "background_color": Color.SURFACE,
+                        "border": f"1px solid {Color.BORDER}",
+                        "border_radius": Radius.CARD,
+                        "padding": "24px",
+                        "z_index": "90",
+                    }
+                ),
+            ),
+        ),
+        rx.fragment(),
+    )
+
+
+def _merge_assets_modal() -> rx.Component:
+    """Modal Gabungkan Aset Duplikat untuk Admin (Seksi 13)."""
+    return rx.cond(
+        AssetState.merge_modal_open,
+        rx.box(
+            rx.box(
+                on_click=AssetState.close_merge_modal,
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "inset": "0",
+                        "background_color": Color.SCRIM,
+                        "z_index": "80",
+                    }
+                ),
+            ),
+            rx.box(
+                rx.vstack(
+                    rx.heading(
+                        "Gabungkan Aset Duplikat",
+                        font_size=FontSize.SUBTITLE,
+                        font_weight=FontWeight.EXTRABOLD,
+                    ),
+                    rx.text(
+                        "Seluruh relasi komponen, IP, kredensial, dan jadwal maintenance dari Aset"
+                        " Duplikat akan dipindahkan ke Aset Induk.",
+                        font_size=FontSize.XS,
+                        color=Color.MUTED,
+                    ),
+                    rx.cond(
+                        AssetState.merge_error != "",
+                        rx.text(
+                            AssetState.merge_error,
+                            font_size=FontSize.XS,
+                            color=Color.DANGER_FG,
+                            font_weight=FontWeight.BOLD,
+                        ),
+                    ),
+                    rx.text(
+                        "ID Aset Duplikat (Sumber yang akan dinonaktifkan) *",
+                        font_size=FontSize.XS,
+                        font_weight=FontWeight.BOLD,
+                    ),
+                    rx.el.input(
+                        value=AssetState.merge_source_id,
+                        on_change=AssetState.set_merge_source_id,
+                        placeholder="Contoh: PC-034",
+                        style=rx.Style(
+                            {
+                                "width": "100%",
+                                "height": "38px",
+                                "padding": "0 12px",
+                                "border": f"1px solid {Color.INPUT_BORDER}",
+                                "border_radius": Radius.CONTROL,
+                            }
+                        ),
+                    ),
+                    rx.text(
+                        "ID Aset Utama (Tujuan penggabungan) *",
+                        font_size=FontSize.XS,
+                        font_weight=FontWeight.BOLD,
+                    ),
+                    rx.el.input(
+                        value=AssetState.merge_target_id,
+                        on_change=AssetState.set_merge_target_id,
+                        placeholder="Contoh: PC-003",
+                        style=rx.Style(
+                            {
+                                "width": "100%",
+                                "height": "38px",
+                                "padding": "0 12px",
+                                "border": f"1px solid {Color.INPUT_BORDER}",
+                                "border_radius": Radius.CONTROL,
+                            }
+                        ),
+                    ),
+                    rx.hstack(
+                        secondary_button("Batal", on_click=AssetState.close_merge_modal),
+                        action_primary_button(
+                            "Gabungkan Aset", on_click=AssetState.submit_merge_assets
+                        ),
+                        justify="end",
+                        spacing="2",
+                        width="100%",
+                    ),
+                    spacing="3",
+                    width="100%",
+                ),
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "top": "50%",
+                        "left": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "440px",
+                        "max_width": "94vw",
+                        "background_color": Color.SURFACE,
+                        "border": f"1px solid {Color.BORDER}",
+                        "border_radius": Radius.CARD,
+                        "padding": "24px",
+                        "z_index": "90",
+                    }
+                ),
+            ),
+        ),
+        rx.fragment(),
+    )
+
+
 def _component_tab_view() -> rx.Component:
     """Isi Tab Komponen pada Detail PC / Server sesuai Artboard 12 (Kiri)."""
     return rx.vstack(
@@ -2122,6 +2548,9 @@ def asset_detail_page() -> rx.Component:
         _qr_label_modal(),
         _component_move_modal(),
         asset_form_modal(),
+        _stock_opname_modal(),
+        _import_assets_modal(),
+        _merge_assets_modal(),
         spacing="4",
         align="start",
         width="100%",

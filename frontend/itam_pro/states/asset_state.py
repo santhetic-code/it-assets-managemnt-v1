@@ -5,6 +5,8 @@ berdasarkan konfigurasi di `services/category_config.py`.
 Dioptimalkan dengan @rx.var(cache=True) & O(1) short-circuit lookup.
 """
 
+import csv
+import io
 import json
 import math
 from typing import Any
@@ -34,6 +36,21 @@ from itam_pro.services.mock.master_data import (
 from itam_pro.services.mock.seed import format_ukuran_layar
 from itam_pro.services.router_utils import get_current_params, get_current_raw_path
 from itam_pro.services.validators import validate_asset_business_rules
+
+_DEFAULT_SIDEBAR_COUNTS: dict[str, int] = {
+    "all": 77,
+    "pc": 33,
+    "server": 16,
+    "monitor": 4,
+    "ups": 24,
+    "perangkat-it": 77,
+    "komponen-periferal": 0,
+    "jaringan": 0,
+    "kendaraan": 0,
+    "peralatan-kantor": 0,
+    "furnitur": 0,
+    "lainnya": 0,
+}
 
 
 class AssetState(rx.State):
@@ -231,7 +248,57 @@ class AssetState(rx.State):
         {"label": "PC-016 RAM", "change": "8 GB -> 16 GB"},
     ]
 
+    # --- STATE FASE 4: STOCK OPNAME QR, IMPORT ASET, MERGE DUPLIKAT, & DEPRESIASI ---
+    opname_modal_open: bool = False
+    opname_qr_input: str = ""
+    opname_status_choice: str = "Ditemukan"
+    opname_catatan: str = ""
+    opname_feedback: str = ""
+    opname_error: str = ""
+    opname_summary: dict[str, int] = {
+        "total_terdaftar": 77,
+        "ditemukan": 0,
+        "tidak_ditemukan": 0,
+        "belum_dipindai": 77,
+        "selisih": 77,
+    }
+    opname_items: list[dict[str, Any]] = []
+
+    # Modal Import Aset Lama (CSV)
+    import_modal_open: bool = False
+    import_csv_text: str = (
+        "Nama Aset,Kategori,Pengguna,Lokasi,Status,Kondisi,Serial Number\n"
+        "Toyota Avanza Operasional,Mobil,GA & Operasional,Head Office,Digunakan,Baik,R-1234-XML\n"
+        "AC Daikin 2 PK Ruang Server,AC,Server Room,Head Office,Digunakan,Baru,SN-AC-DK01"
+    )
+    import_valid_rows: list[dict[str, Any]] = []
+    import_errors: list[dict[str, Any]] = []
+    import_preview_done: bool = False
+
+    # Modal Gabungkan Aset (Merge Duplikat)
+    merge_modal_open: bool = False
+    merge_source_id: str = ""
+    merge_target_id: str = ""
+    merge_error: str = ""
+
+    # Informasi Depresiasi & Nilai Buku pada Detail Aset
+    detail_depreciation: dict[str, Any] = {
+        "nilai_perolehan": 0,
+        "umur_ekonomis_bulan": 48,
+        "bulan_berjalan": 0,
+        "akumulasi_depresiasi": 0,
+        "nilai_buku": 0,
+        "persentase_sisa": 100.0,
+    }
+
     # --- COMPUTED VARS: KONTEKS HALAMAN & HEADER ---
+
+    @rx.var(cache=True)
+    def import_validation_summary(self) -> str:
+        return (
+            f"Hasil Validasi: {len(self.import_valid_rows)} baris valid"
+            f" · {len(self.import_errors)} baris error"
+        )
 
     @rx.var(cache=True)
     def page_title(self) -> str:
@@ -661,6 +728,8 @@ class AssetState(rx.State):
     async def fetch_assets(self) -> None:
         """Ambil daftar aset dari api_client.get_assets sesuai filter aktif."""
         self.is_loading = True
+        # Pastikan seluruh key default sidebar_counts selalu ada
+        self.sidebar_counts = {**_DEFAULT_SIDEBAR_COUNTS, **(self.sidebar_counts or {})}
         filters: dict[str, Any] = {
             "slug": self.current_slug,
             "category": self.current_slug,
@@ -674,24 +743,30 @@ class AssetState(rx.State):
             "kondisi": self.kondisi_filter,
             "status": self.status_filter,
             "warranty": self.warranty_filter,
-            "no_purchase": self.no_purchase_filter if self.no_purchase_filter else None,
+            "no_purchase": "1" if self.no_purchase_filter == 1 else "",
             "attr_filters": self.attr_filters,
             "sort_by": self.sort_by,
             "sort_dir": self.sort_dir,
         }
-        res = await api_client.get_assets(
-            filters=filters,
-            page=self.page,
-            page_size=self.page_size,
-        )
-        self.items = res.get("items", [])
-        self.total = int(res.get("total", 0))
-        self.tab_counts = res.get("tab_counts", {})
-        if "category_counts" in res and isinstance(res["category_counts"], dict):
-            self.sidebar_counts = {**self.sidebar_counts, **res["category_counts"]}
-        if "summary" in res and isinstance(res["summary"], dict):
-            self.summary_counts = {**self.summary_counts, **res["summary"]}
-        self.is_loading = False
+        try:
+            res = await api_client.get_assets(
+                filters=filters,
+                page=self.page,
+                page_size=self.page_size,
+            )
+            self.items = res.get("items", [])
+            self.total = int(res.get("total", 0))
+            self.tab_counts = res.get("tab_counts", {})
+            if "category_counts" in res and isinstance(res["category_counts"], dict):
+                self.sidebar_counts = {
+                    **_DEFAULT_SIDEBAR_COUNTS,
+                    **self.sidebar_counts,
+                    **res["category_counts"],
+                }
+            if "summary" in res and isinstance(res["summary"], dict):
+                self.summary_counts = {**self.summary_counts, **res["summary"]}
+        finally:
+            self.is_loading = False
 
     # --- EVENT HANDLERS: TAB, FILTER, SORT, PAGINASI ---
 
@@ -873,6 +948,24 @@ class AssetState(rx.State):
                 "resolusi_layar": "1920 × 1080",
             }
             self.form_konektivitas = ["HDMI"]
+        elif kategori in ("Mobil", "Motor"):
+            self.form_attributes = {
+                "nomor_polisi": "",
+                "nomor_rangka": "",
+                "nomor_mesin": "",
+                "masa_pajak": "2027-06-01",
+                "masa_stnk": "2030-06-01",
+            }
+        elif kategori == "AC":
+            self.form_attributes = {
+                "kapasitas_pk": "1 PK",
+                "jenis_freon": "R32",
+            }
+        elif kategori in ("Meja", "Kursi", "Lemari"):
+            self.form_attributes = {
+                "material": "Kayu & Besi",
+                "dimensi": "120 x 60 cm",
+            }
         else:
             self.form_attributes = {}
             self.form_konektivitas = []
@@ -1319,6 +1412,8 @@ class AssetState(rx.State):
         self.comp_spare_list = list(comp_data.get("spares") or [])
         if comp_data.get("pc_targets"):
             self.comp_pc_targets = list(comp_data["pc_targets"])
+        if "depreciation" in res and isinstance(res["depreciation"], dict):
+            self.detail_depreciation = res["depreciation"]
         self.active_asset_id = self.detail_asset_id
 
     @rx.event
@@ -1568,6 +1663,155 @@ class AssetState(rx.State):
             return
         await api_client.run_component_wizard(self.detail_asset_id)
         await self.load_asset_detail_page()
+
+    # --- HANDLERS FASE 4: STOCK OPNAME, IMPORT, EXPORT, & MERGE ---
+
+    @rx.event
+    async def open_opname_modal(self) -> None:
+        self.opname_qr_input = ""
+        self.opname_status_choice = "Ditemukan"
+        self.opname_catatan = ""
+        self.opname_feedback = ""
+        self.opname_error = ""
+        self.opname_modal_open = True
+        res = await api_client.get_stock_opname(lokasi=self.lokasi_filter)
+        self.opname_summary = res.get("summary") or self.opname_summary
+        self.opname_items = list(res.get("items") or [])[:15]
+
+    @rx.event
+    def close_opname_modal(self) -> None:
+        self.opname_modal_open = False
+
+    @rx.event
+    def set_opname_qr_input(self, val: str) -> None:
+        self.opname_qr_input = val
+
+    @rx.event
+    def set_opname_status_choice(self, val: str) -> None:
+        self.opname_status_choice = val
+
+    @rx.event
+    def set_opname_catatan(self, val: str) -> None:
+        self.opname_catatan = val
+
+    @rx.event
+    async def submit_opname_scan(self) -> None:
+        self.opname_error = ""
+        self.opname_feedback = ""
+        if not self.opname_qr_input.strip():
+            self.opname_error = "Masukkan kode Aset ID atau hasil pindai URL QR."
+            return
+        try:
+            scan_res = await api_client.scan_stock_opname_qr(
+                self.opname_qr_input,
+                status=self.opname_status_choice,
+                catatan=self.opname_catatan,
+            )
+            code = scan_res.get("id_aset", self.opname_qr_input.upper())
+            self.opname_feedback = (
+                f"Berhasil mencatat {code} sebagai '{self.opname_status_choice}'."
+            )
+            self.opname_qr_input = ""
+            rep = await api_client.get_stock_opname(lokasi=self.lokasi_filter)
+            self.opname_summary = rep.get("summary") or self.opname_summary
+            self.opname_items = list(rep.get("items") or [])[:15]
+        except Exception as exc:
+            self.opname_error = str(exc)
+
+    @rx.event
+    def open_import_modal(self) -> None:
+        self.import_preview_done = False
+        self.import_valid_rows = []
+        self.import_errors = []
+        self.import_modal_open = True
+
+    @rx.event
+    def close_import_modal(self) -> None:
+        self.import_modal_open = False
+
+    @rx.event
+    def set_import_csv_text(self, val: str) -> None:
+        self.import_csv_text = val
+        self.import_preview_done = False
+
+    @rx.event
+    async def run_import_preview(self) -> None:
+        res = await api_client.preview_assets_import(self.import_csv_text)
+        self.import_valid_rows = list(res.get("valid_rows") or [])
+        self.import_errors = list(res.get("errors") or [])
+        self.import_preview_done = True
+
+    @rx.event
+    async def execute_import_commit(self) -> None:
+        if not self.import_valid_rows:
+            return
+        await api_client.commit_assets_import(self.import_valid_rows)
+        self.import_modal_open = False
+        await self.fetch_assets()
+
+    @rx.event
+    def open_merge_modal(self) -> None:
+        self.merge_source_id = ""
+        self.merge_target_id = self.detail_asset_id or ""
+        self.merge_error = ""
+        self.merge_modal_open = True
+
+    @rx.event
+    def close_merge_modal(self) -> None:
+        self.merge_modal_open = False
+
+    @rx.event
+    def set_merge_source_id(self, val: str) -> None:
+        self.merge_source_id = val
+
+    @rx.event
+    def set_merge_target_id(self, val: str) -> None:
+        self.merge_target_id = val
+
+    @rx.event
+    async def submit_merge_assets(self) -> None:
+        self.merge_error = ""
+        try:
+            await api_client.merge_assets(self.merge_source_id, self.merge_target_id)
+            self.merge_modal_open = False
+            await self.fetch_assets()
+        except Exception as exc:
+            self.merge_error = str(exc)
+
+    @rx.event
+    def export_active_filtered_csv(self) -> Any:
+        """Unduh file CSV untuk seluruh aset sesuai filter yang sedang aktif (Seksi 7 & 14)."""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(
+            [
+                "Aset ID",
+                "Nama",
+                "Kategori",
+                "Pengguna / Penempatan",
+                "Lokasi",
+                "Status",
+                "Kondisi",
+                "SN / PID",
+            ]
+        )
+        for it in self.items:
+            writer.writerow(
+                [
+                    it.get("id_aset", ""),
+                    it.get("nama_aset", ""),
+                    it.get("kategori", ""),
+                    it.get("digunakan_oleh", ""),
+                    it.get("lokasi", ""),
+                    it.get("status", ""),
+                    it.get("kondisi", ""),
+                    it.get("sn_pid", ""),
+                ]
+            )
+        return rx.download(
+            data=buf.getvalue(),
+            filename="Export_Aset_ITAM_Pro.csv",
+        )
 
 
 __all__ = ["AssetState"]
