@@ -1,7 +1,10 @@
 """Endpoint CRUD Maintenance: Jadwal, Riwayat, Penyelesaian, & Jadwal Massal (B6)."""
 
+import calendar as py_calendar
+import csv
+import io
 import re
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -11,7 +14,12 @@ from sqlmodel import Session, col, select
 from app.deps import AdminUserDep, CurrentUserDep, EditorUserDep, PageParamsDep, SessionDep
 from app.models.asset import Asset
 from app.models.base import utcnow
-from app.models.maintenance import Maintenance
+from app.models.maintenance import (
+    Location,
+    Maintenance,
+    MaintenanceTemplate,
+    Vendor,
+)
 from app.schemas.finance import VALID_BILLING_CYCLES, advance_due_date
 from app.schemas.maintenance import (
     VALID_MAINTENANCE_STATUSES,
@@ -613,3 +621,319 @@ def delete_maintenance(
     session.delete(row)
     session.commit()
     return {"status": "ok", "id": deleted_id, "kode_maintenance": deleted_code}
+
+
+INITIAL_TEMPLATES_SEED: list[dict[str, Any]] = [
+    {
+        "nama": "PC",
+        "kategori_objek": "PC & Server",
+        "kegiatan": "Pembersihan debu internal & ganti thermal paste",
+        "jenis": "Preventif",
+        "interval_nilai": 3,
+        "interval_satuan": "bulan",
+        "interval_pemakaian": None,
+        "checklist": [
+            "Bersihkan kipas & heatsink",
+            "Cek suhu CPU",
+            "Rapikan manajemen kabel",
+        ],
+        "pelaksana_default": "Internal",
+    },
+    {
+        "nama": "Server",
+        "kategori_objek": "PC & Server",
+        "kegiatan": "Pembersihan debu heatsink & verifikasi snapshot VM",
+        "jenis": "Preventif",
+        "interval_nilai": 1,
+        "interval_satuan": "bulan",
+        "interval_pemakaian": None,
+        "checklist": [
+            "Bersihkan filter udara",
+            "Cek kesehatan SMART disk",
+            "Verifikasi backup VM",
+        ],
+        "pelaksana_default": "Internal",
+    },
+    {
+        "nama": "UPS",
+        "kategori_objek": "UPS",
+        "kegiatan": "Cek voltase aki & kalibrasi beban",
+        "jenis": "Preventif",
+        "interval_nilai": 3,
+        "interval_satuan": "bulan",
+        "interval_pemakaian": None,
+        "checklist": [
+            "Ukur voltase baterai",
+            "Uji backup saat beban penuh",
+            "Cek terminal aki",
+        ],
+        "pelaksana_default": "Internal",
+    },
+    {
+        "nama": "AC",
+        "kategori_objek": "AC",
+        "kegiatan": "Cuci AC (cleaning)",
+        "jenis": "Preventif",
+        "interval_nilai": 3,
+        "interval_satuan": "bulan",
+        "interval_pemakaian": None,
+        "checklist": [
+            "Cuci indoor",
+            "Cuci outdoor",
+            "Cek freon / tekanan",
+            "Cek saluran pembuangan",
+        ],
+        "pelaksana_default": "Vendor",
+    },
+    {
+        "nama": "Genset",
+        "kategori_objek": "Genset",
+        "kegiatan": "Pemanasan mesin, cek solar, oli & aki starter Krisbow KRPI80",
+        "jenis": "Inspeksi",
+        "interval_nilai": 1,
+        "interval_satuan": "bulan",
+        "interval_pemakaian": 250,
+        "checklist": [
+            "Cek level oli & solar",
+            "Cek tegangan aki starter",
+            "Pemanasan tanpa beban 15 menit",
+        ],
+        "pelaksana_default": "Internal",
+    },
+    {
+        "nama": "Jaringan",
+        "kategori_objek": "Jaringan",
+        "kegiatan": "Backup konfigurasi MikroTik & cek redaman fiber optic",
+        "jenis": "Preventif",
+        "interval_nilai": 1,
+        "interval_satuan": "bulan",
+        "interval_pemakaian": None,
+        "checklist": [
+            "Export backup RouterOS",
+            "Cek port switch & suhu",
+            "Cek log trafik",
+        ],
+        "pelaksana_default": "Internal",
+    },
+    {
+        "nama": "Kendaraan",
+        "kategori_objek": "Kendaraan",
+        "kegiatan": "Servis berkala & ganti oli mesin",
+        "jenis": "Preventif",
+        "interval_nilai": 3,
+        "interval_satuan": "bulan",
+        "interval_pemakaian": 5000,
+        "checklist": [
+            "Ganti oli mesin",
+            "Cek rem & ban",
+            "Cek lampu & kelistrikan",
+        ],
+        "pelaksana_default": "Vendor",
+    },
+    {
+        "nama": "Fasilitas",
+        "kategori_objek": "Fasilitas",
+        "kegiatan": "Inspeksi instalasi listrik & APAR gedung",
+        "jenis": "Inspeksi",
+        "interval_nilai": 6,
+        "interval_satuan": "bulan",
+        "interval_pemakaian": None,
+        "checklist": ["Cek tekanan tabung APAR", "Cek panel MCB utama"],
+        "pelaksana_default": "Internal",
+    },
+]
+
+
+def _add_interval_date(base: date, nilai: int, satuan: str) -> date:
+    val = max(1, int(nilai or 1))
+    u = (satuan or "bulan").strip().lower()
+    if u in ("hari", "day", "harian"):
+        return base + timedelta(days=val)
+    if u in ("minggu", "week", "mingguan"):
+        return base + timedelta(days=val * 7)
+    months = val * 12 if u in ("tahun", "tahunan") else val
+    m_idx = base.month - 1 + months
+    yr = base.year + m_idx // 12
+    mn = m_idx % 12 + 1
+    max_d = py_calendar.monthrange(yr, mn)[1]
+    return date(yr, mn, min(base.day, max_d))
+
+
+def _ensure_templates_and_locations(session: Session) -> None:
+    if session.exec(select(MaintenanceTemplate.id).limit(1)).first() is None:
+        for t in INITIAL_TEMPLATES_SEED:
+            session.add(
+                MaintenanceTemplate(
+                    nama=t["nama"],
+                    kategori_objek=t["kategori_objek"],
+                    kegiatan=t["kegiatan"],
+                    jenis=t["jenis"],
+                    interval_nilai=t["interval_nilai"],
+                    interval_satuan=t["interval_satuan"],
+                    interval_pemakaian=t["interval_pemakaian"],
+                    checklist=t["checklist"],
+                    pelaksana_default=t["pelaksana_default"],
+                )
+            )
+        session.commit()
+
+    if session.exec(select(Vendor.id).limit(1)).first() is None:
+        for v_nama, v_layanan in [
+            ("Teknisi AC", "Cuci & Servis AC"),
+            ("Vendor Genset Krisbow", "Servis Genset & Panel ATS"),
+            ("Bengkel Resmi", "Servis Kendaraan Operasional"),
+        ]:
+            session.add(Vendor(nama=v_nama, jenis_layanan=v_layanan))
+        session.commit()
+
+    if session.exec(select(Location.id).limit(1)).first() is None:
+        for loc_parent in (
+            "Kantor Blok 12",
+            "Kantor Blok 13",
+            "Kantor Blok 14",
+            "Ruko Rinjani",
+            "Mess Blok 12",
+        ):
+            p_row = Location(parent_id=None, nama=loc_parent)
+            session.add(p_row)
+            session.flush()
+            for room in ("Ruang Kerja", "Ruang Server", "Ruang Meeting", "Lobby"):
+                session.add(Location(parent_id=p_row.id, nama=room))
+        session.commit()
+
+
+@router.get("/templates/meta")
+def get_maintenance_templates_and_meta(
+    session: SessionDep,
+    _: CurrentUserDep,
+) -> dict[str, Any]:
+    """Mengambil daftar template, vendor, dan lokasi 2 tingkat (Artboard 14)."""
+    _ensure_templates_and_locations(session)
+    templates = list(
+        session.exec(
+            select(MaintenanceTemplate).order_by(col(MaintenanceTemplate.id).asc())
+        ).all()
+    )
+    vendors = list(
+        session.exec(select(Vendor).order_by(col(Vendor.id).asc())).all()
+    )
+    locs = list(
+        session.exec(select(Location).order_by(col(Location.id).asc())).all()
+    )
+    parents = [loc for loc in locs if loc.parent_id is None]
+    rooms_by_parent = {
+        p.nama: [r.nama for r in locs if r.parent_id == p.id] for p in parents
+    }
+    return {
+        "templates": [
+            {
+                "id": t.id,
+                "nama": t.nama,
+                "kategori_objek": t.kategori_objek,
+                "kegiatan": t.kegiatan,
+                "jenis": t.jenis,
+                "interval_nilai": t.interval_nilai,
+                "interval_satuan": t.interval_satuan,
+                "interval_pemakaian": t.interval_pemakaian,
+                "checklist": t.checklist,
+                "pelaksana_default": t.pelaksana_default,
+            }
+            for t in templates
+        ],
+        "vendors": [
+            {"id": v.id, "nama": v.nama, "jenis_layanan": v.jenis_layanan}
+            for v in vendors
+        ],
+        "locations": [p.nama for p in parents],
+        "rooms_by_location": rooms_by_parent,
+    }
+
+
+@router.post("/import-ac-preview")
+def preview_import_ac_sheet(
+    payload: dict[str, Any],
+    _: EditorUserDep,
+) -> dict[str, Any]:
+    """Pratinjau import Google Sheet AC."""
+    csv_text = str(payload.get("csv_text") or "").strip()
+    if not csv_text:
+        return {
+            "valid_count": 0,
+            "error_count": 1,
+            "valid_rows": [],
+            "errors": [{"row": 1, "reason": "CSV kosong"}],
+        }
+
+    first_line = csv_text.split("\n", 1)[0]
+    delim = ";" if first_line.count(";") > first_line.count(",") else ","
+    reader = list(csv.DictReader(io.StringIO(csv_text), delimiter=delim))
+
+    valid_rows: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+
+    for idx, r in enumerate(reader, start=2):
+        norm = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items()}
+        lokasi = norm.get("lokasi") or norm.get("kantor") or ""
+        ruangan = norm.get("jenis ruangan") or norm.get("ruangan") or ""
+        jml_str = norm.get("jumlah ac") or norm.get("jumlah") or "1"
+        tgl_raw = (
+            norm.get("tanggal cuci terakhir")
+            or norm.get("terakhir dikerjakan")
+            or ""
+        )
+        int_str = norm.get("interval (bulan)") or norm.get("interval") or "3"
+
+        if not lokasi or not ruangan:
+            errors.append(
+                {"row": idx, "reason": "Kolom Lokasi dan Jenis Ruangan wajib diisi"}
+            )
+            continue
+
+        parsed_last: date | None = None
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                parsed_last = datetime.strptime(tgl_raw, fmt).date()
+                break
+            except ValueError:
+                continue
+        if parsed_last is None:
+            errors.append(
+                {
+                    "row": idx,
+                    "reason": (
+                        f"Format Tanggal Cuci Terakhir '{tgl_raw}' tidak valid "
+                        "(gunakan dd/mm/yyyy)"
+                    ),
+                }
+            )
+            continue
+
+        digits_jml = re.sub(r"[^\d]", "", jml_str)
+        digits_int = re.sub(r"[^\d]", "", int_str)
+        jml_val = int(digits_jml) if digits_jml else 1
+        int_val = int(digits_int) if digits_int else 3
+        next_due = _add_interval_date(parsed_last, int_val, "bulan")
+
+        valid_rows.append(
+            {
+                "row": idx,
+                "lokasi": lokasi,
+                "ruangan": ruangan,
+                "jumlah_unit_manual": jml_val,
+                "last_done_at": parsed_last.isoformat(),
+                "interval_nilai": int_val,
+                "interval_satuan": "bulan",
+                "next_due_at": next_due.isoformat(),
+                "kegiatan": "Cuci AC (cleaning)",
+                "pelaksana_tipe": "Vendor",
+                "pelaksana_nama": "Teknisi AC",
+            }
+        )
+
+    return {
+        "valid_count": len(valid_rows),
+        "error_count": len(errors),
+        "valid_rows": valid_rows,
+        "errors": errors,
+    }
+

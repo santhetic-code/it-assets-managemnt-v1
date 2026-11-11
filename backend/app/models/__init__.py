@@ -13,7 +13,15 @@ from app.models.credential import (
 )
 from app.models.finance import Purchase
 from app.models.ip_allocation import IPAllocation, IPSubnet
-from app.models.maintenance import Maintenance
+from app.models.maintenance import (
+    Location,
+    Maintenance,
+    MaintenanceLog,
+    MaintenancePlan,
+    MaintenanceTemplate,
+    MaintenanceTicket,
+    Vendor,
+)
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -30,11 +38,17 @@ __all__ = [
     "DivisionGrant",
     "IPAllocation",
     "IPSubnet",
+    "Location",
     "Maintenance",
+    "MaintenanceLog",
+    "MaintenancePlan",
+    "MaintenanceTemplate",
+    "MaintenanceTicket",
     "Purchase",
     "RoleTypePermission",
     "TimestampMixin",
     "User",
     "UserRole",
+    "Vendor",
     "utcnow",
 ]

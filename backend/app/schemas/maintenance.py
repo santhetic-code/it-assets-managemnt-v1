@@ -391,8 +391,10 @@ class MaintenancePublic(BaseModel):
             tanggal_jadwal=tgl_str,
             jadwal_berikutnya=tgl_str,
             tanggal=tgl_str,
-            tanggal_selesai=(row.tanggal_selesai.isoformat() if row.tanggal_selesai else tgl_str),
-            status=row.status,
+            tanggal_selesai=(
+                row.tanggal_selesai.isoformat() if row.tanggal_selesai else tgl_str
+            ),
+            status=effective_status,
             status_efektif=effective_status,
             status_variant=st_variant,
             is_overdue=is_overdue,

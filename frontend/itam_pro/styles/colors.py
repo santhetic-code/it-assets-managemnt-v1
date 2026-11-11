@@ -37,6 +37,8 @@ class Color:
     WHITE_14 = "rgba(255, 255, 255, 0.14)"
     WHITE_75 = "rgba(255, 255, 255, 0.75)"
     WHITE_85 = "rgba(255, 255, 255, 0.85)"
+    WHITE_ALPHA_18 = "rgba(255, 255, 255, 0.18)"
+    WHITE_ALPHA_80 = "rgba(255, 255, 255, 0.80)"
 
     # Surfaces & Borders
     BG = "#F2F5FB"
@@ -102,8 +104,10 @@ class Color:
     BLUE_600 = "#2563EB"
     BLUE_700 = "#1D4ED8"
     BLUE_100 = "#DBEAFE"
+    BLUE_300 = "#93C5FD"
     BLUE_50 = "#EFF6FF"
     BLUE_BORDER = "#BFDBFE"
+    RED_50 = "#FEF2F2"
     PURPLE_600 = "#7C3AED"
     PURPLE_50 = "#F5F3FF"
     AMBER_700 = "#B45309"
