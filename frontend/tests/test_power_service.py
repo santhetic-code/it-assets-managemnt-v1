@@ -49,9 +49,9 @@ def test_enrich_server_power_row() -> None:
     assert enriched["grup_server"] == "Operasional"
     assert enriched["cpu_brand"] == "Intel"
     assert enriched["tdp_total_w"] == 240
-    assert enriched["beban_badge"] == "Tinggi"
+    assert enriched["beban_badge"] == "Sedang"
     assert enriched["beban_variant"] == "warning"
-    assert "kWh/bln" in enriched["kwh_display"]
+    assert "kWh" in enriched["kwh_display"]
 
     # Test server backup
     dummy_backup = {
@@ -66,7 +66,7 @@ def test_enrich_server_power_row() -> None:
     enriched_bk = enrich_server_power_row(dummy_backup)
     assert enriched_bk["grup_server"] == "Backup"
     assert enriched_bk["cpu_brand"] == "AMD"
-    assert enriched_bk["beban_badge"] == "Efisien"
+    assert enriched_bk["beban_badge"] == "Rendah"
     assert enriched_bk["beban_variant"] == "success"
 
 

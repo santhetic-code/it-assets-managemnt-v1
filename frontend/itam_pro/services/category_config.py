@@ -195,6 +195,34 @@ PC_FIELDS: list[CategoryFieldDef] = [
         "filterable": False,
         "placeholder": "Contoh: 30",
     },
+    {
+        "key": "psu_terpasang_watt",
+        "label": "PSU Terpasang (W)",
+        "type": "number",
+        "unit": "W",
+        "required": False,
+        "show_in_list": False,
+        "filterable": False,
+        "placeholder": "Contoh: 450 / 500 (opsional)",
+    },
+    {
+        "key": "watt_terukur",
+        "label": "Watt Terukur (W)",
+        "type": "number",
+        "unit": "W",
+        "required": False,
+        "show_in_list": False,
+        "filterable": False,
+        "placeholder": "Isi jika diukur dengan wattmeter (opsional)",
+    },
+    {
+        "key": "tanggal_ukur_watt",
+        "label": "Tanggal Pengukuran Watt",
+        "type": "date",
+        "required": False,
+        "show_in_list": False,
+        "filterable": False,
+    },
 ]
 
 VEHICLE_FIELDS: list[CategoryFieldDef] = [
@@ -336,6 +364,29 @@ MONITOR_FIELDS: list[CategoryFieldDef] = [
     },
 ]
 
+UPS_FIELDS: list[CategoryFieldDef] = [
+    {
+        "key": "kapasitas_va",
+        "label": "Kapasitas (VA)",
+        "type": "number",
+        "unit": "VA",
+        "required": True,
+        "show_in_list": True,
+        "filterable": False,
+        "placeholder": "Contoh: 650 / 700 / 720",
+    },
+    {
+        "key": "kapasitas_watt",
+        "label": "Kapasitas Real (Watt Datasheet)",
+        "type": "number",
+        "unit": "W",
+        "required": False,
+        "show_in_list": True,
+        "filterable": False,
+        "placeholder": "Contoh: 390 / 420 (opsional, dari datasheet)",
+    },
+]
+
 CATEGORY_CONFIGS: dict[str, CategoryConfig] = {
     "pc": {
         "slug": "pc",
@@ -410,12 +461,20 @@ CATEGORY_CONFIGS: dict[str, CategoryConfig] = {
         "slug": "ups",
         "code": "UPS",
         "name": "UPS",
-        "subtitle": "Daftar inventaris unit UPS beserta lokasi dan status pemakaiannya.",
+        "subtitle": (
+            "Daftar inventaris unit UPS beserta kapasitas VA, kapasitas Watt datasheet, "
+            "dan status pemakaiannya."
+        ),
         "add_button_label": "+ Tambah UPS",
         "pinned": True,
         "included_categories": ["UPS"],
-        "view_columns": DEFAULT_VIEW_COLUMNS,
-        "fields": [],
+        "view_columns": [
+            *DEFAULT_VIEW_COLUMNS[:6],
+            "kapasitas_va",
+            "kapasitas_watt",
+            *DEFAULT_VIEW_COLUMNS[6:],
+        ],
+        "fields": UPS_FIELDS,
     },
     "keyboard": {
         "slug": "keyboard",
@@ -759,10 +818,21 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
         spec_cols = [
             {
                 "key": "kapasitas_va",
-                "header": "KAPASITAS VA",
+                "header": "KAPASITAS (VA)",
                 "width": "130px",
                 "min_width": "115px",
                 "render_type": "text",
+                "sortable": True,
+                "sort_key": "kapasitas_va",
+            },
+            {
+                "key": "kapasitas_watt",
+                "header": "KAPASITAS (W)",
+                "width": "155px",
+                "min_width": "140px",
+                "render_type": "inline_number",
+                "sortable": True,
+                "sort_key": "kapasitas_watt",
             },
         ]
 

@@ -1,6 +1,14 @@
 """Daftarkan SEMUA model di sini agar terbaca oleh Alembic (autogenerate)."""
 
-from app.models.asset import Asset, AssetLink, AssetMovement, Category
+from app.models.asset import (
+    Asset,
+    AssetLink,
+    AssetMovement,
+    Category,
+    PowerAssumption,
+    PowerCatalogItem,
+    WattScenario,
+)
 from app.models.audit import AuditLog
 from app.models.base import NAMING_CONVENTION, TimestampMixin, utcnow
 from app.models.credential import (
@@ -44,11 +52,14 @@ __all__ = [
     "MaintenancePlan",
     "MaintenanceTemplate",
     "MaintenanceTicket",
+    "PowerAssumption",
+    "PowerCatalogItem",
     "Purchase",
     "RoleTypePermission",
     "TimestampMixin",
     "User",
     "UserRole",
     "Vendor",
+    "WattScenario",
     "utcnow",
 ]

@@ -153,3 +153,97 @@ def test_patch_power_updates_underlying_asset_and_rbac(
     assert asset_res.status_code == 200
     assert asset_res.json()["watt"] == 250
     assert asset_res.json()["beban_perangkat"] == "UPS-001"
+
+
+def test_power_assumptions_and_catalog_and_calculator(
+    client: TestClient,
+    session: Session,
+) -> None:
+    admin_h = _auth_headers(session, "adm_pwr2", UserRole.ADMINISTRATOR)
+    viewer_h = _auth_headers(session, "vw_pwr2", UserRole.VIEWER)
+
+    # 1. GET & PUT Assumptions
+    res_get = client.get("/api/v1/watt-server/assumptions", headers=viewer_h)
+    assert res_get.status_code == 200
+    asmp = res_get.json()
+    assert asmp["jam_operasional_per_hari"] == 24
+    assert asmp["faktor_daya_ups"] == 0.6
+
+    res_put = client.put(
+        "/api/v1/watt-server/assumptions",
+        headers=admin_h,
+        json={
+            "jam_operasional_per_hari": 24,
+            "hari_per_bulan": 30,
+            "faktor_beban_persen": 100,
+            "tarif_listrik_per_kwh": 1500.0,
+            "faktor_daya_ups": 0.65,
+            "batas_waspada_ups": 70,
+            "batas_kritis_ups": 85,
+        },
+    )
+    assert res_put.status_code == 200
+    assert res_put.json()["tarif_listrik_per_kwh"] == 1500.0
+    assert res_put.json()["faktor_daya_ups"] == 0.65
+
+    # 2. GET Catalog (auto-seeded)
+    cat_res = client.get("/api/v1/watt-server/catalog", headers=viewer_h)
+    assert cat_res.status_code == 200
+    items = cat_res.json()
+    assert len(items) >= 15
+    cpu_items = [i for i in items if i["kategori"] == "cpu"]
+    assert any("13700" in i["nama"] for i in cpu_items)
+
+    # POST new catalog item
+    new_cat = client.post(
+        "/api/v1/watt-server/catalog",
+        headers=admin_h,
+        json={
+            "kategori": "cpu",
+            "nama": "Intel Xeon Gold 6330",
+            "merek": "Intel",
+            "tdp_w": 205,
+            "peak_w": 250,
+            "jenis_data": "resmi",
+            "sumber": "Intel ARK",
+        },
+    )
+    assert new_cat.status_code == 201
+    cat_id = new_cat.json()["id"]
+
+    # 3. POST Calculate
+    calc_res = client.post(
+        "/api/v1/watt-server/calculate",
+        headers=viewer_h,
+        json={
+            "mode": "dasar",
+            "components": [
+                {"slot": "cpu", "kategori": "cpu", "catalog_id": cat_id, "qty": 1},
+                {"slot": "ram", "kategori": "ram", "custom_watt": 8, "qty": 4},
+            ],
+        },
+    )
+    assert calc_res.status_code == 200
+    calc_body = calc_res.json()
+    assert calc_body["beban_dasar_w"] == 205 + (8 * 4)
+    assert calc_body["psu_min_w"] > 0
+    assert calc_body["psu_rekomendasi_w"] > calc_body["psu_min_w"]
+    assert calc_body["komposisi"]["CPU"] == 205
+    assert calc_body["komposisi"]["RAM"] == 32
+
+    # 4. Scenarios
+    scen_res = client.post(
+        "/api/v1/watt-server/scenarios",
+        headers=admin_h,
+        json={
+            "nama": "Skenario Upgrade Server 1",
+            "komponen": [{"kategori": "cpu", "nama": "Intel Xeon Gold 6330"}],
+            "hasil": calc_body,
+        },
+    )
+    assert scen_res.status_code == 201
+    assert scen_res.json()["nama"] == "Skenario Upgrade Server 1"
+
+    scen_list = client.get("/api/v1/watt-server/scenarios", headers=viewer_h)
+    assert scen_list.status_code == 200
+    assert len(scen_list.json()) >= 1

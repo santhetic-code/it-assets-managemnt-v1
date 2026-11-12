@@ -151,3 +151,56 @@ class Asset(TimestampMixin, SQLModel, table=True):
         sa_type=cast(Any, DateTime(timezone=True)),
         nullable=True,
     )
+
+
+class PowerAssumption(TimestampMixin, SQLModel, table=True):
+    """Tabel singleton pengaturan asumsi laporan & kalkulator Rekap Watt Server."""
+
+    __tablename__: Any = "power_assumptions"  # type: ignore[assignment]
+
+    id: int | None = Field(default=None, primary_key=True)
+    jam_operasional_per_hari: int = Field(default=24, nullable=False)
+    hari_per_bulan: int = Field(default=30, nullable=False)
+    faktor_beban_persen: int = Field(default=100, nullable=False)
+    tarif_listrik_per_kwh: float | None = Field(default=None, nullable=True)
+    faktor_daya_ups: float = Field(default=0.6, nullable=False)
+    batas_waspada_ups: int = Field(default=70, nullable=False)
+    batas_kritis_ups: int = Field(default=85, nullable=False)
+    updated_by: str = Field(default="system", max_length=80, nullable=False)
+
+
+class PowerCatalogItem(TimestampMixin, SQLModel, table=True):
+    """Tabel katalog komponen daya (power_catalog) untuk Rekap & Kalkulator."""
+
+    __tablename__: Any = "power_catalog"  # type: ignore[assignment]
+
+    id: int | None = Field(default=None, primary_key=True)
+    kategori: str = Field(index=True, max_length=40, nullable=False)
+    nama: str = Field(index=True, max_length=150, nullable=False)
+    merek: str = Field(default="", max_length=80, nullable=False)
+    tdp_w: int = Field(default=0, nullable=False)
+    peak_w: int | None = Field(default=None, nullable=True)
+    jenis_data: str = Field(default="resmi", max_length=30, nullable=False)  # resmi | estimasi
+    sumber: str = Field(default="", max_length=255, nullable=False)
+    catatan: str = Field(default="", max_length=500, nullable=False)
+    diperbarui_oleh: str = Field(default="system", max_length=80, nullable=False)
+    aktif: bool = Field(default=True, index=True, nullable=False)
+
+
+class WattScenario(TimestampMixin, SQLModel, table=True):
+    """Tabel skenario tersimpan dari Kalkulator Watt Server (watt_scenarios)."""
+
+    __tablename__: Any = "watt_scenarios"  # type: ignore[assignment]
+
+    id: int | None = Field(default=None, primary_key=True)
+    nama: str = Field(index=True, max_length=150, nullable=False)
+    asset_id: str | None = Field(default=None, index=True, max_length=30, nullable=True)
+    komponen: list[dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False, server_default="[]"),
+    )
+    hasil: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False, server_default="{}"),
+    )
+    dibuat_oleh: str = Field(default="system", max_length=80, nullable=False)
