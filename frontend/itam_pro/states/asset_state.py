@@ -198,6 +198,10 @@ class AssetState(rx.State):
     detail_ips: list[dict[str, Any]] = []
     detail_credentials: list[dict[str, str]] = []
     detail_credentials_summary: str = "Belum ada kredensial tertaut"
+
+    # Inline Edit Kapasitas Watt UPS
+    ups_inline_watt_input: str = ""
+    ups_inline_warning: str = ""
     detail_purchase: dict[str, Any] = {}
     detail_has_purchase: bool = False
     detail_maintenances: list[dict[str, str]] = []
@@ -965,6 +969,13 @@ class AssetState(rx.State):
             self.form_attributes = {
                 "material": "Kayu & Besi",
                 "dimensi": "120 x 60 cm",
+            }
+        elif kategori == "UPS":
+            self.form_attributes = {
+                "kapasitas_va": "650",
+                "kapasitas_watt": "",
+                "jenis_aki": "Satu Aki",
+                "beban_perangkat": "",
             }
         else:
             self.form_attributes = {}
@@ -1811,6 +1822,54 @@ class AssetState(rx.State):
         return rx.download(
             data=buf.getvalue(),
             filename="Export_Aset_ITAM_Pro.csv",
+        )
+
+    @rx.event
+    def set_ups_inline_watt_input(self, val: str) -> None:
+        self.ups_inline_watt_input = val
+
+    @rx.event
+    async def save_ups_capacity_inline(self, asset_id: str, raw_watt: str) -> Any:
+        """Simpan kapasitas_watt UPS dari inline edit tabel atau tab Spesifikasi + validasi VA."""
+        target_id = (asset_id or self.detail_asset_id).strip().upper()
+        cleaned = str(raw_watt or "").strip()
+        if not cleaned:
+            watt_val = 0
+        else:
+            try:
+                watt_val = int(float(cleaned))
+            except ValueError:
+                return rx.toast.error("Kapasitas Watt harus berupa angka bulat.")
+            if watt_val <= 0:
+                return rx.toast.error("Kapasitas Watt harus lebih besar dari 0.")
+
+        # Cek kewajaran terhadap VA
+        target_item = next(
+            (x for x in self.items if str(x.get("id_aset", "")).upper() == target_id),
+            (
+                self.detail_asset
+                if str(self.detail_asset.get("id_aset", "")).upper() == target_id
+                else {}
+            ),
+        )
+        attrs = (target_item or {}).get("attributes") or target_item or {}
+        try:
+            va_val = int(float(str(attrs.get("kapasitas_va") or 650)))
+        except ValueError:
+            va_val = 650
+
+        await api_client.update_ups_capacity_watt(target_id, watt_val)
+        await self.fetch_assets()
+        if self.detail_asset_id == target_id:
+            await self.load_asset_detail_page()
+
+        if watt_val > va_val:
+            return rx.toast.warning(
+                f"Tersimpan ({watt_val} W), namun melebihi kapasitas {va_val} VA. "
+                "Periksa kembali datasheet UPS."
+            )
+        return rx.toast.success(
+            f"Kapasitas {target_id} diperbarui ke {watt_val} W (Datasheet) & tercatat di Audit Log."
         )
 
 

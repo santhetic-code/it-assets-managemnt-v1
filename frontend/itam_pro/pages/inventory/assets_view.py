@@ -2307,20 +2307,101 @@ def asset_detail_page() -> rx.Component:
                         color=Color.MUTED,
                         letter_spacing="0.06em",
                     ),
-                    rx.box(
-                        _detail_field_card("CPU", AssetState.detail_asset["cpu"]),
-                        _detail_field_card("RAM", AssetState.detail_asset["ram"]),
-                        _detail_field_card("VGA", AssetState.detail_asset["vga"]),
-                        _detail_field_card("STORAGE", AssetState.detail_asset["hdd_ssd"]),
-                        _detail_field_card("OPERASI SYSTEM", AssetState.detail_asset["os"]),
-                        _detail_field_card("MONITOR", AssetState.detail_monitor_display),
-                        style=rx.Style(
-                            {
-                                "display": "grid",
-                                "grid_template_columns": "1fr 1fr",
-                                "gap": "12px",
-                                "width": "100%",
-                            }
+                    rx.cond(
+                        AssetState.detail_asset["kategori"] == "UPS",
+                        rx.vstack(
+                            rx.box(
+                                _detail_field_card(
+                                    "KAPASITAS (VA)",
+                                    f"{AssetState.detail_asset['kapasitas_va']} VA",
+                                ),
+                                _detail_field_card(
+                                    "KAPASITAS WATT (DATASHEET)",
+                                    rx.cond(
+                                        AssetState.detail_asset["kapasitas_watt"] != "—",
+                                        (
+                                            f"{AssetState.detail_asset['kapasitas_watt']} W "
+                                            "(Datasheet)"
+                                        ),
+                                        "Belum diisi (memakai Perkiraan VA × 0,6)",
+                                    ),
+                                ),
+                                _detail_field_card(
+                                    "JENIS AKI",
+                                    AssetState.detail_asset["jenis_aki"],
+                                ),
+                                _detail_field_card(
+                                    "BEBAN PERANGKAT",
+                                    AssetState.detail_asset["digunakan_oleh"],
+                                ),
+                                style=rx.Style(
+                                    {
+                                        "display": "grid",
+                                        "grid_template_columns": "1fr 1fr",
+                                        "gap": "12px",
+                                        "width": "100%",
+                                    }
+                                ),
+                            ),
+                            rx.hstack(
+                                rx.text(
+                                    "Isi / Ubah Kapasitas Real dari Datasheet (W):",
+                                    font_size=FontSize.SM,
+                                    font_weight=FontWeight.BOLD,
+                                    color=Color.TEXT,
+                                ),
+                                rx.el.input(
+                                    type="number",
+                                    placeholder="Contoh: 390 / 420",
+                                    value=AssetState.ups_inline_watt_input,
+                                    on_change=AssetState.set_ups_inline_watt_input,
+                                    style=rx.Style(
+                                        {
+                                            "width": "160px",
+                                            "height": "36px",
+                                            "padding": "0 12px",
+                                            "border": f"1px solid {Color.INPUT_BORDER}",
+                                            "border_radius": Radius.CONTROL,
+                                        }
+                                    ),
+                                ),
+                                action_primary_button(
+                                    "Simpan Kapasitas (W)",
+                                    on_click=lambda: AssetState.save_ups_capacity_inline(
+                                        AssetState.detail_asset["id_aset"],
+                                        AssetState.ups_inline_watt_input,
+                                    ),
+                                ),
+                                spacing="3",
+                                align="center",
+                                padding="14px 18px",
+                                width="100%",
+                                style=rx.Style(
+                                    {
+                                        "background_color": Color.SURFACE,
+                                        "border": f"1px solid {Color.BORDER}",
+                                        "border_radius": Radius.CARD,
+                                    }
+                                ),
+                            ),
+                            spacing="3",
+                            width="100%",
+                        ),
+                        rx.box(
+                            _detail_field_card("CPU", AssetState.detail_asset["cpu"]),
+                            _detail_field_card("RAM", AssetState.detail_asset["ram"]),
+                            _detail_field_card("VGA", AssetState.detail_asset["vga"]),
+                            _detail_field_card("STORAGE", AssetState.detail_asset["hdd_ssd"]),
+                            _detail_field_card("OPERASI SYSTEM", AssetState.detail_asset["os"]),
+                            _detail_field_card("MONITOR", AssetState.detail_monitor_display),
+                            style=rx.Style(
+                                {
+                                    "display": "grid",
+                                    "grid_template_columns": "1fr 1fr",
+                                    "gap": "12px",
+                                    "width": "100%",
+                                }
+                            ),
                         ),
                     ),
                     spacing="3",

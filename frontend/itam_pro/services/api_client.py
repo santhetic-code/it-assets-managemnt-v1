@@ -2262,6 +2262,182 @@ class APIClient:
         await self.request("DELETE", f"/api/v1/watt-server/{asset_id.strip()}")
         return True
 
+    async def update_ups_capacity_watt(
+        self,
+        ups_id: str,
+        kapasitas_watt: int,
+        actor: str = "Administrator IT",
+    ) -> dict[str, Any]:
+        """Simpan kapasitas_watt UPS dari datasheet (inline edit / modal) + catat ke Audit Log."""
+        if USE_MOCK:
+            from itam_pro.services.power_service import update_mock_ups_capacity_watt
+
+            return update_mock_ups_capacity_watt(ups_id, kapasitas_watt, actor=actor)
+        res = await self.request(
+            "PATCH",
+            f"/api/v1/watt-server/ups/{ups_id.strip()}/capacity",
+            params={"kapasitas_watt": kapasitas_watt},
+        )
+        return res if isinstance(res, dict) else {}
+
+    async def save_power_assumptions(
+        self,
+        payload: dict[str, Any],
+        actor: str = "Administrator IT",
+    ) -> dict[str, Any]:
+        """Simpan pengaturan asumsi Rekap Watt Server (hanya Admin) + Audit Log."""
+        if USE_MOCK:
+            from itam_pro.services.power_service import update_mock_power_assumptions
+
+            return update_mock_power_assumptions(payload, actor=actor)
+        res = await self.request("PUT", "/api/v1/watt-server/assumptions", json_data=payload)
+        return res if isinstance(res, dict) else {}
+
+    async def get_power_catalog(
+        self,
+        q: str = "",
+        kategori: str = "",
+    ) -> list[dict[str, Any]]:
+        """Ambil daftar katalog komponen daya."""
+        if USE_MOCK:
+            from itam_pro.services.power_service import MOCK_POWER_CATALOG
+
+            items = [c for c in MOCK_POWER_CATALOG if c.get("aktif", True)]
+            if kategori and kategori not in ("Semua", "all"):
+                items = [c for c in items if c["kategori"].lower() == kategori.lower()]
+            if q.strip():
+                kw = q.strip().lower()
+                items = [
+                    c
+                    for c in items
+                    if kw in c["nama"].lower() or kw in c.get("merek", "").lower()
+                ]
+            return items
+        res = await self.request(
+            "GET",
+            "/api/v1/watt-server/catalog",
+            params={"q": q, "kategori": kategori},
+        )
+        return list(res) if isinstance(res, list) else []
+
+    async def save_power_catalog_item(
+        self,
+        payload: dict[str, Any],
+        item_id: int | None = None,
+        actor: str = "Administrator IT",
+    ) -> dict[str, Any]:
+        """Tambah atau ubah item di power_catalog (hanya Admin) + Audit Log."""
+        if USE_MOCK:
+            from itam_pro.services.power_service import MOCK_POWER_CATALOG
+
+            if item_id:
+                for idx, it in enumerate(MOCK_POWER_CATALOG):
+                    if it.get("id") == item_id:
+                        MOCK_POWER_CATALOG[idx] = {**it, **payload, "id": item_id}
+                        record_audit_event(
+                            actor,
+                            "power.catalog.update",
+                            f"CAT-{item_id}",
+                            f"Ubah komponen katalog: {payload.get('nama')} "
+                            f"({payload.get('tdp_w')} W)",
+                        )
+                        return MOCK_POWER_CATALOG[idx]
+            new_id = max((int(x.get("id", 0)) for x in MOCK_POWER_CATALOG), default=0) + 1
+            new_item = {"id": new_id, "aktif": True, **payload}
+            MOCK_POWER_CATALOG.insert(0, new_item)
+            record_audit_event(
+                actor,
+                "power.catalog.create",
+                f"CAT-{new_id}",
+                f"Tambah komponen katalog: {payload.get('nama')} ({payload.get('tdp_w')} W)",
+            )
+            return new_item
+        if item_id:
+            res = await self.request(
+                "PUT", f"/api/v1/watt-server/catalog/{item_id}", json_data=payload
+            )
+        else:
+            res = await self.request("POST", "/api/v1/watt-server/catalog", json_data=payload)
+        return res if isinstance(res, dict) else {}
+
+    async def get_watt_scenarios(self) -> list[dict[str, Any]]:
+        """Ambil daftar skenario kalkulator yang disimpan."""
+        if USE_MOCK:
+            from itam_pro.services.power_service import MOCK_WATT_SCENARIOS
+
+            return list(MOCK_WATT_SCENARIOS)
+        res = await self.request("GET", "/api/v1/watt-server/scenarios")
+        return list(res) if isinstance(res, list) else []
+
+    async def save_watt_scenario(
+        self,
+        payload: dict[str, Any],
+        actor: str = "Administrator IT",
+    ) -> dict[str, Any]:
+        """Simpan skenario perhitungan baru ke watt_scenarios."""
+        if USE_MOCK:
+            from itam_pro.services.power_service import MOCK_WATT_SCENARIOS
+
+            new_id = max((int(s.get("id", 0)) for s in MOCK_WATT_SCENARIOS), default=0) + 1
+            row = {"id": new_id, "dibuat_oleh": actor, **payload}
+            MOCK_WATT_SCENARIOS.insert(0, row)
+            return row
+        res = await self.request("POST", "/api/v1/watt-server/scenarios", json_data=payload)
+        return res if isinstance(res, dict) else {}
+
+    async def generate_watt_excel_bytes(
+        self,
+        rows: list[dict[str, Any]],
+        assumptions: dict[str, Any],
+    ) -> bytes:
+        """Export Rekap Watt Server ke Excel (.xlsx) dengan aturan Asumsi & Tarif Opsional."""
+        jam = assumptions.get("jam_operasional_per_hari", 24)
+        hari = assumptions.get("hari_per_bulan", 30)
+        fb = assumptions.get("faktor_beban_persen", 100)
+        tarif = assumptions.get("tarif_listrik_per_kwh")
+        has_tarif = tarif is not None and float(tarif or 0) > 0
+
+        headers = [
+            "ID Aset",
+            "Nama Server",
+            "Peran",
+            "Spesifikasi Ringkas",
+            f"Beban Efektif (W) [Faktor {fb}%]",
+            "PSU Min / Rek (W)",
+            "Status PSU Terpasang",
+            f"Energi / Bulan (kWh) [{jam}jx{hari}hr]",
+        ]
+        widths = [12, 24, 14, 42, 18, 18, 18, 22]
+        if has_tarif:
+            headers.append(f"Estimasi Biaya (Rp {int(float(tarif))}/kWh)")
+            widths.append(22)
+        headers.extend(["Beban", "UPS & Utilisasi", "Sumber Kapasitas UPS"])
+        widths.extend([14, 18, 18])
+
+        data_rows: list[list[str]] = []
+        for r in rows:
+            row_vals = [
+                str(r.get("id_aset", "")),
+                str(r.get("nama_aset", "")),
+                str(r.get("grup_server", "")),
+                str(r.get("spesifikasi_ringkas", "")),
+                str(r.get("beban_efektif_w", r.get("tdp_total_w", 0))),
+                f"{r.get('psu_min_w', 0)} / {r.get('psu_rekomendasi_w', 0)} W",
+                str(r.get("status_psu_terpasang", "Belum Diisi")),
+                str(r.get("kwh_display", "")),
+            ]
+            if has_tarif:
+                row_vals.append(str(r.get("biaya_display", "")))
+            row_vals.extend(
+                [
+                    str(r.get("beban_badge", "")),
+                    str(r.get("ups_display", "—")),
+                    str(r.get("ups_source_label", "—")),
+                ]
+            )
+            data_rows.append(row_vals)
+        return _build_openxml_xlsx(headers, data_rows, widths, is_template=False)
+
     async def get_audit_logs(
         self,
         filters: dict[str, Any] | None = None,

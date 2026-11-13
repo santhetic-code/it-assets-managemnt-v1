@@ -149,6 +149,7 @@ class Color:
 
     GRADIENT_BLUE = "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)"
     GRADIENT_PRIMARY = "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)"
+    GRADIENT_WATT = "linear-gradient(135deg, #0F296B 0%, #1D4ED8 100%)"
     GRADIENT_NAVY = "linear-gradient(135deg, #0F172A 0%, #1E3A8A 58%, #1D4ED8 100%)"
     GRADIENT_PURPLE = "linear-gradient(135deg, #A855F7 0%, #7E22CE 100%)"
     SCRIM_DARK = "rgba(15, 23, 42, 0.4)"

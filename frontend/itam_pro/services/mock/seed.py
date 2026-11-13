@@ -546,7 +546,7 @@ def _load_real_77_assets_from_csv() -> list[dict[str, Any]]:
             id_srv = (row.get("ID SERVER") or "").strip()
             is_used = st_ops == "DIGUNAKAN"
             penempatan = (
-                f"Menyuplai SERVER {id_srv}" if (is_used and id_srv and id_srv != "BACKUP") else "—"
+                f"Menyuplai {id_srv}" if (is_used and id_srv and id_srv != "BACKUP") else "—"
             )
             loaded.append(
                 {
@@ -567,7 +567,9 @@ def _load_real_77_assets_from_csv() -> list[dict[str, Any]]:
                     "terkait_chips": ["Server 1"] if is_used and id_srv else [],
                     "attributes": {
                         "kapasitas_va": va_raw,
+                        "kapasitas_watt": "",
                         "jenis_aki": aki.title(),
+                        "beban_perangkat": id_srv,
                     },
                 }
             )
