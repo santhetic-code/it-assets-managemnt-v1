@@ -1832,7 +1832,7 @@ class AssetState(rx.State):
     async def save_ups_capacity_inline(self, asset_id: str, raw_watt: str) -> Any:
         """Simpan kapasitas_watt UPS dari inline edit tabel atau tab Spesifikasi + validasi VA."""
         target_id = (asset_id or self.detail_asset_id).strip().upper()
-        cleaned = str(raw_watt or "").strip()
+        cleaned = (raw_watt or "").strip()
         if not cleaned:
             watt_val = 0
         else:
