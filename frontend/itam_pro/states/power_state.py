@@ -12,7 +12,7 @@ import reflex as rx
 
 from itam_pro.services.api_client import api_client
 from itam_pro.services.power_service import calculate_psu_specs, energi_kwh_bulan
-from itam_pro.styles.colors import Color
+from itam_pro.styles import Color
 
 
 def _fmt_ribuan(val: int | float) -> str:
@@ -331,7 +331,11 @@ class PowerState(rx.State):
         eff_total = max(0, round(base_total * (self.asmp_faktor_beban / 100.0)))
 
         psu = calculate_psu_specs(eff_total)
-        kwh = energi_kwh_bulan(float(eff_total), self.asmp_jam_per_hari, self.asmp_hari_per_bulan)
+        kwh = energi_kwh_bulan(
+            float(eff_total),
+            jam_per_hari=self.asmp_jam_per_hari,
+            hari_per_bulan=self.asmp_hari_per_bulan,
+        )
         kwh_str = f"{str(kwh).replace('.', ',')} kWh"
 
         biaya_str = "Opsional · tampil jika tarif diisi"
@@ -812,6 +816,107 @@ class PowerState(rx.State):
         }
         if slot in field_map:
             setattr(self, field_map[slot], val)
+
+    @rx.var(cache=True)
+    def calc_cpu_options(self) -> list[str]:
+        return [
+            c["nama"] for c in self.catalog_items if c.get("kategori") == "cpu"
+        ] or ["Intel Core i5-12400"]
+
+    @rx.var(cache=True)
+    def calc_gpu_options(self) -> list[str]:
+        return [
+            c["nama"] for c in self.catalog_items if c.get("kategori") == "gpu"
+        ] or ["Intel UHD Graphics (terpadu)"]
+
+    @rx.var(cache=True)
+    def calc_mobo_options(self) -> list[str]:
+        return [
+            c["nama"] for c in self.catalog_items if c.get("kategori") == "motherboard"
+        ] or ["Desktop ATX"]
+
+    @rx.var(cache=True)
+    def calc_ram_options(self) -> list[str]:
+        return [
+            c["nama"] for c in self.catalog_items if c.get("kategori") == "ram"
+        ] or ["RAM DDR4 per modul"]
+
+    @rx.var(cache=True)
+    def filtered_catalog_items(self) -> list[dict[str, Any]]:
+        rows = self.catalog_items
+        if self.catalog_kat_filter and self.catalog_kat_filter != "Semua":
+            rows = [
+                r
+                for r in rows
+                if r.get("kategori", "").lower() == self.catalog_kat_filter.lower()
+            ]
+        if self.catalog_search.strip():
+            kw = self.catalog_search.strip().lower()
+            rows = [
+                r
+                for r in rows
+                if kw in r.get("nama", "").lower() or kw in r.get("merek", "").lower()
+            ]
+        return rows
+
+    @rx.event
+    def set_catalog_search(self, val: str) -> None:
+        self.catalog_search = val
+
+    @rx.event
+    def set_catalog_kat_filter(self, val: str) -> None:
+        self.catalog_kat_filter = val
+
+    @rx.event
+    def open_add_catalog_modal(self) -> None:
+        self.catalog_edit_id = 0
+        self.cat_form_kategori = "cpu"
+        self.cat_form_nama = ""
+        self.cat_form_merek = "Intel"
+        self.cat_form_tdp_w = "65"
+        self.cat_form_peak_w = ""
+        self.cat_form_jenis_data = "resmi"
+        self.cat_form_sumber = "Intel ARK"
+        self.cat_form_catatan = ""
+        self.catalog_modal_open = True
+
+    @rx.event
+    def close_catalog_modal(self) -> None:
+        self.catalog_modal_open = False
+
+    @rx.event
+    def set_cat_form_field(self, field: str, val: str) -> None:
+        setattr(self, f"cat_form_{field}", val)
+
+    @rx.event
+    async def submit_catalog_item(self) -> Any:
+        if not self.cat_form_nama.strip():
+            return rx.toast.error("Nama komponen wajib diisi.")
+        try:
+            tdp = int(float(self.cat_form_tdp_w or "0"))
+            peak = int(float(self.cat_form_peak_w)) if self.cat_form_peak_w.strip() else None
+        except ValueError:
+            return rx.toast.error("TDP dan Daya Puncak harus berupa angka bulat.")
+        is_igpu = (
+            self.cat_form_kategori == "gpu"
+            and "terpadu" in self.cat_form_nama.lower()
+        )
+        await api_client.save_power_catalog_item(
+            {
+                "kategori": self.cat_form_kategori,
+                "nama": self.cat_form_nama.strip(),
+                "merek": self.cat_form_merek.strip(),
+                "tdp_w": 0 if is_igpu else tdp,
+                "peak_w": peak,
+                "jenis_data": self.cat_form_jenis_data,
+                "sumber": self.cat_form_sumber.strip(),
+                "catatan": self.cat_form_catatan.strip(),
+            },
+            item_id=self.catalog_edit_id if self.catalog_edit_id > 0 else None,
+        )
+        self.catalog_modal_open = False
+        self.catalog_items = await api_client.get_power_catalog()
+        return rx.toast.success("Katalog komponen diperbarui & tercatat di Audit Log.")
 
     @rx.event
     async def save_current_scenario(self) -> Any:

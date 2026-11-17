@@ -425,7 +425,8 @@ def _map_ups_to_servers(
             if srv not in ups_server_map[u_tag]:
                 ups_server_map[u_tag].append(srv)
 
-    # Fallback pencocokan nama dari kolom beban_perangkat bila asset_links belum terisi
+    # Fallback pencocokan ID Aset atau Nama Server dari kolom beban_perangkat
+    # bila asset_links belum terisi
     for u in ups_assets:
         u_tag = u.id_aset.strip().upper()
         if ups_server_map[u_tag]:
@@ -433,8 +434,11 @@ def _map_ups_to_servers(
         raw_target = (u.beban_perangkat or "").upper().replace("OTOMAX", "OTO")
         if not raw_target or raw_target in ("BACKUP", "RAK JARINGAN", "SYNOLOGY"):
             continue
+        for srv_id, srv_obj in consumer_by_id.items():
+            if srv_id in raw_target and srv_obj not in ups_server_map[u_tag]:
+                ups_server_map[u_tag].append(srv_obj)
         for srv_name, srv_obj in consumer_by_name.items():
-            if srv_name in raw_target and srv_obj not in ups_server_map[u_tag]:
+            if srv_name and srv_name in raw_target and srv_obj not in ups_server_map[u_tag]:
                 ups_server_map[u_tag].append(srv_obj)
 
     ups_items: list[UPSPowerItem] = []

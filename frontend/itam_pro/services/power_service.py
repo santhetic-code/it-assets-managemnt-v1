@@ -528,14 +528,14 @@ def total_tdp(assets: list[dict[str, Any]]) -> float:
 
 
 def energi_kwh_bulan(
-    effective_w: float,
+    total_w: float,
+    jam: int | None = None,
     jam_per_hari: int = 24,
     hari_per_bulan: int = 30,
-    jam: int | None = None,
 ) -> float:
-    """Hitung estimasi konsumsi energi bulanan dalam kWh."""
+    """Hitung estimasi konsumsi energi bulanan dalam kWh (kompatibel dengan parameter jam)."""
     total_hours = jam if jam is not None else (jam_per_hari * hari_per_bulan)
-    return round((effective_w * total_hours) / 1000.0, 1)
+    return round((total_w * total_hours) / 1000.0, 1)
 
 
 def _build_ups_links_and_items(
@@ -711,7 +711,11 @@ def enrich_server_power_row(
 
     jam_hari = int(asmp.get("jam_operasional_per_hari", 24) or 24)
     hari_bln = int(asmp.get("hari_per_bulan", 30) or 30)
-    kwh_bln = energi_kwh_bulan(float(beban_efektif_w), jam_hari, hari_bln)
+    kwh_bln = energi_kwh_bulan(
+        float(beban_efektif_w),
+        jam_per_hari=jam_hari,
+        hari_per_bulan=hari_bln,
+    )
     kwh_str = f"{str(kwh_bln).replace('.', ',')} kWh"
 
     tarif = asmp.get("tarif_listrik_per_kwh")
@@ -720,10 +724,7 @@ def enrich_server_power_row(
     biaya_str = f"Rp {biaya_rp:,}".replace(",", ".") if biaya_rp is not None else ""
 
     short_cpu = (
-        cpu.replace("Intel Core ", "")
-        .replace("AMD ", "")
-        .replace(" Desktop", "")
-        .split(" ")[0]
+        cpu.replace("Intel Core ", "").replace("AMD ", "").replace(" Desktop", "").split(" ")[0]
         if cpu != "—"
         else "—"
     )
@@ -895,7 +896,7 @@ def query_server_power(
     sum_psu_rek = sum(x["psu_rekomendasi_w"] for x in filtered)
     jam_h = int(asmp.get("jam_operasional_per_hari", 24) or 24)
     hari_b = int(asmp.get("hari_per_bulan", 30) or 30)
-    est_kwh = energi_kwh_bulan(float(sum_tdp), jam_h, hari_b)
+    est_kwh = energi_kwh_bulan(float(sum_tdp), jam_per_hari=jam_h, hari_per_bulan=hari_b)
     avg_tdp = round(sum_tdp / len(filtered)) if filtered else 0
     tarif = asmp.get("tarif_listrik_per_kwh")
     has_tarif = tarif is not None and float(tarif or 0) > 0
@@ -947,9 +948,7 @@ def query_server_power(
             "max_tdp_id": max_srv_id,
             "monitored_ups_count": len(monitored_ups),
             "max_ups_util_pct": round(top_ups["utilisasi_pct"]) if top_ups else 0,
-            "max_ups_source": (
-                top_ups["sumber_kapasitas"].lower() if top_ups else "perkiraan"
-            ),
+            "max_ups_source": (top_ups["sumber_kapasitas"].lower() if top_ups else "perkiraan"),
             "max_ups_status": top_ups["status_utilisasi"] if top_ups else "Aman",
             "unfilled_ups_watt_count": unfilled_ups_cnt,
             "psu_kurang_count": psu_kurang_cnt,
@@ -965,27 +964,17 @@ def update_mock_power_assumptions(
     MOCK_POWER_ASSUMPTIONS["jam_operasional_per_hari"] = int(
         payload.get("jam_operasional_per_hari", 24) or 24
     )
-    MOCK_POWER_ASSUMPTIONS["hari_per_bulan"] = int(
-        payload.get("hari_per_bulan", 30) or 30
-    )
+    MOCK_POWER_ASSUMPTIONS["hari_per_bulan"] = int(payload.get("hari_per_bulan", 30) or 30)
     MOCK_POWER_ASSUMPTIONS["faktor_beban_persen"] = int(
         payload.get("faktor_beban_persen", 100) or 100
     )
     raw_tarif = payload.get("tarif_listrik_per_kwh")
     MOCK_POWER_ASSUMPTIONS["tarif_listrik_per_kwh"] = (
-        float(raw_tarif)
-        if (raw_tarif not in (None, "", "0", 0) and float(raw_tarif) > 0)
-        else None
+        float(raw_tarif) if (raw_tarif not in (None, "", "0", 0) and float(raw_tarif) > 0) else None
     )
-    MOCK_POWER_ASSUMPTIONS["faktor_daya_ups"] = float(
-        payload.get("faktor_daya_ups", 0.6) or 0.6
-    )
-    MOCK_POWER_ASSUMPTIONS["batas_waspada_ups"] = int(
-        payload.get("batas_waspada_ups", 70) or 70
-    )
-    MOCK_POWER_ASSUMPTIONS["batas_kritis_ups"] = int(
-        payload.get("batas_kritis_ups", 85) or 85
-    )
+    MOCK_POWER_ASSUMPTIONS["faktor_daya_ups"] = float(payload.get("faktor_daya_ups", 0.6) or 0.6)
+    MOCK_POWER_ASSUMPTIONS["batas_waspada_ups"] = int(payload.get("batas_waspada_ups", 70) or 70)
+    MOCK_POWER_ASSUMPTIONS["batas_kritis_ups"] = int(payload.get("batas_kritis_ups", 85) or 85)
     record_audit_event(
         actor,
         "power.assumptions.update",

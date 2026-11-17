@@ -247,3 +247,104 @@ def test_power_assumptions_and_catalog_and_calculator(
     scen_list = client.get("/api/v1/watt-server/scenarios", headers=viewer_h)
     assert scen_list.status_code == 200
     assert len(scen_list.json()) >= 1
+
+
+def test_power_assumptions_catalog_calculator_and_ups_manual_capacity(
+    client: TestClient,
+    session: Session,
+) -> None:
+    admin_h = _auth_headers(session, "adm_watt2", UserRole.ADMINISTRATOR)
+    viewer_h = _auth_headers(session, "vw_watt2", UserRole.VIEWER)
+
+    # 1. Pengaturan Asumsi: default tarif kosong (None), Viewer ditolak (403), Admin diizinkan
+    get_asmp = client.get("/api/v1/watt-server/assumptions", headers=viewer_h)
+    assert get_asmp.status_code == 200
+    assert get_asmp.json()["tarif_listrik_per_kwh"] is None
+
+    denied_asmp = client.put(
+        "/api/v1/watt-server/assumptions",
+        headers=viewer_h,
+        json={"jam_operasional_per_hari": 24, "hari_per_bulan": 30, "faktor_beban_persen": 80},
+    )
+    assert denied_asmp.status_code == 403
+
+    put_asmp = client.put(
+        "/api/v1/watt-server/assumptions",
+        headers=admin_h,
+        json={
+            "jam_operasional_per_hari": 24,
+            "hari_per_bulan": 30,
+            "faktor_beban_persen": 100,
+            "tarif_listrik_per_kwh": 1444.7,
+            "faktor_daya_ups": 0.6,
+            "batas_waspada_ups": 70,
+            "batas_kritis_ups": 85,
+        },
+    )
+    assert put_asmp.status_code == 200
+    assert put_asmp.json()["tarif_listrik_per_kwh"] == 1444.7
+
+    # 2. Katalog Komponen: seed otomatis & aturan iGPU = 0 W ("termasuk TDP CPU")
+    cat_res = client.get("/api/v1/watt-server/catalog", headers=viewer_h)
+    assert cat_res.status_code == 200
+    catalog = cat_res.json()
+    assert len(catalog) >= 15
+    igpu = next((c for c in catalog if "terpadu" in c["nama"].lower()), None)
+    assert igpu is not None
+    assert igpu["tdp_w"] == 0
+    assert "termasuk tdp cpu" in igpu["catatan"].lower()
+
+    # 3. Mesin Hitung Kalkulator: pastikan contoh Artboard 17
+    # (142 W -> PSU 250/350 W, 102.2 kWh) identik
+    calc_res = client.post(
+        "/api/v1/watt-server/calculate",
+        headers=viewer_h,
+        json={
+            "mode": "dasar",
+            "components": [
+                {"slot": "cpu", "kategori": "cpu", "qty": 1, "custom_watt": 65},
+                {"slot": "gpu", "kategori": "gpu", "qty": 1, "custom_watt": 0},
+                {"slot": "mobo", "kategori": "motherboard", "qty": 1, "custom_watt": 40},
+                {"slot": "ram", "kategori": "ram", "qty": 4, "custom_watt": 3},
+                {"slot": "sata", "kategori": "ssd_sata", "qty": 3, "custom_watt": 3},
+                {"slot": "nvme", "kategori": "nvme", "qty": 1, "custom_watt": 7},
+                {"slot": "fan", "kategori": "fan", "qty": 3, "custom_watt": 3},
+            ],
+        },
+    )
+    assert calc_res.status_code == 200
+    calc_body = calc_res.json()
+    assert calc_body["beban_efektif_w"] == 142
+    assert calc_body["psu_min_w"] == 250
+    assert calc_body["psu_rekomendasi_w"] == 350
+    assert calc_body["kwh_per_bulan"] == 102.2
+
+    # 4. Kapasitas Watt UPS Manual (Datasheet vs Perkiraan)
+    ups_res = client.post(
+        "/api/v1/assets",
+        headers=admin_h,
+        json={
+            "nama_aset": "UPS ICA 700VA",
+            "kategori": "UPS",
+            "merek": "ICA",
+            "lokasi": "Head Office (Office Blok 14)",
+            "status": "Aktif",
+            "kapasitas_va": 700,
+        },
+    )
+    ups_code = ups_res.json()["id_aset"]
+
+    # Sebelum diisi manual: sumber_kapasitas = Perkiraan (700 * 0.6 = 420 W)
+    list_ups1 = client.get("/api/v1/watt-server/ups", headers=viewer_h).json()
+    u1 = next(u for u in list_ups1 if u["id_aset"] == ups_code)
+    assert u1["sumber_kapasitas"] == "Perkiraan"
+    assert u1["kapasitas_watt"] == 420
+
+    # Setelah diisi manual via PATCH capacity: sumber_kapasitas = Datasheet
+    patch_cap = client.patch(
+        f"/api/v1/watt-server/ups/{ups_code}/capacity?kapasitas_watt=450",
+        headers=admin_h,
+    )
+    assert patch_cap.status_code == 200
+    assert patch_cap.json()["sumber_kapasitas"] == "Datasheet"
+    assert patch_cap.json()["kapasitas_watt"] == 450

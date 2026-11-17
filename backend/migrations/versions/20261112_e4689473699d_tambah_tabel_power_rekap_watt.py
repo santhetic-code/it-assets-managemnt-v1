@@ -6,6 +6,7 @@ Create Date: 2026-11-12 11:16:44.407428
 """
 
 from collections.abc import Sequence
+import json
 
 import sqlalchemy as sa
 import sqlmodel.sql.sqltypes
@@ -71,18 +72,154 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index(op.f('ix_watt_scenarios_nama'), 'watt_scenarios', ['nama'], unique=False)
+    bind = op.get_bind()
+
+    # 1. Seed baris default singleton power_assumptions (tarif_listrik_per_kwh = NULL / opsional)
+    bind.execute(
+        sa.text(
+            "INSERT INTO power_assumptions "
+            "(created_at, updated_at, jam_operasional_per_hari, hari_per_bulan, "
+            "faktor_beban_persen, tarif_listrik_per_kwh, faktor_daya_ups, "
+            "batas_waspada_ups, batas_kritis_ups, updated_by) "
+            "VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 24, 30, 100, NULL, "
+            "0.6, 70, 85, 'system')"
+        )
+    )
+
+    # 2. Seed awal power_catalog dari komponen 16 server saat ini (spesifikasi resmi produsen)
+    catalog_seed = [
+        ("cpu", "Intel Core i7-13700", "Intel", 65, 219, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i7-13700F", "Intel", 65, 219, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i7-12700", "Intel", 65, 180, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i5-13400", "Intel", 65, 148, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i5-12400", "Intel", 65, 117, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i5-10600K", "Intel", 125, 182, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i3-10105F", "Intel", 65, 90, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i7-10700", "Intel", 65, 224, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i7-10700F", "Intel", 65, 224, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i7-10700K", "Intel", 125, 229, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i9-10900K", "Intel", 125, 250, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core i7-9800X", "Intel", 165, 210, "resmi", "Intel ARK", ""),
+        ("cpu", "Intel Core Ultra 7 265KF", "Intel", 125, 250, "resmi", "Intel ARK", ""),
+        ("cpu", "AMD Ryzen 7 3800X", "AMD", 105, 142, "resmi", "AMD", ""),
+        ("cpu", "AMD Ryzen 5 5600G", "AMD", 65, 88, "resmi", "AMD", ""),
+        (
+            "gpu",
+            "Intel UHD Graphics (terpadu)",
+            "Intel",
+            0,
+            0,
+            "resmi",
+            "Termasuk TDP CPU",
+            "termasuk TDP CPU",
+        ),
+        ("gpu", "NVIDIA GeForce GT 1030 2GB", "NVIDIA", 30, 35, "resmi", "NVIDIA", ""),
+        ("gpu", "NVIDIA GeForce GT 730 2GB", "NVIDIA", 38, 45, "resmi", "NVIDIA", ""),
+        ("motherboard", "Desktop ATX", "Generic", 40, 55, "estimasi", "Estimasi umum", ""),
+        ("ram", "RAM DDR4 per modul", "Generic", 3, 4, "estimasi", "Estimasi umum", ""),
+        ("ram", "RAM DDR5 per modul", "Generic", 4, 5, "estimasi", "Estimasi umum", ""),
+        ("ssd_sata", "SSD SATA 2,5 inci", "Generic", 3, 5, "estimasi", "Estimasi umum", ""),
+        ("nvme", "SSD NVMe M.2", "Generic", 7, 10, "estimasi", "Estimasi umum", ""),
+        ("hdd", "HDD SATA 3,5 inci", "Generic", 9, 15, "estimasi", "Estimasi umum", ""),
+        ("fan", "Kipas casing", "Generic", 3, 5, "estimasi", "Estimasi umum", ""),
+    ]
+    for kat, nama, merek, tdp_w, peak_w, j_data, sumber, catatan in catalog_seed:
+        bind.execute(
+            sa.text(
+                "INSERT INTO power_catalog "
+                "(created_at, updated_at, kategori, nama, merek, tdp_w, peak_w, "
+                "jenis_data, sumber, catatan, diperbarui_oleh, aktif) "
+                "VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, :kat, :nama, :merek, "
+                ":tdp, :peak, :jdata, :sumber, :cat, 'system', 1)"
+            ),
+            {
+                "kat": kat,
+                "nama": nama,
+                "merek": merek,
+                "tdp": tdp_w,
+                "peak": peak_w,
+                "jdata": j_data,
+                "sumber": sumber,
+                "cat": catatan,
+            },
+        )
+
+    # 3. Migrasi pencocokan spesifikasi teks lama pada aset Server ke ID power_catalog
+    cat_rows = (
+        bind.execute(sa.text("SELECT id, kategori, nama FROM power_catalog")).mappings().all()
+    )
+    srv_rows = (
+        bind.execute(
+            sa.text(
+                "SELECT id, processor, gpu, ram, storage, extra_specs, specs "
+                "FROM assets WHERE lower(kategori) = 'server'"
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    for srv in srv_rows:
+        extra = (
+            json.loads(srv["extra_specs"])
+            if isinstance(srv["extra_specs"], str)
+            else (srv["extra_specs"] or {})
+        )
+        specs = (
+            json.loads(srv["specs"])
+            if isinstance(srv["specs"], str)
+            else (srv["specs"] or {})
+        )
+        cpu_txt = str(srv["processor"] or extra.get("cpu") or "").lower()
+        gpu_txt = str(srv["gpu"] or extra.get("vga") or "").lower()
+
+        matched_refs: dict[str, int | None] = {"cpu_id": None, "gpu_id": None}
+        unmatched: list[str] = []
+
+        for c in cat_rows:
+            if c["kategori"] == "cpu" and c["nama"].lower() in cpu_txt:
+                matched_refs["cpu_id"] = int(c["id"])
+                break
+        if cpu_txt and matched_refs["cpu_id"] is None:
+            unmatched.append(f"cpu:{cpu_txt}")
+
+        for c in cat_rows:
+            if c["kategori"] == "gpu":
+                if (
+                    ("uhd" in gpu_txt and "terpadu" in c["nama"].lower())
+                    or ("1030" in gpu_txt and "1030" in c["nama"].lower())
+                    or ("730" in gpu_txt and "730" in c["nama"].lower())
+                ):
+                    matched_refs["gpu_id"] = int(c["id"])
+                    break
+        if gpu_txt and matched_refs["gpu_id"] is None:
+            unmatched.append(f"gpu:{gpu_txt}")
+
+        extra["catalog_refs"] = matched_refs
+        extra["unmatched_specs"] = unmatched
+        specs["catalog_refs"] = matched_refs
+        specs["unmatched_specs"] = unmatched
+
+        bind.execute(
+            sa.text("UPDATE assets SET extra_specs = :ex, specs = :sp WHERE id = :id"),
+            {"ex": json.dumps(extra), "sp": json.dumps(specs), "id": srv["id"]},
+        )
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_index(op.f('ix_watt_scenarios_nama'), table_name='watt_scenarios')
-    op.drop_index(op.f('ix_watt_scenarios_asset_id'), table_name='watt_scenarios')
-    op.drop_table('watt_scenarios')
-    op.drop_index(op.f('ix_power_catalog_nama'), table_name='power_catalog')
-    op.drop_index(op.f('ix_power_catalog_kategori'), table_name='power_catalog')
-    op.drop_index(op.f('ix_power_catalog_aktif'), table_name='power_catalog')
-    op.drop_table('power_catalog')
-    op.drop_table('power_assumptions')
+    existing = set(sa.inspect(op.get_bind()).get_table_names())
+    if 'watt_scenarios' in existing:
+        op.drop_index(op.f('ix_watt_scenarios_nama'), table_name='watt_scenarios')
+        op.drop_index(op.f('ix_watt_scenarios_asset_id'), table_name='watt_scenarios')
+        op.drop_table('watt_scenarios')
+    if 'power_catalog' in existing:
+        op.drop_index(op.f('ix_power_catalog_nama'), table_name='power_catalog')
+        op.drop_index(op.f('ix_power_catalog_kategori'), table_name='power_catalog')
+        op.drop_index(op.f('ix_power_catalog_aktif'), table_name='power_catalog')
+        op.drop_table('power_catalog')
+    if 'power_assumptions' in existing:
+        op.drop_table('power_assumptions')
     # ### end Alembic commands ###
 

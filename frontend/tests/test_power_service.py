@@ -30,7 +30,7 @@ def test_energi_kwh_and_total_tdp_calculation() -> None:
 
 
 def test_enrich_server_power_row() -> None:
-    """2. Uji parsing spesifikasi, klasifikasi beban, dan pengelompokan server."""
+    """2. Uji parsing spesifikasi, klasifikasi beban Artboard 15, dan pengelompokan server."""
     dummy_server = {
         "id_aset": "SRV-TEST",
         "nama_aset": "SERVER UTAMA OTO",
@@ -38,22 +38,24 @@ def test_enrich_server_power_row() -> None:
         "attributes": {
             "cpu": "Intel Xeon E5-2680",
             "vga": "NVIDIA T400",
-            "ram": "64GB DDR4",
-            "hdd_ssd": "2x 1TB NVMe",
+            "ram": "4x DDR4",
+            "hdd_ssd": "2x SSD SATA, 1x SSD M.2",
             "tdp_total_w": "240",
-            "psu_min_w": "350",
-            "psu_rekomendasi_w": "500",
+            "psu_min_w": "325",
+            "psu_rekomendasi_w": "400",
         },
     }
     enriched = enrich_server_power_row(dummy_server)
     assert enriched["grup_server"] == "Operasional"
     assert enriched["cpu_brand"] == "Intel"
     assert enriched["tdp_total_w"] == 240
+    assert enriched["beban_efektif_w"] == 240
     assert enriched["beban_badge"] == "Sedang"
     assert enriched["beban_variant"] == "warning"
     assert "kWh" in enriched["kwh_display"]
+    assert enriched["biaya_display"] == ""  # Default tarif kosong = sembunyikan rupiah
 
-    # Test server backup
+    # Test server backup (< 220 W = Rendah)
     dummy_backup = {
         "id_aset": "SRV-BK",
         "nama_aset": "SERVER BACKUP REALTIME",
@@ -149,3 +151,40 @@ def test_watt_server_page_ui_compilation() -> None:
     """6. Uji kompilasi komponen antarmuka halaman /watt-server."""
     page = watt_server_page()
     assert page is not None
+
+
+def test_psu_formula_and_optional_tarif_and_ups_datasheet() -> None:
+    """7. Uji konsistensi rumus PSU, tarif listrik opsional, dan kapasitas watt UPS manual."""
+    from itam_pro.services.power_service import (
+        calculate_psu_specs,
+        update_mock_power_assumptions,
+        update_mock_ups_capacity_watt,
+    )
+
+    # Konsistensi rumus PSU: 142 W -> 250 / 350 W, 211 W -> 300 / 400 W
+    psu_142 = calculate_psu_specs(142)
+    assert psu_142["psu_min_w"] == 250
+    assert psu_142["psu_rekomendasi_w"] == 350
+
+    psu_211 = calculate_psu_specs(211)
+    assert psu_211["psu_min_w"] == 300
+    assert psu_211["psu_rekomendasi_w"] == 400
+
+    # Deteksi inkonsistensi override SRV-003 (198 W dengan override 400/500 W)
+    psu_198_ov = calculate_psu_specs(198, override_min_w=400, override_rek_w=500)
+    assert psu_198_ov["psu_min_w"] == 400
+    assert psu_198_ov["formula_psu_min_w"] == 300
+    assert psu_198_ov["psu_inconsistent"] is True
+
+    # Uji perubahan tarif opsional & kapasitas UPS manual (Datasheet vs Perkiraan)
+    update_mock_power_assumptions({"tarif_listrik_per_kwh": 1500})
+    update_mock_ups_capacity_watt("UPS-009", 420)
+    res = query_server_power(filters={})
+    assert res["summary"]["estimasi_biaya_bulan"] is not None
+    ups_009 = next((u for u in res["ups_items"] if u["id_aset"] == "UPS-009"), None)
+    if ups_009:
+        assert ups_009["sumber_kapasitas"] == "Datasheet"
+        assert ups_009["kapasitas_watt"] == 420
+
+    # Kembalikan ke default tarif kosong
+    update_mock_power_assumptions({"tarif_listrik_per_kwh": None})
