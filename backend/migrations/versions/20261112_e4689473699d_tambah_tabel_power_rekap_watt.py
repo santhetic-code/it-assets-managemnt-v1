@@ -5,8 +5,8 @@ Revises: 20261110_0012
 Create Date: 2026-11-12 11:16:44.407428
 """
 
-from collections.abc import Sequence
 import json
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 import sqlmodel.sql.sqltypes
@@ -130,7 +130,7 @@ def upgrade() -> None:
                 "(created_at, updated_at, kategori, nama, merek, tdp_w, peak_w, "
                 "jenis_data, sumber, catatan, diperbarui_oleh, aktif) "
                 "VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, :kat, :nama, :merek, "
-                ":tdp, :peak, :jdata, :sumber, :cat, 'system', 1)"
+                ":tdp, :peak, :jdata, :sumber, :cat, 'system', :aktif)"
             ),
             {
                 "kat": kat,
@@ -141,6 +141,7 @@ def upgrade() -> None:
                 "jdata": j_data,
                 "sumber": sumber,
                 "cat": catatan,
+                "aktif": True,
             },
         )
 
@@ -201,8 +202,11 @@ def upgrade() -> None:
         specs["unmatched_specs"] = unmatched
 
         bind.execute(
-            sa.text("UPDATE assets SET extra_specs = :ex, specs = :sp WHERE id = :id"),
-            {"ex": json.dumps(extra), "sp": json.dumps(specs), "id": srv["id"]},
+            sa.text("UPDATE assets SET extra_specs = :ex, specs = :sp WHERE id = :id").bindparams(
+                sa.bindparam("ex", type_=sa.JSON),
+                sa.bindparam("sp", type_=sa.JSON),
+            ),
+            {"ex": extra, "sp": specs, "id": srv["id"]},
         )
     # ### end Alembic commands ###
 
