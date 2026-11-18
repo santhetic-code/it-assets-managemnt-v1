@@ -1,7 +1,7 @@
 """
-Halaman Infrastructure -> Rekap Watt Server (/watt-server).
-Mendukung Artboard 15 (Rekap, 5 KPI, & Utilisasi UPS), Artboard 16 (Asumsi & Rincian),
-Artboard 17 (Kalkulator Watt Server), dan Artboard 18 (Katalog & Skenario).
+Halaman Laporan -> Rekap Watt Server (/watt-server).
+Tampilan tabel rekap sederhana sesuai spreadsheet docs/data/rekap_watt_server.csv.
+Semua nilai diisi manual oleh user.
 """
 
 from typing import Any
@@ -10,20 +10,8 @@ import reflex as rx
 
 from itam_pro.components.feedback import confirm_delete_dialog
 from itam_pro.components.layout import base_layout
-from itam_pro.components.tables import (
-    ColumnDef,
-    ColumnToggleOption,
-    FilterDropdownConfig,
-    reusable_data_table,
-    table_filter_bar,
-    table_pagination,
-)
-from itam_pro.components.ui import (
-    TabItemConfig,
-    action_primary_button,
-    app_tabs,
-    secondary_button,
-)
+from itam_pro.components.tables import ColumnDef
+from itam_pro.components.ui import action_primary_button, secondary_button
 from itam_pro.states.power_state import PowerState
 from itam_pro.styles import (
     FONT_FAMILY,
@@ -36,780 +24,534 @@ from itam_pro.styles import (
 )
 
 WATT_TABLE_COLUMNS: list[ColumnDef] = [
+    {"key": "no", "header": "No", "width": "52px", "min_width": "48px", "render_type": "text"},
     {
         "key": "nama_aset",
-        "header": "SERVER",
-        "width": "210px",
-        "min_width": "185px",
-        "render_type": "name_with_sub",
-        "sub_key": "sub_label",
+        "header": "ID Server",
+        "width": "220px",
+        "min_width": "195px",
+        "render_type": "bold",
         "sticky_left": True,
         "sortable": True,
         "sort_key": "nama_aset",
     },
     {
-        "key": "spesifikasi_ringkas",
-        "header": "SPESIFIKASI RINGKAS",
-        "width": "290px",
-        "min_width": "250px",
+        "key": "cpu",
+        "header": "Model Prosesor (CPU)",
+        "width": "250px",
+        "min_width": "210px",
         "render_type": "text",
-        "sortable": True,
-        "sort_key": "cpu",
     },
     {
-        "key": "tdp_display",
-        "header": "TOTAL TDP",
-        "width": "130px",
-        "min_width": "115px",
+        "key": "vga",
+        "header": "Kartu Grafis (GPU)",
+        "width": "230px",
+        "min_width": "190px",
+        "render_type": "text",
+    },
+    {
+        "key": "ram",
+        "header": "Konfigurasi RAM",
+        "width": "195px",
+        "min_width": "170px",
+        "render_type": "text",
+    },
+    {
+        "key": "hdd_ssd",
+        "header": "Konfigurasi Penyimpanan",
+        "width": "210px",
+        "min_width": "180px",
+        "render_type": "text",
+    },
+    {
+        "key": "tdp_num_display",
+        "header": "Total TDP (W)",
+        "width": "135px",
+        "min_width": "125px",
         "render_type": "bold_blue",
         "sortable": True,
-        "sort_key": "beban_efektif_w",
+        "sort_key": "tdp_total_w",
     },
     {
-        "key": "psu_pair_display",
-        "header": "PSU MIN / REKOMENDASI",
-        "width": "165px",
-        "min_width": "150px",
+        "key": "psu_min_num_display",
+        "header": "PSU Minimum (W)",
+        "width": "150px",
+        "min_width": "135px",
+        "render_type": "bold",
+        "sortable": True,
+        "sort_key": "psu_min_w",
+    },
+    {
+        "key": "psu_rek_num_display",
+        "header": "PSU Rekomendasi (W)",
+        "width": "170px",
+        "min_width": "155px",
         "render_type": "bold",
         "sortable": True,
         "sort_key": "psu_rekomendasi_w",
     },
-    {
-        "key": "kwh_display",
-        "header": "ENERGI / BULAN",
-        "width": "145px",
-        "min_width": "130px",
-        "render_type": "text",
-        "sortable": True,
-        "sort_key": "kwh_per_bulan",
-    },
-    {
-        "key": "beban_badge",
-        "header": "BEBAN",
-        "width": "115px",
-        "min_width": "105px",
-        "render_type": "badge",
-        "badge_variant_key": "beban_variant",
-    },
-    {
-        "key": "ups_display",
-        "header": "UPS · UTILISASI",
-        "width": "145px",
-        "min_width": "130px",
-        "render_type": "text",
-        "sortable": True,
-        "sort_key": "ups_utilisasi_pct",
-    },
-]
-
-WATT_COLUMN_OPTIONS: list[ColumnToggleOption] = [
-    {"key": "spesifikasi_ringkas", "label": "Spesifikasi Ringkas"},
-    {"key": "tdp_display", "label": "Total TDP"},
-    {"key": "psu_pair_display", "label": "PSU Min / Rekomendasi"},
-    {"key": "kwh_display", "label": "Energi / Bulan"},
-    {"key": "beban_badge", "label": "Beban"},
-    {"key": "ups_display", "label": "UPS & Utilisasi"},
 ]
 
 
 def _watt_header() -> rx.Component:
-    """Header Rekap Watt Server + Tab Navigasi (Rekap | Kalkulator | Katalog)."""
-    return rx.vstack(
+    """Header halaman Rekap Watt Server dengan chip petir dan tombol + Tambah Server."""
+    return rx.hstack(
         rx.hstack(
-            rx.hstack(
-                rx.center(
-                    rx.icon(tag="zap", size=24, color=Color.WHITE),
-                    width="48px",
-                    height="48px",
-                    background_color=Color.ACCENT_BRIGHT,
-                    border_radius=Radius.CARD,
-                    flex_shrink="0",
-                ),
-                rx.vstack(
-                    rx.heading(
-                        "Rekap Watt Server",
-                        font_size=FontSize.TITLE,
-                        font_weight=FontWeight.EXTRABOLD,
-                        color=Color.TEXT,
-                        line_height="1.2",
-                    ),
-                    rx.text(
-                        "Laporan turunan dari spesifikasi aset: beban, energi, "
-                        "kebutuhan PSU, dan kecukupan UPS.",
-                        font_size=FontSize.BASE,
-                        color=Color.MUTED,
-                    ),
-                    spacing="1",
-                    align="start",
-                ),
-                spacing="3",
-                align="center",
+            rx.center(
+                rx.icon(tag="zap", size=24, color=Color.ACCENT_BRIGHT),
+                width="48px",
+                height="48px",
+                background_color=Color.INFO_BG,
+                border=f"1px solid {Color.BLUE_BORDER}",
+                border_radius=Radius.CARD,
+                flex_shrink="0",
             ),
-            rx.hstack(
-                secondary_button("Export", on_click=PowerState.export_watt_excel),
-                secondary_button("Cetak A4", on_click=rx.call_script("window.print()")),
-                secondary_button("☀ Asumsi", on_click=PowerState.open_assumptions_modal),
-                secondary_button(
-                    "Edit spesifikasi di Semua Aset →",
-                    on_click=rx.redirect("/assets?category=server"),
+            rx.vstack(
+                rx.heading(
+                    "Rekap Watt Server",
+                    font_size=FontSize.TITLE,
+                    font_weight=FontWeight.EXTRABOLD,
+                    color=Color.TEXT,
+                    line_height="1.2",
+                    letter_spacing="-0.02em",
                 ),
-                spacing="2",
-                align="center",
-                wrap="wrap",
-            ),
-            width="100%",
-            justify="between",
-            align="center",
-            wrap="wrap",
-        ),
-        # Tab Bar Utama: Rekap | Kalkulator | Katalog komponen
-        rx.hstack(
-            rx.el.button(
-                "Rekap",
-                type="button",
-                on_click=PowerState.set_main_section_tab("rekap"),
-                style=rx.Style(
-                    {
-                        "padding": "8px 4px",
-                        "margin_right": "20px",
-                        "background": "transparent",
-                        "border": "none",
-                        "border_bottom": rx.cond(
-                            PowerState.main_section_tab == "rekap",
-                            f"2.5px solid {Color.ACCENT_BRIGHT}",
-                            "2.5px solid transparent",
-                        ),
-                        "color": rx.cond(
-                            PowerState.main_section_tab == "rekap",
-                            Color.ACCENT_BRIGHT,
-                            Color.MUTED,
-                        ),
-                        "font_weight": FontWeight.BOLD,
-                        "font_size": FontSize.SM,
-                        "cursor": "pointer",
-                    }
-                ),
-            ),
-            rx.el.button(
-                "Kalkulator",
-                type="button",
-                on_click=PowerState.set_main_section_tab("kalkulator"),
-                style=rx.Style(
-                    {
-                        "padding": "8px 4px",
-                        "margin_right": "20px",
-                        "background": "transparent",
-                        "border": "none",
-                        "border_bottom": rx.cond(
-                            PowerState.main_section_tab == "kalkulator",
-                            f"2.5px solid {Color.ACCENT_BRIGHT}",
-                            "2.5px solid transparent",
-                        ),
-                        "color": rx.cond(
-                            PowerState.main_section_tab == "kalkulator",
-                            Color.ACCENT_BRIGHT,
-                            Color.MUTED,
-                        ),
-                        "font_weight": FontWeight.BOLD,
-                        "font_size": FontSize.SM,
-                        "cursor": "pointer",
-                    }
-                ),
-            ),
-            rx.el.button(
-                "Katalog komponen",
-                type="button",
-                on_click=PowerState.set_main_section_tab("katalog"),
-                style=rx.Style(
-                    {
-                        "padding": "8px 4px",
-                        "background": "transparent",
-                        "border": "none",
-                        "border_bottom": rx.cond(
-                            PowerState.main_section_tab == "katalog",
-                            f"2.5px solid {Color.ACCENT_BRIGHT}",
-                            "2.5px solid transparent",
-                        ),
-                        "color": rx.cond(
-                            PowerState.main_section_tab == "katalog",
-                            Color.ACCENT_BRIGHT,
-                            Color.MUTED,
-                        ),
-                        "font_weight": FontWeight.BOLD,
-                        "font_size": FontSize.SM,
-                        "cursor": "pointer",
-                    }
-                ),
-            ),
-            width="100%",
-            border_bottom=f"1px solid {Color.BORDER}",
-        ),
-        # Baris Pemilih Cakupan & Ringkasan Asumsi (Artboard 15)
-        rx.hstack(
-            rx.hstack(
-                rx.text("Cakupan", font_size=FontSize.XS, color=Color.MUTED),
-                rx.box(
-                    rx.text(
-                        "Server",
-                        font_size=FontSize.XS,
-                        font_weight=FontWeight.BOLD,
-                        color=Color.ACCENT_BRIGHT,
-                    ),
-                    padding="5px 12px",
-                    border_radius=Radius.CONTROL,
-                    background_color=Color.SURFACE,
-                    border=f"1px solid {Color.BORDER}",
-                ),
-                rx.box(
-                    rx.text("PC Operasional · segera", font_size=FontSize.XS, color=Color.MUTED),
-                    padding="5px 12px",
-                    opacity="0.6",
-                ),
-                rx.box(
-                    rx.text("Semua · segera", font_size=FontSize.XS, color=Color.MUTED),
-                    padding="5px 12px",
-                    opacity="0.6",
-                ),
-                spacing="2",
-                align="center",
-            ),
-            rx.hstack(
                 rx.text(
-                    PowerState.assumptions_summary_bar,
-                    font_size=FontSize.XS,
+                    "Rekap kebutuhan daya per server: TDP, PSU minimum, dan PSU rekomendasi. "
+                    "Data diisi manual.",
+                    font_size=FontSize.BASE,
                     color=Color.MUTED,
                 ),
-                rx.el.button(
-                    "Ubah",
-                    type="button",
-                    on_click=PowerState.open_assumptions_modal,
-                    style=rx.Style(
-                        {
-                            "background": "transparent",
-                            "border": "none",
-                            "color": Color.ACCENT_BRIGHT,
-                            "font_size": FontSize.XS,
-                            "font_weight": FontWeight.BOLD,
-                            "cursor": "pointer",
-                        }
-                    ),
-                ),
-                spacing="2",
-                align="center",
+                spacing="1",
+                align="start",
             ),
-            width="100%",
-            justify="between",
+            spacing="3",
+            align="center",
+        ),
+        rx.hstack(
+            secondary_button("Export", on_click=PowerState.export_watt_excel),
+            secondary_button("Cetak A4", on_click=rx.call_script("window.print()")),
+            action_primary_button("+ Tambah Server", on_click=PowerState.open_add_modal),
+            spacing="2",
             align="center",
             wrap="wrap",
         ),
-        spacing="3",
         width="100%",
+        justify="between",
+        align="center",
+        wrap="wrap",
     )
 
 
-def _five_watt_kpi_cards() -> rx.Component:
-    """5 Kartu KPI sesuai Artboard 15 (Hero Total Beban TDP, Energi, PSU, Tertinggi, UPS)."""
-    return rx.box(
-        # 1. Hero Card: TOTAL BEBAN TDP
-        rx.box(
-            rx.vstack(
+def _sortable_th(
+    label: str,
+    sort_key: str,
+    *,
+    align_right: bool = False,
+    sticky_left: bool = False,
+    min_w: str = "130px",
+) -> rx.Component:
+    is_sorted = PowerState.sort_by == sort_key
+    th_style: dict[str, Any] = {
+        "position": "sticky",
+        "top": "0",
+        "background_color": Color.TABLE_HEADER_BG,
+        "padding": "12px 14px",
+        "font_size": "11px",
+        "font_weight": FontWeight.EXTRABOLD,
+        "color": Color.MUTED,
+        "text_transform": "uppercase",
+        "letter_spacing": "0.05em",
+        "border_bottom": f"1px solid {Color.BORDER}",
+        "white_space": "nowrap",
+        "min_width": min_w,
+        "cursor": "pointer",
+        "user_select": "none",
+        "z_index": "4" if sticky_left else "2",
+    }
+    if sticky_left:
+        th_style["left"] = "0"
+        th_style["box_shadow"] = "1px 0 0 0 rgba(226, 232, 240, 1)"
+
+    return rx.el.th(
+        rx.hstack(
+            rx.text(label, font_size="11px", font_weight=FontWeight.EXTRABOLD),
+            rx.cond(
+                is_sorted,
                 rx.text(
-                    "⚡ TOTAL BEBAN TDP",
+                    rx.cond(PowerState.sort_dir == "asc", "↑", "↓"),
                     font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.WHITE_85,
-                ),
-                rx.text(
-                    PowerState.kpi_total_tdp_kw_display,
-                    font_size="28px",
                     font_weight=FontWeight.EXTRABOLD,
-                    color=Color.WHITE,
-                ),
-                rx.text(
-                    PowerState.kpi_total_tdp_sub,
-                    font_size=FontSize.XS,
-                    color=Color.WHITE_75,
-                ),
-                rx.text(
-                    "Lihat peringkat →",
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.WHITE,
-                    padding_top="4px",
-                ),
-                spacing="2",
-                align="start",
-            ),
-            on_click=PowerState.toggle_sort("beban_efektif_w"),
-            style=rx.Style(
-                {
-                    "padding": "18px 20px",
-                    "border_radius": Radius.CARD,
-                    "background": Color.GRADIENT_NAVY,
-                    "cursor": "pointer",
-                }
-            ),
-        ),
-        # 2. ENERGI / BULAN (+ biaya hanya jika tarif diisi)
-        rx.box(
-            rx.vstack(
-                rx.text(
-                    "ENERGI / BULAN",
-                    font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.MUTED,
-                ),
-                rx.text(
-                    PowerState.kpi_kwh_month_display,
-                    font_size="28px",
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.TEXT,
-                ),
-                rx.cond(
-                    PowerState.has_tarif_listrik,
-                    rx.text(
-                        PowerState.kpi_biaya_month_display,
-                        font_size=FontSize.XS,
-                        font_weight=FontWeight.BOLD,
-                        color=Color.SUCCESS_FG,
-                    ),
-                    rx.text(PowerState.kpi_kwh_sub, font_size=FontSize.XS, color=Color.MUTED),
-                ),
-                rx.text(
-                    "Ubah asumsi →",
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.BOLD,
                     color=Color.ACCENT_BRIGHT,
-                    padding_top="4px",
                 ),
-                spacing="2",
-                align="start",
+                rx.text("↕", font_size="11px", color=Color.SLATE_400),
             ),
-            on_click=PowerState.open_assumptions_modal,
-            style=rx.Style(
-                {
-                    "padding": "18px 20px",
-                    "border_radius": Radius.CARD,
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.BORDER}",
-                    "cursor": "pointer",
-                }
-            ),
+            spacing="1",
+            align="center",
+            justify="end" if align_right else "start",
+            width="100%",
         ),
-        # 3. PSU MIN / REKOMENDASI
-        rx.box(
-            rx.vstack(
-                rx.text(
-                    "PSU MIN / REKOMENDASI",
-                    font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.MUTED,
-                ),
-                rx.text(
-                    PowerState.kpi_psu_summary_display,
-                    font_size="26px",
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.TEXT,
-                ),
-                rx.text(PowerState.kpi_psu_sub, font_size=FontSize.XS, color=Color.MUTED),
-                rx.text(
-                    "Lihat per server →",
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.ACCENT_BRIGHT,
-                    padding_top="4px",
-                ),
-                spacing="2",
-                align="start",
-            ),
-            on_click=PowerState.toggle_sort("psu_rekomendasi_w"),
-            style=rx.Style(
-                {
-                    "padding": "18px 20px",
-                    "border_radius": Radius.CARD,
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.BORDER}",
-                    "cursor": "pointer",
-                }
-            ),
-        ),
-        # 4. BEBAN TERTINGGI
-        rx.box(
-            rx.vstack(
-                rx.text(
-                    "⚠ BEBAN TERTINGGI",
-                    font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.MUTED,
-                ),
-                rx.text(
-                    PowerState.kpi_max_tdp_display,
-                    font_size="28px",
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.TEXT,
-                ),
-                rx.text(
-                    PowerState.kpi_max_tdp_server,
-                    font_size=FontSize.XS,
-                    color=Color.MUTED,
-                ),
-                rx.text(
-                    "Buka rincian →",
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.ACCENT_BRIGHT,
-                    padding_top="4px",
-                ),
-                spacing="2",
-                align="start",
-            ),
-            on_click=PowerState.open_drawer(PowerState.kpi_max_tdp_id),
-            style=rx.Style(
-                {
-                    "padding": "18px 20px",
-                    "border_radius": Radius.CARD,
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.BORDER}",
-                    "cursor": "pointer",
-                }
-            ),
-        ),
-        # 5. KECUKUPAN UPS
-        rx.box(
-            rx.vstack(
-                rx.text(
-                    "KECUKUPAN UPS",
-                    font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.MUTED,
-                ),
-                rx.hstack(
-                    rx.text(
-                        PowerState.kpi_ups_count_display,
-                        font_size="28px",
-                        font_weight=FontWeight.EXTRABOLD,
-                        color=Color.TEXT,
-                    ),
-                    rx.box(
-                        rx.text(
-                            PowerState.kpi_ups_status_badge,
-                            font_size=FontSize.XS,
-                            font_weight=FontWeight.BOLD,
-                            color=Color.SUCCESS_FG,
-                        ),
-                        padding="2px 10px",
-                        border_radius=Radius.FULL,
-                        background_color=Color.SUCCESS_BG,
-                    ),
-                    spacing="2",
-                    align="center",
-                ),
-                rx.text(PowerState.kpi_ups_sub, font_size=FontSize.XS, color=Color.MUTED),
-                rx.text(
-                    "Lihat UPS →",
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.ACCENT_BRIGHT,
-                    padding_top="4px",
-                ),
-                spacing="2",
-                align="start",
-            ),
-            on_click=rx.redirect("/assets?category=ups"),
-            style=rx.Style(
-                {
-                    "padding": "18px 20px",
-                    "border_radius": Radius.CARD,
-                    "background_color": Color.SURFACE,
-                    "border": f"1.5px dashed {Color.BLUE_BORDER}",
-                    "cursor": "pointer",
-                }
-            ),
-        ),
+        on_click=PowerState.toggle_sort(sort_key),
+        style=rx.Style(th_style),
+    )
+
+
+def _static_th(label: str, *, min_w: str = "140px", align_center: bool = False) -> rx.Component:
+    return rx.el.th(
+        label,
         style=rx.Style(
             {
-                "width": "100%",
-                "display": "grid",
-                "grid_template_columns": "repeat(auto-fit, minmax(200px, 1fr))",
-                "gap": Space.S4,
+                "position": "sticky",
+                "top": "0",
+                "z_index": "2",
+                "background_color": Color.TABLE_HEADER_BG,
+                "padding": "12px 14px",
+                "font_size": "11px",
+                "font_weight": FontWeight.EXTRABOLD,
+                "color": Color.MUTED,
+                "text_transform": "uppercase",
+                "letter_spacing": "0.05em",
+                "text_align": "center" if align_center else "left",
+                "border_bottom": f"1px solid {Color.BORDER}",
+                "white_space": "nowrap",
+                "min_width": min_w,
             }
         ),
     )
 
 
-def _middle_analytics_panels() -> rx.Component:
-    """2 Panel Artboard 15: Beban TDP per server (8 teratas) & Kecukupan UPS."""
-    return rx.box(
-        # Panel Kiri: Beban TDP per server
-        rx.box(
-            rx.vstack(
-                rx.hstack(
-                    rx.heading(
-                        "Beban TDP per server",
-                        font_size=FontSize.SUBTITLE,
-                        font_weight=FontWeight.EXTRABOLD,
-                    ),
-                    rx.spacer(),
-                    rx.box(
-                        rx.text("sebagian data", font_size="11px", color=Color.MUTED),
-                        padding="2px 10px",
-                        border_radius=Radius.FULL,
-                        background_color=Color.TABLE_HEADER_BG,
-                    ),
-                    width="100%",
-                    align="center",
-                ),
-                rx.foreach(
-                    PowerState.ranked_servers_display,
-                    lambda s: rx.hstack(
-                        rx.text(
-                            s["nama_aset"],
-                            font_size=FontSize.XS,
-                            width="185px",
-                            flex_shrink="0",
-                        ),
-                        rx.box(
-                            rx.box(
-                                width=f"{s['tdp_bar_pct']}%",
-                                height="10px",
-                                border_radius=Radius.FULL,
-                                background_color=rx.cond(
-                                    s["beban_level"] == "Tinggi",
-                                    Color.AMBER_700,
-                                    Color.ACCENT_BRIGHT,
-                                ),
-                            ),
-                            flex="1",
-                            height="10px",
-                            border_radius=Radius.FULL,
-                            background_color=Color.TABLE_HEADER_BG,
-                        ),
-                        rx.text(
-                            s["tdp_display"],
-                            font_size=FontSize.XS,
-                            font_weight=FontWeight.EXTRABOLD,
-                            width="52px",
-                            text_align="right",
-                        ),
-                        width="100%",
-                        align="center",
-                        spacing="3",
-                        on_click=PowerState.open_drawer(s["id_aset"]),
-                        style=rx.Style({"cursor": "pointer", "padding": "4px 0"}),
-                    ),
-                ),
-                rx.hstack(
-                    rx.el.button(
-                        rx.cond(
-                            PowerState.show_all_ranked_servers,
-                            "Tampilkan 8 teratas",
-                            f"+ {PowerState.hidden_ranked_count} server lainnya · Lihat semua",
-                        ),
-                        type="button",
-                        on_click=PowerState.toggle_show_all_ranked,
-                        style=rx.Style(
-                            {
-                                "background": "transparent",
-                                "border": "none",
-                                "color": Color.ACCENT_BRIGHT,
-                                "font_size": FontSize.XS,
-                                "font_weight": FontWeight.BOLD,
-                                "cursor": "pointer",
-                                "padding": "0",
-                            }
-                        ),
-                    ),
-                    rx.text(
-                        "· TDP adalah batas atas pemakaian, bukan pemakaian aktual.",
-                        font_size=FontSize.XS,
-                        color=Color.MUTED,
-                    ),
-                    spacing="2",
-                    padding_top="6px",
-                ),
-                spacing="3",
-                width="100%",
-            ),
-            padding="20px 22px",
+def _server_table_row(row: dict[str, Any]) -> rx.Component:
+    """Satu baris data server sesuai urutan kolom spreadsheet."""
+    cell_base = {
+        "padding": "11px 14px",
+        "font_size": FontSize.SM,
+        "color": Color.TEXT,
+        "border_bottom": f"1px solid {Color.DIVIDER}",
+        "background_color": Color.SURFACE,
+    }
+    num_cell_base = {
+        **cell_base,
+        "text_align": "right",
+        "font_variant_numeric": "tabular-nums",
+        "white_space": "nowrap",
+    }
+    return rx.el.tr(
+        rx.el.td(
+            row["no"],
             style=rx.Style(
                 {
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.BORDER}",
-                    "border_radius": Radius.CARD,
+                    **cell_base,
+                    "color": Color.MUTED,
+                    "font_variant_numeric": "tabular-nums",
+                    "width": "48px",
                 }
             ),
         ),
-        # Panel Kanan: Kecukupan UPS
-        rx.box(
-            rx.vstack(
-                rx.hstack(
-                    rx.heading(
-                        "Kecukupan UPS",
-                        font_size=FontSize.SUBTITLE,
-                        font_weight=FontWeight.EXTRABOLD,
-                    ),
-                    rx.spacer(),
-                    rx.cond(
-                        PowerState.unfilled_ups_watt_count > 0,
-                        rx.box(
-                            rx.text(
-                                f"{PowerState.unfilled_ups_watt_count} UPS "
-                                "belum diisi kapasitas watt",
-                                font_size="11px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.WARNING_FG,
-                            ),
-                            padding="2px 10px",
-                            border_radius=Radius.FULL,
-                            background_color=Color.WARNING_BG,
-                        ),
-                        rx.box(
-                            rx.text(
-                                "Datasheet lengkap",
-                                font_size="11px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.SUCCESS_FG,
-                            ),
-                            padding="2px 10px",
-                            border_radius=Radius.FULL,
-                            background_color=Color.SUCCESS_BG,
-                        ),
-                    ),
-                    width="100%",
-                    align="center",
-                ),
-                rx.foreach(
-                    PowerState.ups_items,
-                    lambda u: rx.vstack(
-                        rx.hstack(
-                            rx.text(
-                                u["header_label"],
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                            ),
-                            rx.spacer(),
-                            rx.text(
-                                f"{u['utilisasi_int']}%",
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            width="100%",
-                        ),
-                        rx.box(
-                            rx.box(
-                                width=f"{u['utilisasi_int']}%",
-                                height="7px",
-                                border_radius=Radius.FULL,
-                                background_color=rx.cond(
-                                    u["status_variant"] == "danger",
-                                    Color.DANGER_FG,
-                                    rx.cond(
-                                        u["status_variant"] == "warning",
-                                        Color.WARNING_BAR,
-                                        Color.GREEN_700,
-                                    ),
-                                ),
-                            ),
-                            width="100%",
-                            height="7px",
-                            border_radius=Radius.FULL,
-                            background_color=Color.TABLE_HEADER_BG,
-                        ),
-                        rx.hstack(
-                            rx.text(u["sub_text"], font_size="11px", color=Color.MUTED),
-                            rx.spacer(),
-                            rx.cond(
-                                PowerState.inline_ups_edit_id == u["id_aset"],
-                                rx.hstack(
-                                    rx.el.input(
-                                        type="number",
-                                        placeholder="Watt...",
-                                        value=PowerState.inline_ups_watt_val,
-                                        on_change=PowerState.set_inline_ups_watt_val,
-                                        style=rx.Style(
-                                            {
-                                                "width": "80px",
-                                                "height": "24px",
-                                                "padding": "0 6px",
-                                                "font_size": "11px",
-                                                "border": f"1px solid {Color.INPUT_BORDER}",
-                                                "border_radius": "4px",
-                                            }
-                                        ),
-                                    ),
-                                    rx.el.button(
-                                        "Simpan",
-                                        type="button",
-                                        on_click=PowerState.submit_inline_ups_watt(u["id_aset"]),
-                                        style=rx.Style(
-                                            {
-                                                "background": Color.ACCENT_BRIGHT,
-                                                "color": Color.WHITE,
-                                                "border": "none",
-                                                "border_radius": "4px",
-                                                "padding": "2px 8px",
-                                                "font_size": "11px",
-                                                "cursor": "pointer",
-                                            }
-                                        ),
-                                    ),
-                                    spacing="1",
-                                ),
-                                rx.cond(
-                                    u["is_kapasitas_manual"],
-                                    rx.fragment(),
-                                    rx.el.button(
-                                        "Isi kapasitas watt",
-                                        type="button",
-                                        on_click=PowerState.start_inline_ups_watt(
-                                            u["id_aset"], ""
-                                        ),
-                                        style=rx.Style(
-                                            {
-                                                "background": "transparent",
-                                                "border": "none",
-                                                "color": Color.ACCENT_BRIGHT,
-                                                "font_size": "11px",
-                                                "font_weight": FontWeight.BOLD,
-                                                "cursor": "pointer",
-                                                "padding": "0",
-                                            }
-                                        ),
-                                    ),
-                                ),
-                            ),
-                            width="100%",
-                            align="center",
-                        ),
-                        spacing="1",
-                        width="100%",
-                    ),
-                ),
-                rx.text(
-                    "Kapasitas watt UPS dari datasheet (diisi manual di aset UPS). "
-                    "UPS yang belum diisi memakai perkiraan VA × 0,6 dan diberi label Perkiraan.",
-                    font_size="11px",
-                    color=Color.MUTED,
-                    padding_top="4px",
-                ),
-                spacing="2",
-                width="100%",
+        rx.el.td(
+            rx.text(
+                row["nama_aset"],
+                font_size=FontSize.SM,
+                font_weight=FontWeight.BOLD,
+                color=Color.TEXT,
             ),
-            padding="20px 22px",
             style=rx.Style(
                 {
-                    "background_color": Color.SURFACE,
-                    "border": f"1.5px dashed {Color.BLUE_BORDER}",
-                    "border_radius": Radius.CARD,
+                    **cell_base,
+                    "position": "sticky",
+                    "left": "0",
+                    "z_index": "1",
+                    "box_shadow": "1px 0 0 0 rgba(226, 232, 240, 1)",
+                    "white_space": "nowrap",
+                }
+            ),
+        ),
+        rx.el.td(row["cpu"], style=rx.Style(cell_base)),
+        rx.el.td(row["vga"], style=rx.Style(cell_base)),
+        rx.el.td(row["ram"], style=rx.Style(cell_base)),
+        rx.el.td(row["hdd_ssd"], style=rx.Style(cell_base)),
+        rx.el.td(
+            row["tdp_num_display"],
+            style=rx.Style(
+                {
+                    **num_cell_base,
+                    "font_weight": FontWeight.EXTRABOLD,
+                    "color": Color.ACCENT_BRIGHT,
+                }
+            ),
+        ),
+        rx.el.td(
+            row["psu_min_num_display"],
+            style=rx.Style({**num_cell_base, "font_weight": FontWeight.SEMIBOLD}),
+        ),
+        rx.el.td(
+            row["psu_rek_num_display"],
+            style=rx.Style({**num_cell_base, "font_weight": FontWeight.SEMIBOLD}),
+        ),
+        rx.el.td(
+            rx.hstack(
+                rx.el.button(
+                    rx.icon(tag="pencil", size=14, color=Color.TEXT),
+                    type="button",
+                    title="Edit Server",
+                    on_click=PowerState.open_edit_modal(row["id_aset"]),
+                    style=rx.Style(
+                        {
+                            "width": "28px",
+                            "height": "28px",
+                            "display": "inline-flex",
+                            "align_items": "center",
+                            "justify_content": "center",
+                            "background_color": Color.SURFACE,
+                            "border": f"1px solid {Color.BORDER}",
+                            "border_radius": "6px",
+                            "cursor": "pointer",
+                        }
+                    ),
+                ),
+                rx.el.button(
+                    rx.icon(tag="copy", size=14, color=Color.ACCENT_BRIGHT),
+                    type="button",
+                    title="Duplikat Server",
+                    on_click=PowerState.open_duplicate_modal(row["id_aset"]),
+                    style=rx.Style(
+                        {
+                            "width": "28px",
+                            "height": "28px",
+                            "display": "inline-flex",
+                            "align_items": "center",
+                            "justify_content": "center",
+                            "background_color": Color.INFO_BG,
+                            "border": f"1px solid {Color.BLUE_BORDER}",
+                            "border_radius": "6px",
+                            "cursor": "pointer",
+                        }
+                    ),
+                ),
+                rx.el.button(
+                    rx.icon(tag="trash-2", size=14, color=Color.DANGER_FG),
+                    type="button",
+                    title="Hapus Server",
+                    on_click=PowerState.confirm_delete_entry(row["id_aset"]),
+                    style=rx.Style(
+                        {
+                            "width": "28px",
+                            "height": "28px",
+                            "display": "inline-flex",
+                            "align_items": "center",
+                            "justify_content": "center",
+                            "background_color": Color.DANGER_BG,
+                            "border": f"1px solid {Color.DANGER_BORDER}",
+                            "border_radius": "6px",
+                            "cursor": "pointer",
+                        }
+                    ),
+                ),
+                spacing="1",
+                justify="center",
+                align="center",
+            ),
+            style=rx.Style({**cell_base, "text_align": "center", "white_space": "nowrap"}),
+        ),
+    )
+
+
+def _pinned_estimasi_row() -> rx.Component:
+    """Baris ESTIMASI yang dipin (sticky bottom) dengan background biru muda."""
+    est_cell = {
+        "position": "sticky",
+        "bottom": "0",
+        "z_index": "2",
+        "background_color": Color.INFO_BG,
+        "padding": "12px 14px",
+        "border_top": f"2px solid {Color.BLUE_BORDER}",
+        "font_size": FontSize.SM,
+        "font_weight": FontWeight.EXTRABOLD,
+        "color": Color.TEXT,
+    }
+    est_num = {
+        **est_cell,
+        "text_align": "right",
+        "font_variant_numeric": "tabular-nums",
+        "white_space": "nowrap",
+    }
+    return rx.el.tfoot(
+        rx.el.tr(
+            rx.el.td("", style=rx.Style(est_cell)),
+            rx.el.td(
+                "ESTIMASI",
+                style=rx.Style(
+                    {
+                        **est_cell,
+                        "left": "0",
+                        "z_index": "3",
+                        "letter_spacing": "0.04em",
+                        "box_shadow": "1px 0 0 0 rgba(191, 219, 254, 1)",
+                    }
+                ),
+            ),
+            rx.el.td(
+                rx.text(
+                    PowerState.estimasi_search_subnote,
+                    font_size=FontSize.XS,
+                    font_weight=FontWeight.SEMIBOLD,
+                    color=Color.MUTED,
+                ),
+                col_span=4,
+                style=rx.Style(est_cell),
+            ),
+            rx.el.td(
+                PowerState.estimasi_tdp_display,
+                style=rx.Style({**est_num, "color": Color.ACCENT_BRIGHT}),
+            ),
+            rx.el.td(PowerState.estimasi_psu_min_display, style=rx.Style(est_num)),
+            rx.el.td(PowerState.estimasi_psu_rek_display, style=rx.Style(est_num)),
+            rx.el.td("", style=rx.Style(est_cell)),
+        )
+    )
+
+
+def _watt_table_card() -> rx.Component:
+    """Kartu Tabel Rekap Watt Server dengan kotak pencarian sederhana dan baris ESTIMASI sticky."""
+    return rx.box(
+        # Bar Pencarian Sederhana (Tanpa Tab & Tanpa Dropdown)
+        rx.hstack(
+            rx.hstack(
+                rx.box(
+                    rx.icon(
+                        tag="search",
+                        size=15,
+                        color=Color.MUTED,
+                        style=rx.Style(
+                            {
+                                "position": "absolute",
+                                "left": "12px",
+                                "top": "50%",
+                                "transform": "translateY(-50%)",
+                                "pointer_events": "none",
+                            }
+                        ),
+                    ),
+                    rx.el.input(
+                        type="text",
+                        placeholder="Cari ID server, CPU, GPU, RAM, penyimpanan...",
+                        value=PowerState.search_query,
+                        on_change=PowerState.set_search_query,
+                        style=rx.Style(
+                            {
+                                "width": "340px",
+                                "max_width": "100%",
+                                "height": Size.FILTER_CONTROL_H,
+                                "padding": "0 12px 0 36px",
+                                "background_color": Color.SURFACE,
+                                "color": Color.TEXT,
+                                "border": f"1px solid {Color.INPUT_BORDER}",
+                                "border_radius": Radius.CONTROL,
+                                "font_family": FONT_FAMILY,
+                                "font_size": FontSize.SM,
+                                "outline": "none",
+                            }
+                        ),
+                    ),
+                    style=rx.Style({"position": "relative"}),
+                ),
+                rx.cond(
+                    PowerState.has_search,
+                    rx.el.button(
+                        "Reset",
+                        type="button",
+                        on_click=PowerState.reset_filters,
+                        style=rx.Style(
+                            {
+                                "height": Size.FILTER_CONTROL_H,
+                                "padding": "0 12px",
+                                "background": "transparent",
+                                "border": "none",
+                                "color": Color.ACCENT_BRIGHT,
+                                "font_family": FONT_FAMILY,
+                                "font_size": FontSize.XS,
+                                "font_weight": FontWeight.BOLD,
+                                "cursor": "pointer",
+                            }
+                        ),
+                    ),
+                    rx.fragment(),
+                ),
+                spacing="2",
+                align="center",
+            ),
+            rx.text(
+                PowerState.result_count_label,
+                font_size=FontSize.XS,
+                font_weight=FontWeight.BOLD,
+                color=Color.MUTED,
+            ),
+            width="100%",
+            justify="between",
+            align="center",
+            wrap="wrap",
+            padding="14px 18px",
+            style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
+        ),
+        # Area Tabel Scrollable dengan Header Sticky Top & Baris ESTIMASI Sticky Bottom
+        rx.box(
+            rx.el.table(
+                rx.el.thead(
+                    rx.el.tr(
+                        _static_th("No", min_w="48px"),
+                        _sortable_th("ID Server", "nama_aset", sticky_left=True, min_w="200px"),
+                        _static_th("Model Prosesor (CPU)", min_w="230px"),
+                        _static_th("Kartu Grafis (GPU)", min_w="210px"),
+                        _static_th("Konfigurasi RAM", min_w="180px"),
+                        _static_th("Konfigurasi Penyimpanan", min_w="195px"),
+                        _sortable_th(
+                            "Total TDP (W)",
+                            "tdp_total_w",
+                            align_right=True,
+                            min_w="135px",
+                        ),
+                        _sortable_th(
+                            "PSU Minimum (W)",
+                            "psu_min_w",
+                            align_right=True,
+                            min_w="150px",
+                        ),
+                        _sortable_th(
+                            "PSU Rekomendasi (W)",
+                            "psu_rekomendasi_w",
+                            align_right=True,
+                            min_w="170px",
+                        ),
+                        _static_th("Aksi", min_w="110px", align_center=True),
+                    )
+                ),
+                rx.el.tbody(
+                    rx.foreach(PowerState.items, _server_table_row),
+                ),
+                _pinned_estimasi_row(),
+                style=rx.Style(
+                    {
+                        "width": "100%",
+                        "border_collapse": "separate",
+                        "border_spacing": "0",
+                        "font_family": FONT_FAMILY,
+                    }
+                ),
+            ),
+            style=rx.Style(
+                {
+                    "width": "100%",
+                    "max_height": "calc(100vh - 230px)",
+                    "overflow_x": "auto",
+                    "overflow_y": "auto",
                 }
             ),
         ),
         style=rx.Style(
             {
                 "width": "100%",
-                "display": "grid",
-                "grid_template_columns": "1.05fr 0.95fr",
-                "gap": Space.S4,
+                "background_color": Color.SURFACE,
+                "border": f"1px solid {Color.BORDER}",
+                "border_radius": Radius.CARD,
+                "overflow": "hidden",
             }
         ),
     )
@@ -833,1359 +575,21 @@ def _modal_input_style() -> rx.Style:
     )
 
 
-def _assumptions_modal() -> rx.Component:
-    """Modal Pengaturan Asumsi (Artboard 16 Kiri)."""
+def _inline_field_error(err_var: Any) -> rx.Component:
     return rx.cond(
-        PowerState.asmp_modal_open,
-        rx.box(
-            rx.box(
-                on_click=PowerState.close_assumptions_modal,
-                style=rx.Style(
-                    {
-                        "position": "fixed",
-                        "inset": "0",
-                        "background_color": Color.SCRIM,
-                        "z_index": "80",
-                    }
-                ),
-            ),
-            rx.box(
-                rx.vstack(
-                    rx.hstack(
-                        rx.vstack(
-                            rx.heading(
-                                "Pengaturan asumsi",
-                                font_size=FontSize.SUBTITLE,
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            rx.text(
-                                "Dipakai di seluruh laporan. Perubahan tercatat di Audit Log.",
-                                font_size=FontSize.XS,
-                                color=Color.MUTED,
-                            ),
-                            spacing="1",
-                            align="start",
-                        ),
-                        rx.spacer(),
-                        rx.el.button(
-                            rx.icon(tag="x", size=16, color=Color.MUTED),
-                            type="button",
-                            on_click=PowerState.close_assumptions_modal,
-                            style=rx.Style(
-                                {"background": "transparent", "border": "none", "cursor": "pointer"}
-                            ),
-                        ),
-                        width="100%",
-                    ),
-                    rx.cond(
-                        PowerState.asmp_error != "",
-                        rx.text(
-                            PowerState.asmp_error,
-                            font_size=FontSize.XS,
-                            color=Color.DANGER_FG,
-                            font_weight=FontWeight.BOLD,
-                        ),
-                    ),
-                    rx.hstack(
-                        rx.vstack(
-                            rx.text(
-                                "Jam operasional per hari",
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                            ),
-                            rx.el.input(
-                                type="number",
-                                value=PowerState.asmp_jam_per_hari,
-                                on_change=PowerState.set_asmp_jam,
-                                style=_modal_input_style(),
-                            ),
-                            width="50%",
-                            align="start",
-                        ),
-                        rx.vstack(
-                            rx.text(
-                                "Hari per bulan",
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                            ),
-                            rx.el.input(
-                                type="number",
-                                value=PowerState.asmp_hari_per_bulan,
-                                on_change=PowerState.set_asmp_hari,
-                                style=_modal_input_style(),
-                            ),
-                            rx.text(
-                                f"Total {PowerState.asmp_total_jam_bulan} jam",
-                                font_size="11px",
-                                color=Color.MUTED,
-                            ),
-                            width="50%",
-                            align="start",
-                        ),
-                        spacing="3",
-                        width="100%",
-                    ),
-                    rx.vstack(
-                        rx.text(
-                            "Faktor beban terhadap TDP (%)",
-                            font_size=FontSize.XS,
-                            font_weight=FontWeight.BOLD,
-                        ),
-                        rx.el.input(
-                            type="number",
-                            value=PowerState.asmp_faktor_beban,
-                            on_change=PowerState.set_asmp_faktor_beban,
-                            style=_modal_input_style(),
-                        ),
-                        rx.text(
-                            "100% = konservatif (batas atas). "
-                            "Isi 60–80% jika sudah ada pengukuran.",
-                            font_size="11px",
-                            color=Color.MUTED,
-                        ),
-                        width="100%",
-                        align="start",
-                    ),
-                    rx.vstack(
-                        rx.text(
-                            "Tarif listrik (Rp/kWh) · opsional",
-                            font_size=FontSize.XS,
-                            font_weight=FontWeight.BOLD,
-                        ),
-                        rx.el.input(
-                            type="text",
-                            placeholder="Kosongkan jika belum ada",
-                            value=PowerState.asmp_tarif_kwh,
-                            on_change=PowerState.set_asmp_tarif_kwh,
-                            style=_modal_input_style(),
-                        ),
-                        rx.text(
-                            "Jika kosong, laporan hanya menampilkan kWh "
-                            "dan tidak menampilkan biaya rupiah.",
-                            font_size="11px",
-                            color=Color.MUTED,
-                        ),
-                        width="100%",
-                        align="start",
-                    ),
-                    rx.vstack(
-                        rx.text(
-                            "Faktor daya UPS",
-                            font_size=FontSize.XS,
-                            font_weight=FontWeight.BOLD,
-                        ),
-                        rx.el.input(
-                            type="text",
-                            value=PowerState.asmp_faktor_daya_ups,
-                            on_change=PowerState.set_asmp_faktor_daya_ups,
-                            style=_modal_input_style(),
-                        ),
-                        rx.text(
-                            "Dipakai hanya jika kapasitas watt UPS belum diisi "
-                            "(hasil diberi label Perkiraan).",
-                            font_size="11px",
-                            color=Color.MUTED,
-                        ),
-                        width="100%",
-                        align="start",
-                    ),
-                    rx.hstack(
-                        rx.vstack(
-                            rx.text(
-                                "Batas waspada UPS (%)",
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                            ),
-                            rx.el.input(
-                                type="number",
-                                value=PowerState.asmp_batas_waspada,
-                                on_change=PowerState.set_asmp_waspada,
-                                style=_modal_input_style(),
-                            ),
-                            width="50%",
-                            align="start",
-                        ),
-                        rx.vstack(
-                            rx.text(
-                                "Batas kritis UPS (%)",
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                            ),
-                            rx.el.input(
-                                type="number",
-                                value=PowerState.asmp_batas_kritis,
-                                on_change=PowerState.set_asmp_kritis,
-                                style=_modal_input_style(),
-                            ),
-                            width="50%",
-                            align="start",
-                        ),
-                        spacing="3",
-                        width="100%",
-                    ),
-                    rx.hstack(
-                        secondary_button("Batal", on_click=PowerState.close_assumptions_modal),
-                        rx.el.button(
-                            "Simpan asumsi",
-                            type="button",
-                            on_click=PowerState.save_assumptions,
-                            style=rx.Style(
-                                {
-                                    "height": Size.BUTTON_MD_H,
-                                    "padding": "0 18px",
-                                    "background_color": Color.ACCENT_BRIGHT,
-                                    "color": Color.WHITE,
-                                    "border": "none",
-                                    "border_radius": Radius.CONTROL,
-                                    "font_weight": FontWeight.BOLD,
-                                    "cursor": "pointer",
-                                }
-                            ),
-                        ),
-                        justify="end",
-                        spacing="2",
-                        width="100%",
-                        padding_top="8px",
-                    ),
-                    spacing="3",
-                    width="100%",
-                ),
-                style=rx.Style(
-                    {
-                        "position": "fixed",
-                        "top": "50%",
-                        "left": "50%",
-                        "transform": "translate(-50%, -50%)",
-                        "width": "460px",
-                        "max_width": "94vw",
-                        "background_color": Color.SURFACE,
-                        "border": f"1px solid {Color.BORDER}",
-                        "border_radius": Radius.CARD,
-                        "padding": "24px",
-                        "z_index": "90",
-                    }
-                ),
-            ),
+        err_var != "",
+        rx.text(
+            err_var,
+            font_size=FontSize.XS,
+            font_weight=FontWeight.SEMIBOLD,
+            color=Color.DANGER_FG,
         ),
         rx.fragment(),
-    )
-
-
-def _server_rincian_drawer() -> rx.Component:
-    """Drawer Rincian Server & Simulasi Tambah Beban (Artboard 16 Kanan)."""
-    return rx.cond(
-        PowerState.drawer_open,
-        rx.box(
-            rx.box(
-                on_click=PowerState.close_drawer,
-                style=rx.Style(
-                    {
-                        "position": "fixed",
-                        "inset": "0",
-                        "background_color": Color.SCRIM,
-                        "z_index": "80",
-                    }
-                ),
-            ),
-            rx.box(
-                rx.vstack(
-                    rx.hstack(
-                        rx.vstack(
-                            rx.heading(
-                                PowerState.active_server["nama_aset"],
-                                font_size=FontSize.SUBTITLE,
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            rx.text(
-                                PowerState.active_server["sub_label"],
-                                font_size=FontSize.XS,
-                                color=Color.MUTED,
-                            ),
-                            spacing="1",
-                            align="start",
-                        ),
-                        rx.spacer(),
-                        rx.el.button(
-                            rx.icon(tag="x", size=18, color=Color.MUTED),
-                            type="button",
-                            on_click=PowerState.close_drawer,
-                            style=rx.Style(
-                                {"background": "transparent", "border": "none", "cursor": "pointer"}
-                            ),
-                        ),
-                        width="100%",
-                    ),
-                    # 3 Kartu Ringkasan Rincian
-                    rx.grid(
-                        rx.box(
-                            rx.text(
-                                "TOTAL TDP",
-                                font_size="10px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.text(
-                                PowerState.active_server["tdp_display"],
-                                font_size="18px",
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            padding="12px",
-                            border=f"1px solid {Color.BORDER}",
-                            border_radius=Radius.CONTROL,
-                        ),
-                        rx.box(
-                            rx.text(
-                                "PSU MIN / REK.",
-                                font_size="10px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.text(
-                                PowerState.active_server["psu_pair_display"],
-                                font_size="18px",
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            padding="12px",
-                            border=f"1px solid {Color.BORDER}",
-                            border_radius=Radius.CONTROL,
-                        ),
-                        rx.box(
-                            rx.text(
-                                "ENERGI / BULAN",
-                                font_size="10px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.text(
-                                PowerState.active_server["kwh_display"],
-                                font_size="18px",
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            padding="12px",
-                            border=f"1px solid {Color.BORDER}",
-                            border_radius=Radius.CONTROL,
-                        ),
-                        columns="3",
-                        spacing="3",
-                        width="100%",
-                    ),
-                    # Komposisi Beban
-                    rx.vstack(
-                        rx.text(
-                            "KOMPOSISI BEBAN",
-                            font_size="11px",
-                            font_weight=FontWeight.BOLD,
-                            color=Color.MUTED,
-                        ),
-                        rx.foreach(
-                            PowerState.active_komposisi_list,
-                            lambda k: rx.hstack(
-                                rx.box(
-                                    width="10px",
-                                    height="10px",
-                                    border_radius="50%",
-                                    background_color=k["color"],
-                                ),
-                                rx.text(k["label"], font_size=FontSize.SM),
-                                rx.spacer(),
-                                rx.text(
-                                    k["watt"],
-                                    font_size=FontSize.SM,
-                                    font_weight=FontWeight.BOLD,
-                                ),
-                                width="100%",
-                                align="center",
-                            ),
-                        ),
-                        spacing="2",
-                        width="100%",
-                    ),
-                    # Cara Hitung PSU
-                    rx.box(
-                        rx.vstack(
-                            rx.text(
-                                "CARA HITUNG PSU",
-                                font_size="11px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.text(
-                                "PSU Min = Pembulatan ke ukuran standar PSU terdekat ke atas "
-                                "dari (Beban Efektif + Margin 75 W, min 250 W). "
-                                "PSU Rek = Pembulatan kelipatan 50 W ke atas "
-                                "dari (PSU Min + Margin 75 W, min 350 W).",
-                                font_size=FontSize.XS,
-                                color=Color.MUTED,
-                            ),
-                            rx.cond(
-                                PowerState.active_server["psu_inconsistent"],
-                                rx.text(
-                                    (
-                                        "Catatan konsistensi: Data aset mencatat "
-                                        f"{PowerState.active_server['psu_pair_display']}, "
-                                        "sedangkan rumus standar menghasilkan "
-                                        f"{PowerState.active_server['formula_psu_min_w']} / "
-                                        f"{PowerState.active_server['formula_psu_rek_w']} W."
-                                    ),
-                                    font_size=FontSize.XS,
-                                    font_weight=FontWeight.BOLD,
-                                    color=Color.WARNING_FG,
-                                ),
-                            ),
-                            spacing="1",
-                            align="start",
-                        ),
-                        padding="12px 14px",
-                        width="100%",
-                        border=f"1px solid {Color.BORDER}",
-                        border_radius=Radius.CONTROL,
-                    ),
-                    # Simulasi Tambah Beban
-                    rx.box(
-                        rx.vstack(
-                            rx.text(
-                                "SIMULASI TAMBAH BEBAN",
-                                font_size="11px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.hstack(
-                                rx.el.input(
-                                    type="number",
-                                    value=PowerState.sim_extra_watt,
-                                    on_change=PowerState.set_sim_extra_watt,
-                                    style=rx.Style(
-                                        {
-                                            "width": "80px",
-                                            "height": "34px",
-                                            "padding": "0 10px",
-                                            "border": f"1px solid {Color.INPUT_BORDER}",
-                                            "border_radius": Radius.CONTROL,
-                                        }
-                                    ),
-                                ),
-                                rx.text(
-                                    f"W → total {PowerState.sim_result['new_total_w']} · "
-                                    f"{PowerState.sim_result['ups_id']} naik dari "
-                                    f"{PowerState.sim_result['old_pct']} ke "
-                                    f"{PowerState.sim_result['new_pct']}",
-                                    font_size=FontSize.XS,
-                                    font_weight=FontWeight.BOLD,
-                                ),
-                                rx.box(
-                                    rx.text(
-                                        PowerState.sim_result["status"],
-                                        font_size="11px",
-                                        font_weight=FontWeight.BOLD,
-                                        color=Color.SUCCESS_FG,
-                                    ),
-                                    padding="2px 8px",
-                                    border_radius=Radius.FULL,
-                                    background_color=Color.SUCCESS_BG,
-                                ),
-                                spacing="2",
-                                align="center",
-                                wrap="wrap",
-                            ),
-                            spacing="2",
-                            align="start",
-                        ),
-                        padding="12px 14px",
-                        width="100%",
-                        border=f"1px solid {Color.BORDER}",
-                        border_radius=Radius.CONTROL,
-                    ),
-                    # Terhubung ke UPS
-                    rx.hstack(
-                        rx.vstack(
-                            rx.text(
-                                "Terhubung",
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                            ),
-                            rx.text(
-                                f"{PowerState.active_server['ups_id_aset']} · "
-                                f"{PowerState.active_server['ups_display']} kapasitas "
-                                f"({PowerState.active_server['ups_source_label']})",
-                                font_size=FontSize.XS,
-                                color=Color.MUTED,
-                            ),
-                            spacing="0",
-                            align="start",
-                        ),
-                        rx.spacer(),
-                        rx.link(
-                            rx.text(
-                                "Buka aset →",
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                                color=Color.ACCENT_BRIGHT,
-                            ),
-                            href=f"/assets/{PowerState.active_server['ups_id_aset']}",
-                            underline="none",
-                        ),
-                        padding="12px 14px",
-                        width="100%",
-                        border=f"1px solid {Color.BORDER}",
-                        border_radius=Radius.CONTROL,
-                    ),
-                    rx.hstack(
-                        secondary_button(
-                            "Edit spesifikasi di aset →",
-                            on_click=lambda: PowerState.open_edit_modal(
-                                PowerState.active_server["id_aset"]
-                            ),
-                        ),
-                        justify="end",
-                        width="100%",
-                    ),
-                    spacing="3",
-                    width="100%",
-                ),
-                style=rx.Style(
-                    {
-                        "position": "fixed",
-                        "top": "50%",
-                        "left": "50%",
-                        "transform": "translate(-50%, -50%)",
-                        "width": "480px",
-                        "max_width": "94vw",
-                        "max_height": "90vh",
-                        "overflow_y": "auto",
-                        "background_color": Color.SURFACE,
-                        "border": f"1px solid {Color.BORDER}",
-                        "border_radius": Radius.CARD,
-                        "padding": "24px",
-                        "z_index": "90",
-                    }
-                ),
-            ),
-        ),
-        rx.fragment(),
-    )
-
-
-def _calc_row_item(
-    label: str,
-    slot_key: str,
-    selected_val: Any,
-    options_var: Any,
-    qty_var: Any,
-    watt_var: Any,
-) -> rx.Component:
-    """Satu baris pilihan komponen pada Kalkulator Watt Server (Artboard 17 Kiri)."""
-    return rx.hstack(
-        rx.text(
-            label,
-            font_size=FontSize.SM,
-            font_weight=FontWeight.BOLD,
-            width="155px",
-            flex_shrink="0",
-        ),
-        rx.el.select(
-            rx.foreach(options_var, lambda opt: rx.el.option(opt, value=opt)),
-            value=selected_val,
-            on_change=lambda v: PowerState.set_calc_component(slot_key, v),
-            style=rx.Style(
-                {
-                    "flex": "1",
-                    "height": "36px",
-                    "padding": "0 10px",
-                    "border": f"1px solid {Color.INPUT_BORDER}",
-                    "border_radius": Radius.CONTROL,
-                    "background_color": Color.SURFACE,
-                    "font_size": FontSize.SM,
-                }
-            ),
-        ),
-        rx.hstack(
-            rx.el.button(
-                "-",
-                type="button",
-                on_click=PowerState.step_calc_qty(slot_key, -1),
-                style=rx.Style(
-                    {
-                        "width": "28px",
-                        "height": "32px",
-                        "border": "none",
-                        "background": "transparent",
-                        "cursor": "pointer",
-                        "font_weight": FontWeight.BOLD,
-                    }
-                ),
-            ),
-            rx.text(
-                qty_var,
-                font_size=FontSize.SM,
-                font_weight=FontWeight.BOLD,
-                width="22px",
-                text_align="center",
-            ),
-            rx.el.button(
-                "+",
-                type="button",
-                on_click=PowerState.step_calc_qty(slot_key, 1),
-                style=rx.Style(
-                    {
-                        "width": "28px",
-                        "height": "32px",
-                        "border": "none",
-                        "background": "transparent",
-                        "cursor": "pointer",
-                        "font_weight": FontWeight.BOLD,
-                    }
-                ),
-            ),
-            spacing="1",
-            align="center",
-            border=f"1px solid {Color.INPUT_BORDER}",
-            border_radius=Radius.CONTROL,
-            background_color=Color.TABLE_HEADER_BG,
-        ),
-        rx.text(
-            watt_var,
-            font_size=FontSize.SM,
-            font_weight=FontWeight.EXTRABOLD,
-            width="55px",
-            text_align="right",
-        ),
-        width="100%",
-        align="center",
-        spacing="3",
-        padding="6px 0",
-        border_bottom=f"1px solid {Color.DIVIDER}",
-    )
-
-
-def _calculator_view_section() -> rx.Component:
-    """Tampilan Tab Kalkulator Watt Server sesuai Artboard 17."""
-    return rx.box(
-        # Panel Kiri: Daftar Komponen
-        rx.box(
-            rx.vstack(
-                rx.hstack(
-                    rx.text("Mulai dari", font_size=FontSize.XS, color=Color.MUTED),
-                    rx.el.button(
-                        "Server yang ada",
-                        type="button",
-                        on_click=PowerState.set_calc_start_mode("server_ada"),
-                        style=rx.Style(
-                            {
-                                "padding": "5px 12px",
-                                "border_radius": Radius.CONTROL,
-                                "font_size": FontSize.XS,
-                                "font_weight": FontWeight.BOLD,
-                                "background_color": rx.cond(
-                                    PowerState.calc_start_mode == "server_ada",
-                                    Color.INFO_BG,
-                                    Color.TABLE_HEADER_BG,
-                                ),
-                                "color": rx.cond(
-                                    PowerState.calc_start_mode == "server_ada",
-                                    Color.ACCENT_BRIGHT,
-                                    Color.TEXT,
-                                ),
-                                "border": "none",
-                                "cursor": "pointer",
-                            }
-                        ),
-                    ),
-                    rx.el.button(
-                        "Rancang baru",
-                        type="button",
-                        on_click=PowerState.set_calc_start_mode("rancang_baru"),
-                        style=rx.Style(
-                            {
-                                "padding": "5px 12px",
-                                "border_radius": Radius.CONTROL,
-                                "font_size": FontSize.XS,
-                                "font_weight": FontWeight.BOLD,
-                                "background_color": rx.cond(
-                                    PowerState.calc_start_mode == "rancang_baru",
-                                    Color.INFO_BG,
-                                    Color.TABLE_HEADER_BG,
-                                ),
-                                "color": rx.cond(
-                                    PowerState.calc_start_mode == "rancang_baru",
-                                    Color.ACCENT_BRIGHT,
-                                    Color.TEXT,
-                                ),
-                                "border": "none",
-                                "cursor": "pointer",
-                            }
-                        ),
-                    ),
-                    rx.cond(
-                        PowerState.calc_start_mode == "server_ada",
-                        rx.hstack(
-                            rx.el.select(
-                                rx.foreach(
-                                    PowerState.server_select_options,
-                                    lambda s: rx.el.option(s, value=s),
-                                ),
-                                on_change=PowerState.set_calc_selected_server_id,
-                                style=rx.Style(
-                                    {
-                                        "height": "32px",
-                                        "padding": "0 8px",
-                                        "border": f"1px solid {Color.INPUT_BORDER}",
-                                        "border_radius": Radius.CONTROL,
-                                        "font_size": FontSize.XS,
-                                    }
-                                ),
-                            ),
-                            secondary_button(
-                                "Muat spesifikasi",
-                                on_click=PowerState.load_server_into_calculator,
-                            ),
-                            spacing="2",
-                        ),
-                        rx.fragment(),
-                    ),
-                    spacing="2",
-                    align="center",
-                    wrap="wrap",
-                ),
-                rx.text(
-                    "KOMPONEN UTAMA",
-                    font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.MUTED,
-                    padding_top="6px",
-                ),
-                _calc_row_item(
-                    "Prosesor (CPU)",
-                    "cpu",
-                    PowerState.calc_cpu_name,
-                    PowerState.calc_cpu_options,
-                    PowerState.calc_cpu_qty,
-                    PowerState.calc_summary["cpu_w"],
-                ),
-                _calc_row_item(
-                    "Kartu grafis (GPU)",
-                    "gpu",
-                    PowerState.calc_gpu_name,
-                    PowerState.calc_gpu_options,
-                    PowerState.calc_gpu_qty,
-                    PowerState.calc_summary["gpu_w"],
-                ),
-                _calc_row_item(
-                    "Motherboard",
-                    "mobo",
-                    PowerState.calc_mobo_name,
-                    PowerState.calc_mobo_options,
-                    PowerState.calc_mobo_qty,
-                    PowerState.calc_summary["mobo_w"],
-                ),
-                _calc_row_item(
-                    "Memori (RAM)",
-                    "ram",
-                    PowerState.calc_ram_name,
-                    PowerState.calc_ram_options,
-                    PowerState.calc_ram_qty,
-                    PowerState.calc_summary["ram_w"],
-                ),
-                rx.text(
-                    "PENYIMPANAN",
-                    font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.MUTED,
-                    padding_top="8px",
-                ),
-                _calc_row_item(
-                    "SSD SATA",
-                    "sata",
-                    PowerState.calc_ssd_sata_name,
-                    ["SSD SATA 2,5 inci"],
-                    PowerState.calc_ssd_sata_qty,
-                    PowerState.calc_summary["sata_w"],
-                ),
-                _calc_row_item(
-                    "SSD NVMe (M.2)",
-                    "nvme",
-                    PowerState.calc_nvme_name,
-                    ["SSD NVMe M.2"],
-                    PowerState.calc_nvme_qty,
-                    PowerState.calc_summary["nvme_w"],
-                ),
-                _calc_row_item(
-                    "HDD",
-                    "hdd",
-                    PowerState.calc_hdd_name,
-                    ["HDD SATA 3,5 inci"],
-                    PowerState.calc_hdd_qty,
-                    PowerState.calc_summary["hdd_w"],
-                ),
-                rx.text(
-                    "LAINNYA",
-                    font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.MUTED,
-                    padding_top="8px",
-                ),
-                _calc_row_item(
-                    "Kipas pendingin",
-                    "fan",
-                    PowerState.calc_fan_name,
-                    ["Kipas casing"],
-                    PowerState.calc_fan_qty,
-                    PowerState.calc_summary["fan_w"],
-                ),
-                _calc_row_item(
-                    "Drive optik",
-                    "opt",
-                    PowerState.calc_optical_name,
-                    ["Tanpa drive optik", "DVD-RW Internal"],
-                    PowerState.calc_optical_qty,
-                    PowerState.calc_summary["opt_w"],
-                ),
-                _calc_row_item(
-                    "Kartu PCIe",
-                    "pcie",
-                    PowerState.calc_pcie_name,
-                    ["Tanpa kartu PCIe", "Kartu PCIe NIC / HBA"],
-                    PowerState.calc_pcie_qty,
-                    PowerState.calc_summary["pcie_w"],
-                ),
-                spacing="2",
-                width="100%",
-                align="start",
-            ),
-            padding="22px",
-            style=rx.Style(
-                {
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.BORDER}",
-                    "border_radius": Radius.CARD,
-                }
-            ),
-        ),
-        # Panel Kanan: Hasil Perhitungan & Cek UPS (Sticky)
-        rx.vstack(
-            rx.box(
-                rx.vstack(
-                    rx.hstack(
-                        rx.heading(
-                            "Hasil perhitungan",
-                            font_size=FontSize.SUBTITLE,
-                            font_weight=FontWeight.EXTRABOLD,
-                        ),
-                        rx.spacer(),
-                        rx.box(
-                            rx.text("Estimasi dari katalog", font_size="11px", color=Color.MUTED),
-                            padding="2px 10px",
-                            border_radius=Radius.FULL,
-                            background_color=Color.TABLE_HEADER_BG,
-                        ),
-                        width="100%",
-                        align="center",
-                    ),
-                    rx.box(
-                        rx.vstack(
-                            rx.text(
-                                "BEBAN TOTAL",
-                                font_size="11px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.WHITE_85,
-                            ),
-                            rx.text(
-                                PowerState.calc_summary["eff_total_display"],
-                                font_size="34px",
-                                font_weight=FontWeight.EXTRABOLD,
-                                color=Color.WHITE,
-                            ),
-                            rx.el.button(
-                                (
-                                    f"faktor beban {PowerState.asmp_faktor_beban}% · "
-                                    f"mode {PowerState.calc_load_mode} (klik ubah)"
-                                ),
-                                type="button",
-                                on_click=PowerState.toggle_calc_load_mode,
-                                style=rx.Style(
-                                    {
-                                        "background": "transparent",
-                                        "border": "none",
-                                        "color": Color.WHITE_85,
-                                        "font_size": FontSize.XS,
-                                        "cursor": "pointer",
-                                        "padding": "0",
-                                    }
-                                ),
-                            ),
-                            spacing="1",
-                            align="start",
-                        ),
-                        padding="18px 20px",
-                        width="100%",
-                        style=rx.Style(
-                            {"background": Color.GRADIENT_NAVY, "border_radius": Radius.CARD}
-                        ),
-                    ),
-                    rx.grid(
-                        rx.box(
-                            rx.text(
-                                "PSU MINIMUM",
-                                font_size="10px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.text(
-                                PowerState.calc_summary["psu_min_display"],
-                                font_size="20px",
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            padding="12px",
-                            border=f"1px solid {Color.BORDER}",
-                            border_radius=Radius.CONTROL,
-                        ),
-                        rx.box(
-                            rx.text(
-                                "PSU REKOMENDASI",
-                                font_size="10px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.text(
-                                PowerState.calc_summary["psu_rek_display"],
-                                font_size="20px",
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            padding="12px",
-                            border=f"1px solid {Color.BORDER}",
-                            border_radius=Radius.CONTROL,
-                        ),
-                        columns="2",
-                        spacing="3",
-                        width="100%",
-                    ),
-                    rx.grid(
-                        rx.box(
-                            rx.text(
-                                "ENERGI / BULAN",
-                                font_size="10px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.text(
-                                PowerState.calc_summary["kwh_display"],
-                                font_size="16px",
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            padding="12px",
-                            border=f"1px solid {Color.BORDER}",
-                            border_radius=Radius.CONTROL,
-                        ),
-                        rx.box(
-                            rx.text(
-                                "BIAYA / BULAN",
-                                font_size="10px",
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                            ),
-                            rx.text(
-                                PowerState.calc_summary["biaya_display"],
-                                font_size=FontSize.XS,
-                                color=Color.MUTED,
-                            ),
-                            padding="12px",
-                            border=f"1px solid {Color.BORDER}",
-                            border_radius=Radius.CONTROL,
-                        ),
-                        columns="2",
-                        spacing="3",
-                        width="100%",
-                    ),
-                    rx.vstack(
-                        rx.text("Cek UPS", font_size=FontSize.SM, font_weight=FontWeight.EXTRABOLD),
-                        rx.hstack(
-                            rx.text("Utilisasi UPS", font_size=FontSize.XS, color=Color.MUTED),
-                            rx.spacer(),
-                            rx.text(
-                                PowerState.calc_summary["ups_util_display"],
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.EXTRABOLD,
-                            ),
-                            rx.box(
-                                rx.text(
-                                    PowerState.calc_summary["ups_status"],
-                                    font_size="11px",
-                                    font_weight=FontWeight.BOLD,
-                                    color=Color.SUCCESS_FG,
-                                ),
-                                padding="2px 8px",
-                                border_radius=Radius.FULL,
-                                background_color=Color.SUCCESS_BG,
-                            ),
-                            width="100%",
-                            align="center",
-                        ),
-                        rx.text(
-                            PowerState.calc_summary["min_ups_note"],
-                            font_size="11px",
-                            color=Color.MUTED,
-                        ),
-                        spacing="2",
-                        width="100%",
-                        padding_top="6px",
-                    ),
-                    rx.hstack(
-                        rx.el.button(
-                            "Simpan skenario",
-                            type="button",
-                            on_click=PowerState.save_current_scenario,
-                            style=rx.Style(
-                                {
-                                    "flex": "1",
-                                    "height": "38px",
-                                    "background_color": Color.ACCENT_BRIGHT,
-                                    "color": Color.WHITE,
-                                    "border": "none",
-                                    "border_radius": Radius.CONTROL,
-                                    "font_weight": FontWeight.BOLD,
-                                    "cursor": "pointer",
-                                }
-                            ),
-                        ),
-                        secondary_button(
-                            "Bandingkan",
-                            on_click=PowerState.set_main_section_tab("katalog"),
-                        ),
-                        secondary_button(
-                            "Cetak / Export",
-                            on_click=PowerState.export_watt_excel,
-                        ),
-                        spacing="2",
-                        width="100%",
-                    ),
-                    secondary_button(
-                        "Buat aset server dari rancangan ini",
-                        on_click=PowerState.create_draft_server_from_calc,
-                    ),
-                    spacing="3",
-                    width="100%",
-                ),
-                padding="22px",
-                style=rx.Style(
-                    {
-                        "background_color": Color.SURFACE,
-                        "border": f"1px solid {Color.BORDER}",
-                        "border_radius": Radius.CARD,
-                    }
-                ),
-            ),
-            width="100%",
-        ),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "display": "grid",
-                "grid_template_columns": "1.35fr 0.85fr",
-                "gap": Space.S4,
-                "align_items": "start",
-            }
-        ),
-    )
-
-
-def _catalog_and_scenarios_section() -> rx.Component:
-    """Tampilan Tab Katalog Komponen (Admin) & Bandingkan Skenario sesuai Artboard 18."""
-    return rx.box(
-        # Kiri: Katalog Komponen (Admin)
-        rx.box(
-            rx.vstack(
-                rx.hstack(
-                    rx.vstack(
-                        rx.heading(
-                            "Katalog komponen",
-                            font_size=FontSize.SUBTITLE,
-                            font_weight=FontWeight.EXTRABOLD,
-                        ),
-                        rx.text(
-                            "Sumber angka watt untuk kalkulator dan Rekap.",
-                            font_size=FontSize.XS,
-                            color=Color.MUTED,
-                        ),
-                        spacing="1",
-                        align="start",
-                    ),
-                    rx.spacer(),
-                    rx.el.button(
-                        "+ Tambah komponen",
-                        type="button",
-                        on_click=PowerState.open_add_catalog_modal,
-                        style=rx.Style(
-                            {
-                                "height": "36px",
-                                "padding": "0 14px",
-                                "background_color": Color.ACCENT_BRIGHT,
-                                "color": Color.WHITE,
-                                "border": "none",
-                                "border_radius": Radius.CONTROL,
-                                "font_size": FontSize.XS,
-                                "font_weight": FontWeight.BOLD,
-                                "cursor": "pointer",
-                            }
-                        ),
-                    ),
-                    width="100%",
-                    align="center",
-                ),
-                rx.table.root(
-                    rx.table.header(
-                        rx.table.row(
-                            rx.table.column_header_cell("KOMPONEN"),
-                            rx.table.column_header_cell("KATEGORI"),
-                            rx.table.column_header_cell("TDP (W)"),
-                            rx.table.column_header_cell("JENIS DATA"),
-                            rx.table.column_header_cell("SUMBER"),
-                        )
-                    ),
-                    rx.table.body(
-                        rx.foreach(
-                            PowerState.filtered_catalog_items,
-                            lambda c: rx.table.row(
-                                rx.table.cell(
-                                    rx.text(
-                                        c["nama"],
-                                        font_weight=FontWeight.BOLD,
-                                        font_size=FontSize.XS,
-                                    )
-                                ),
-                                rx.table.cell(rx.text(c["kategori"], font_size=FontSize.XS)),
-                                rx.table.cell(
-                                    rx.text(
-                                        c["tdp_w"],
-                                        font_weight=FontWeight.BOLD,
-                                        font_size=FontSize.XS,
-                                    )
-                                ),
-                                rx.table.cell(
-                                    rx.box(
-                                        rx.text(
-                                            c["jenis_data"],
-                                            font_size="10px",
-                                            font_weight=FontWeight.BOLD,
-                                            color=rx.cond(
-                                                c["jenis_data"] == "resmi",
-                                                Color.SUCCESS_FG,
-                                                Color.WARNING_FG,
-                                            ),
-                                        ),
-                                        padding="2px 8px",
-                                        border_radius=Radius.FULL,
-                                        background_color=rx.cond(
-                                            c["jenis_data"] == "resmi",
-                                            Color.SUCCESS_BG,
-                                            Color.WARNING_BG,
-                                        ),
-                                        display="inline-block",
-                                    )
-                                ),
-                                rx.table.cell(
-                                    rx.text(c["sumber"], font_size=FontSize.XS, color=Color.MUTED)
-                                ),
-                            ),
-                        )
-                    ),
-                    variant="surface",
-                    width="100%",
-                ),
-                spacing="3",
-                width="100%",
-            ),
-            padding="22px",
-            style=rx.Style(
-                {
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.BORDER}",
-                    "border_radius": Radius.CARD,
-                }
-            ),
-        ),
-        # Kanan: Bandingkan Skenario & Daftar Skenario Tersimpan (Artboard 18 Kanan)
-        rx.box(
-            rx.vstack(
-                rx.heading(
-                    "Saat ini vs skenario",
-                    font_size=FontSize.SUBTITLE,
-                    font_weight=FontWeight.EXTRABOLD,
-                ),
-                rx.text(
-                    "SRV-003 · SERVER OTO PH · skenario: tambah beban 50 W",
-                    font_size=FontSize.XS,
-                    color=Color.MUTED,
-                ),
-                rx.table.root(
-                    rx.table.header(
-                        rx.table.row(
-                            rx.table.column_header_cell("METRIK"),
-                            rx.table.column_header_cell("SAAT INI"),
-                            rx.table.column_header_cell("SKENARIO"),
-                            rx.table.column_header_cell("SELISIH"),
-                        )
-                    ),
-                    rx.table.body(
-                        rx.table.row(
-                            rx.table.cell("Total beban"),
-                            rx.table.cell("198 W"),
-                            rx.table.cell("248 W"),
-                            rx.table.cell(
-                                rx.text("+50 W", font_weight=FontWeight.BOLD, color=Color.AMBER_700)
-                            ),
-                        ),
-                        rx.table.row(
-                            rx.table.cell("PSU rekomendasi"),
-                            rx.table.cell("500 W"),
-                            rx.table.cell("500 W"),
-                            rx.table.cell("sama"),
-                        ),
-                        rx.table.row(
-                            rx.table.cell("Energi / bulan"),
-                            rx.table.cell("142,6 kWh"),
-                            rx.table.cell("178,6 kWh"),
-                            rx.table.cell("+36,0 kWh"),
-                        ),
-                        rx.table.row(
-                            rx.table.cell("Utilisasi UPS-009"),
-                            rx.table.cell("47%"),
-                            rx.table.cell("59%"),
-                            rx.table.cell(
-                                rx.text(
-                                    "+12 poin · Aman",
-                                    font_weight=FontWeight.BOLD,
-                                    color=Color.SUCCESS_FG,
-                                )
-                            ),
-                        ),
-                        rx.table.row(
-                            rx.table.cell("Status PSU terpasang"),
-                            rx.table.cell("Cukup"),
-                            rx.table.cell("Cukup"),
-                            rx.table.cell("sama"),
-                        ),
-                    ),
-                    variant="surface",
-                    width="100%",
-                ),
-                rx.text(
-                    "SKENARIO TERSIMPAN",
-                    font_size="11px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.MUTED,
-                    padding_top="8px",
-                ),
-                rx.foreach(
-                    PowerState.scenarios_list,
-                    lambda sc: rx.hstack(
-                        rx.vstack(
-                            rx.text(sc["nama"], font_size=FontSize.SM, font_weight=FontWeight.BOLD),
-                            rx.text(sc["subtitle"], font_size=FontSize.XS, color=Color.MUTED),
-                            spacing="0",
-                            align="start",
-                        ),
-                        rx.spacer(),
-                        rx.el.button(
-                            "Buka →",
-                            type="button",
-                            on_click=PowerState.set_main_section_tab("kalkulator"),
-                            style=rx.Style(
-                                {
-                                    "background": "transparent",
-                                    "border": "none",
-                                    "color": Color.ACCENT_BRIGHT,
-                                    "font_size": FontSize.XS,
-                                    "font_weight": FontWeight.BOLD,
-                                    "cursor": "pointer",
-                                }
-                            ),
-                        ),
-                        padding="12px 14px",
-                        width="100%",
-                        border=f"1px solid {Color.BORDER}",
-                        border_radius=Radius.CONTROL,
-                    ),
-                ),
-                spacing="3",
-                width="100%",
-                align="start",
-            ),
-            padding="22px",
-            style=rx.Style(
-                {
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.BORDER}",
-                    "border_radius": Radius.CARD,
-                }
-            ),
-        ),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "display": "grid",
-                "grid_template_columns": "1.15fr 0.85fr",
-                "gap": Space.S4,
-                "align_items": "start",
-            }
-        ),
-    )
-
-
-def _estimasi_summary_footer() -> rx.Component:
-    """Baris ringkasan di bawah tabel Rekap Watt Server."""
-    return rx.hstack(
-        rx.hstack(
-            rx.text(
-                "RINGKASAN:",
-                font_size=FontSize.XS,
-                font_weight=FontWeight.BOLD,
-                color=Color.MUTED,
-            ),
-            rx.text("Total TDP:", font_size=FontSize.SM, color=Color.MUTED),
-            rx.text(
-                PowerState.kpi_total_tdp_kw_display,
-                font_size=FontSize.SM,
-                font_weight=FontWeight.EXTRABOLD,
-                color=Color.ACCENT_BRIGHT,
-            ),
-            spacing="2",
-        ),
-        rx.text("·", color=Color.MUTED),
-        rx.hstack(
-            rx.text("PSU Min / Rek:", font_size=FontSize.SM, color=Color.MUTED),
-            rx.text(
-                PowerState.kpi_psu_summary_display,
-                font_size=FontSize.SM,
-                font_weight=FontWeight.BOLD,
-                color=Color.TEXT,
-            ),
-            spacing="2",
-        ),
-        rx.text("·", color=Color.MUTED),
-        rx.hstack(
-            rx.text("Energi / Bulan:", font_size=FontSize.SM, color=Color.MUTED),
-            rx.text(
-                PowerState.kpi_kwh_month_display,
-                font_size=FontSize.SM,
-                font_weight=FontWeight.BOLD,
-                color=Color.SUCCESS_FG,
-            ),
-            spacing="2",
-        ),
-        width="100%",
-        align="center",
-        wrap="wrap",
-        padding="12px 20px",
-        style=rx.Style(
-            {
-                "background_color": Color.TABLE_HEADER_BG,
-                "border_top": f"1px solid {Color.BORDER}",
-            }
-        ),
     )
 
 
 def _watt_form_modal() -> rx.Component:
-    """Modal input/edit manual data Rekap Watt Server."""
+    """Modal input/edit manual data Rekap Watt Server dengan validasi inline."""
     return rx.cond(
         PowerState.form_modal_open,
         rx.box(
@@ -2215,7 +619,7 @@ def _watt_form_modal() -> rx.Component:
                                 color=Color.TEXT,
                             ),
                             rx.text(
-                                "Isi spesifikasi komponen dan nilai TDP/PSU sesuai kalkulasi.",
+                                "Isi manual sesuai data spesifikasi server.",
                                 font_size=FontSize.SM,
                                 color=Color.MUTED,
                             ),
@@ -2279,6 +683,7 @@ def _watt_form_modal() -> rx.Component:
                             on_change=PowerState.set_form_nama_aset,
                             style=_modal_input_style(),
                         ),
+                        _inline_field_error(PowerState.form_nama_error),
                         rx.text(
                             "Model Prosesor (CPU) *",
                             font_size=FontSize.SM,
@@ -2292,6 +697,7 @@ def _watt_form_modal() -> rx.Component:
                             on_change=PowerState.set_form_cpu,
                             style=_modal_input_style(),
                         ),
+                        _inline_field_error(PowerState.form_cpu_error),
                         rx.text(
                             "Kartu Grafis (GPU)",
                             font_size=FontSize.SM,
@@ -2300,7 +706,7 @@ def _watt_form_modal() -> rx.Component:
                         ),
                         rx.el.input(
                             type="text",
-                            placeholder="Contoh: NVIDIA GeForce GT 1030 2GB",
+                            placeholder="Contoh: Intel UHD Graphics 620 Desktop",
                             value=PowerState.form_vga,
                             on_change=PowerState.set_form_vga,
                             style=_modal_input_style(),
@@ -2358,6 +764,7 @@ def _watt_form_modal() -> rx.Component:
                                     on_change=PowerState.set_form_tdp_w,
                                     style=_modal_input_style(),
                                 ),
+                                _inline_field_error(PowerState.form_tdp_error),
                                 width="33%",
                                 align="start",
                             ),
@@ -2375,6 +782,7 @@ def _watt_form_modal() -> rx.Component:
                                     on_change=PowerState.set_form_psu_min_w,
                                     style=_modal_input_style(),
                                 ),
+                                _inline_field_error(PowerState.form_psu_min_error),
                                 width="33%",
                                 align="start",
                             ),
@@ -2392,26 +800,28 @@ def _watt_form_modal() -> rx.Component:
                                     on_change=PowerState.set_form_psu_rek_w,
                                     style=_modal_input_style(),
                                 ),
+                                _inline_field_error(PowerState.form_psu_rek_error),
                                 width="34%",
                                 align="start",
                             ),
                             spacing="3",
                             width="100%",
+                            align="start",
                         ),
                         rx.text(
-                            "Catatan Tambahan",
+                            "Catatan (opsional)",
                             font_size=FontSize.SM,
                             font_weight=FontWeight.SEMIBOLD,
                             color=Color.TEXT,
                         ),
                         rx.el.textarea(
-                            placeholder="Catatan kebutuhan daya, UPS, atau lokasi server...",
+                            placeholder="Catatan tambahan server (opsional)...",
                             value=PowerState.form_catatan,
                             on_change=PowerState.set_form_catatan,
                             style=rx.Style(
                                 {
                                     "width": "100%",
-                                    "height": "72px",
+                                    "height": "68px",
                                     "padding": "8px 12px",
                                     "background_color": Color.SURFACE,
                                     "color": Color.TEXT,
@@ -2466,135 +876,11 @@ def _watt_form_modal() -> rx.Component:
     )
 
 
-def _watt_table_card() -> rx.Component:
-    """Kartu pembungkus Tabs + Filter Bar + Reusable Data Table + Baris ESTIMASI + Pagination."""
-    tabs_config: list[TabItemConfig] = [
-        {"key": "Semua", "label": "Semua Server", "count": PowerState.tab_counts["Semua"]},
-        {
-            "key": "Operasional",
-            "label": "Server Operasional",
-            "count": PowerState.tab_counts["Operasional"],
-        },
-        {
-            "key": "Backup",
-            "label": "Server Backup",
-            "count": PowerState.tab_counts["Backup"],
-        },
-    ]
-
-    dropdowns: list[FilterDropdownConfig] = [
-        {
-            "label": "Cakupan: Server",
-            "value": PowerState.scope_filter,
-            "options": PowerState.scope_options,
-            "on_change": PowerState.set_scope_filter,
-        },
-        {
-            "label": "Semua prosesor",
-            "value": PowerState.cpu_brand_filter,
-            "options": PowerState.cpu_brand_options,
-            "on_change": PowerState.set_cpu_brand_filter,
-        },
-        {
-            "label": "Semua tingkat beban",
-            "value": PowerState.beban_filter,
-            "options": PowerState.beban_options,
-            "on_change": PowerState.set_beban_filter,
-        },
-        {
-            "label": "Semua UPS",
-            "value": PowerState.ups_filter,
-            "options": PowerState.ups_filter_options,
-            "on_change": PowerState.set_ups_filter,
-        },
-    ]
-
-    return rx.box(
-        app_tabs(
-            tabs=tabs_config,
-            active_tab=PowerState.active_tab,
-            on_change=PowerState.set_tab,
-        ),
-        table_filter_bar(
-            search_value=PowerState.search_query,
-            on_search_change=PowerState.set_search_query,
-            search_placeholder="Cari ID server, CPU, GPU, RAM, penyimpanan, UPS...",
-            dropdowns=dropdowns,
-            on_reset=PowerState.reset_filters,
-            result_count_text=PowerState.result_count_label,
-            column_options=WATT_COLUMN_OPTIONS,
-            hidden_columns=PowerState.hidden_columns,
-            on_toggle_column=PowerState.toggle_column_visibility,
-            on_reset_columns=PowerState.reset_columns,
-        ),
-        reusable_data_table(
-            columns=WATT_TABLE_COLUMNS,
-            rows=PowerState.items,
-            id_key="id",
-            active_row_id=PowerState.active_row_id,
-            is_loading=PowerState.is_loading,
-            on_row_click=PowerState.open_drawer,
-            on_edit_row=PowerState.open_edit_modal,
-            on_duplicate_row=PowerState.open_duplicate_modal,
-            duplicate_action_label="Duplikat Server",
-            on_delete_row=PowerState.confirm_delete_entry,
-            on_reset_filter=PowerState.reset_filters,
-            sort_by=PowerState.sort_by,
-            sort_dir=PowerState.sort_dir,
-            on_sort=PowerState.toggle_sort,
-            hidden_columns=PowerState.hidden_columns,
-            empty_message="Tidak ada data server yang cocok",
-            empty_subtitle="Coba ubah kata kunci pencarian atau atur ulang filter beban TDP.",
-            empty_action_label="Reset filter",
-            on_empty_action=PowerState.reset_filters,
-        ),
-        _estimasi_summary_footer(),
-        table_pagination(
-            summary_text=PowerState.pagination_summary,
-            current_page=PowerState.page,
-            current_page_str=PowerState.current_page_str,
-            total_pages=PowerState.total_pages,
-            page_tokens=PowerState.page_tokens,
-            on_prev=PowerState.prev_page,
-            on_next=PowerState.next_page,
-            on_page_select=PowerState.select_page,
-        ),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "background_color": Color.SURFACE,
-                "border": f"1px solid {Color.BORDER}",
-                "border_radius": Radius.CARD,
-                "overflow": "hidden",
-            }
-        ),
-    )
-
-
 def watt_server_page() -> rx.Component:
-    """Halaman utama `/watt-server` dengan Tab Rekap, Kalkulator, dan Katalog Komponen."""
+    """Halaman utama `/watt-server` (Tabel Rekap Manual sesuai spreadsheet)."""
     content = rx.vstack(
         _watt_header(),
-        rx.match(
-            PowerState.main_section_tab,
-            (
-                "kalkulator",
-                _calculator_view_section(),
-            ),
-            (
-                "katalog",
-                _catalog_and_scenarios_section(),
-            ),
-            rx.vstack(
-                _five_watt_kpi_cards(),
-                _middle_analytics_panels(),
-                _watt_table_card(),
-                spacing="4",
-                width="100%",
-            ),
-        ),
-        _server_rincian_drawer(),
-        _assumptions_modal(),
+        _watt_table_card(),
         _watt_form_modal(),
         confirm_delete_dialog(
             is_open=PowerState.delete_dialog_open,

@@ -1208,6 +1208,27 @@ def get_watt_server_recap(
                 reverse=rev,
             )
 
+    overall_count = int(summary.get("total_servers", len(consumers)))
+    overall_tdp = int(summary.get("total_tdp_w", 0))
+    overall_psu_min = int(summary.get("total_psu_min_w", 0))
+    overall_psu_rek = int(summary.get("total_psu_rek_w", 0))
+
+    filtered_tdp = sum(it.tdp_total_w for it in all_items)
+    filtered_psu_min = sum(it.psu_min_w for it in all_items)
+    filtered_psu_rek = sum(it.psu_rekomendasi_w for it in all_items)
+
+    summary_out: dict[str, Any] = {
+        **summary,
+        "total_tdp_w": filtered_tdp,
+        "total_tdp_kw": round(filtered_tdp / 1000.0, 2),
+        "total_psu_min_w": filtered_psu_min,
+        "total_psu_rek_w": filtered_psu_rek,
+        "overall_total_servers": overall_count,
+        "overall_total_tdp_w": overall_tdp,
+        "overall_total_psu_min_w": overall_psu_min,
+        "overall_total_psu_rek_w": overall_psu_rek,
+    }
+
     top_servers = sorted(all_items, key=lambda it: it.beban_efektif_w, reverse=True)[:5]
     total = len(all_items)
     items = all_items[page_params.offset : page_params.offset + page_params.page_size]
@@ -1220,8 +1241,8 @@ def get_watt_server_recap(
         page=page_params.page,
         page_size=page_params.page_size,
         tab_counts=tab_counts,
-        summary=summary,
-        kpi=summary,
+        summary=summary_out,
+        kpi=summary_out,
         assumptions=asmp,
         top_servers=top_servers,
     )
@@ -1257,36 +1278,83 @@ def create_server_power(
     session: SessionDep,
     _: EditorUserDep,
 ) -> ServerPowerItem:
-    """Menambahkan entri server baru atau memperbarui aset server yang sudah ada."""
+    """Menambahkan entri server baru secara manual (konsisten dengan Semua Aset > Server)."""
     target_code = (payload.id_aset or "").strip()
-    existing = None
-    if target_code:
-        existing = session.exec(
-            select(Asset).where(func.lower(col(Asset.id_aset)) == target_code.lower())
-        ).first()
+    nama_val = (payload.nama_aset or "").strip()
 
-    if existing is not None:
-        res = _update_asset_power_fields(existing.id_aset, payload, session)
-        if isinstance(res, ServerPowerItem):
-            return res
-        return ServerPowerItem.from_asset(existing)
+    if target_code:
+        existing_by_code = session.exec(
+            select(Asset).where(
+                func.lower(col(Asset.id_aset)) == target_code.lower(),
+                col(Asset.deleted_at).is_(None),
+            )
+        ).first()
+        if existing_by_code is not None:
+            res = _update_asset_power_fields(existing_by_code.id_aset, payload, session)
+            if isinstance(res, ServerPowerItem):
+                return res
+            return ServerPowerItem.from_asset(existing_by_code)
+
+    if nama_val:
+        dup_name = session.exec(
+            select(Asset).where(
+                func.lower(col(Asset.nama_aset)) == nama_val.lower(),
+                col(Asset.deleted_at).is_(None),
+            )
+        ).first()
+        if dup_name is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"ID Server '{nama_val}' sudah terdaftar ({dup_name.id_aset}).",
+            )
 
     new_id = target_code.upper() if target_code else generate_next_asset_id(session, "Server")
-    nama_val = (payload.nama_aset or f"SERVER {new_id}").strip()
+    final_nama = nama_val or f"SERVER {new_id}"
     cpu_val = (payload.cpu or payload.processor or "").strip()
     vga_val = (payload.vga or payload.gpu or "").strip()
     ram_val = (payload.ram or "").strip()
     hdd_val = (payload.hdd_ssd or payload.storage or "").strip()
-    tdp_val = payload.tdp_total_w or payload.watt or 120
-    psu_min_val = payload.psu_min_w or round(tdp_val * 1.25)
-    psu_rek_val = payload.psu_rekomendasi_w or max(450, ((int(tdp_val * 1.6) + 49) // 50) * 50)
-    status_val = "Backup" if "BACKUP" in nama_val.upper() else (payload.status or "Digunakan")
+    tdp_val = int(
+        payload.tdp_total_w if payload.tdp_total_w is not None else (payload.watt or 0)
+    )
+    psu_min_val = int(payload.psu_min_w if payload.psu_min_w is not None else 0)
+    psu_rek_val = int(
+        payload.psu_rekomendasi_w if payload.psu_rekomendasi_w is not None else 0
+    )
+
+    if psu_min_val > 0 and psu_rek_val > 0 and psu_rek_val < psu_min_val:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="PSU rekomendasi tidak boleh lebih kecil dari PSU minimum.",
+        )
+
+    status_val = (
+        "Cadangan" if "BACKUP" in final_nama.upper() else (payload.status or "Digunakan")
+    )
+    spec_dict: dict[str, Any] = {
+        "jenis": "Backup" if status_val in ("Backup", "Cadangan") else "Server",
+        "cpu": cpu_val,
+        "vga": vga_val,
+        "ram": ram_val,
+        "storage": hdd_val,
+        "hdd_ssd": hdd_val,
+        "tdp_cpu_w": tdp_val,
+        "tdp_gpu_w": 0,
+        "tdp_total_w": tdp_val,
+        "psu_min_w": psu_min_val,
+        "psu_rekomendasi_w": psu_rek_val,
+        "psu_minimum_watt": psu_min_val,
+        "psu_rekomendasi_watt": psu_rek_val,
+    }
 
     asset = Asset(
         id_aset=new_id,
-        nama_aset=nama_val,
+        asset_tag=new_id,
+        nama_aset=final_nama,
+        nama=final_nama,
         kategori="Server",
-        merek="Custom",
+        peran="Backup" if status_val in ("Backup", "Cadangan") else "Server",
+        merek="Rakitan Server",
         model="Server",
         lokasi=payload.lokasi or "Head Office (Office Blok 14)",
         status=status_val,
@@ -1297,18 +1365,8 @@ def create_server_power(
         storage=hdd_val,
         watt=tdp_val,
         catatan=(payload.catatan or "").strip(),
-        extra_specs={
-            "jenis": "Backup" if status_val == "Backup" else "Server",
-            "cpu": cpu_val,
-            "vga": vga_val,
-            "ram": ram_val,
-            "hdd_ssd": hdd_val,
-            "tdp_total_w": tdp_val,
-            "psu_min_w": psu_min_val,
-            "psu_rekomendasi_w": psu_rek_val,
-            "psu_minimum_watt": f"{psu_min_val} Watt",
-            "psu_rekomendasi_watt": f"{psu_rek_val} Watt",
-        },
+        specs=spec_dict,
+        extra_specs=spec_dict,
     )
     session.add(asset)
     session.commit()
@@ -1324,19 +1382,36 @@ def _update_asset_power_fields(
 ) -> ServerPowerItem | UPSPowerItem:
     asset = session.exec(
         select(Asset).where(
+            col(Asset.deleted_at).is_(None),
             (func.lower(col(Asset.id_aset)) == id_aset.strip().lower())
-            | (func.lower(col(Asset.nama_aset)) == id_aset.strip().lower())
+            | (func.lower(col(Asset.nama_aset)) == id_aset.strip().lower()),
         )
     ).first()
     if asset is None and id_aset.strip().isdigit():
         asset = session.get(Asset, int(id_aset.strip()))
-    if asset is None:
+    if asset is None or asset.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Aset tidak ditemukan",
         )
 
     data = payload.model_dump(exclude_unset=True)
+    new_nama = (data.get("nama_aset") or "").strip()
+    if new_nama and new_nama.lower() != asset.nama_aset.lower():
+        conflict = session.exec(
+            select(Asset).where(
+                func.lower(col(Asset.nama_aset)) == new_nama.lower(),
+                col(Asset.id) != asset.id,
+                col(Asset.deleted_at).is_(None),
+            )
+        ).first()
+        if conflict is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"ID Server '{new_nama}' sudah digunakan oleh {conflict.id_aset}.",
+            )
+        asset.nama = new_nama
+
     if "cpu" in data and "processor" not in data:
         data["processor"] = data.pop("cpu") or ""
     else:
@@ -1358,16 +1433,23 @@ def _update_asset_power_fields(
         data.pop("tdp_total_w", None)
 
     extra = dict(asset.extra_specs or {})
+    specs = dict(asset.specs or {})
     if "psu_min_w" in data and data["psu_min_w"] is not None:
         pmin = int(data.pop("psu_min_w"))
         extra["psu_min_w"] = pmin
         extra["psu_minimum_watt"] = f"{pmin} Watt"
+        specs["psu_min_w"] = pmin
     if "psu_rekomendasi_w" in data and data["psu_rekomendasi_w"] is not None:
         prek = int(data.pop("psu_rekomendasi_w"))
         extra["psu_rekomendasi_w"] = prek
         extra["psu_rekomendasi_watt"] = f"{prek} Watt"
+        specs["psu_rekomendasi_w"] = prek
     if "watt" in data and data["watt"] is not None:
-        extra["tdp_total_w"] = int(data["watt"])
+        w_int = int(data["watt"])
+        extra["tdp_total_w"] = w_int
+        specs["tdp_total_w"] = w_int
+        specs["tdp_cpu_w"] = w_int
+        specs["tdp_gpu_w"] = 0
     if "psu_terpasang_watt" in data and data["psu_terpasang_watt"] is not None:
         extra["psu_terpasang_watt"] = int(data.pop("psu_terpasang_watt"))
     if "watt_terukur" in data and data["watt_terukur"] is not None:
@@ -1378,7 +1460,6 @@ def _update_asset_power_fields(
         extra["catalog_refs"] = data.pop("catalog_refs")
     if "komposisi_beban" in data and data["komposisi_beban"] is not None:
         extra["komposisi_beban"] = data.pop("komposisi_beban")
-    asset.extra_specs = extra
 
     for key, val in data.items():
         if key in ("id", "id_aset", "created_at"):
@@ -1386,6 +1467,25 @@ def _update_asset_power_fields(
         if hasattr(asset, key) and val is not None:
             setattr(asset, key, val.strip() if isinstance(val, str) else val)
 
+    extra.update(
+        {
+            "cpu": asset.processor,
+            "vga": asset.gpu,
+            "ram": asset.ram,
+            "hdd_ssd": asset.storage,
+        }
+    )
+    specs.update(
+        {
+            "cpu": asset.processor,
+            "vga": asset.gpu,
+            "ram": asset.ram,
+            "storage": asset.storage,
+            "hdd_ssd": asset.storage,
+        }
+    )
+    asset.extra_specs = extra
+    asset.specs = specs
     asset.updated_at = utcnow()
     session.add(asset)
     session.commit()
@@ -1425,22 +1525,25 @@ def delete_asset_power(
     session: SessionDep,
     _: AdminUserDep,
 ) -> dict[str, Any]:
-    """Menghapus aset server dari Rekap Watt Server (hanya Administrator)."""
+    """Soft-delete aset server dari Rekap Watt Server & Semua Aset (hanya Administrator)."""
     asset = session.exec(
         select(Asset).where(
+            col(Asset.deleted_at).is_(None),
             (func.lower(col(Asset.id_aset)) == id_aset.strip().lower())
-            | (func.lower(col(Asset.nama_aset)) == id_aset.strip().lower())
+            | (func.lower(col(Asset.nama_aset)) == id_aset.strip().lower()),
         )
     ).first()
     if asset is None and id_aset.strip().isdigit():
         asset = session.get(Asset, int(id_aset.strip()))
-    if asset is None:
+    if asset is None or asset.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Aset tidak ditemukan",
         )
     deleted_code = asset.id_aset
-    session.delete(asset)
+    asset.deleted_at = utcnow()
+    asset.updated_at = utcnow()
+    session.add(asset)
     session.commit()
     invalidate_power_cache()
     return {"status": "ok", "id_aset": deleted_code}

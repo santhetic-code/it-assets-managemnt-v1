@@ -793,7 +793,7 @@ def enrich_server_power_row(
 def query_server_power(
     filters: dict[str, Any],
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = 25,
     assumptions: dict[str, Any] | None = None,
     ups_lookup: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -891,7 +891,11 @@ def query_server_power(
         else:
             filtered.sort(key=lambda x: str(x.get(sort_by, "")).lower(), reverse=reverse)
 
-    sum_tdp = sum(x["beban_efektif_w"] for x in filtered)
+    overall_tdp = sum(x["tdp_total_w"] or x["beban_efektif_w"] for x in all_servers)
+    overall_psu_min = sum(x["psu_min_w"] for x in all_servers)
+    overall_psu_rek = sum(x["psu_rekomendasi_w"] for x in all_servers)
+
+    sum_tdp = sum(x["tdp_total_w"] or x["beban_efektif_w"] for x in filtered)
     sum_psu_min = sum(x["psu_min_w"] for x in filtered)
     sum_psu_rek = sum(x["psu_rekomendasi_w"] for x in filtered)
     jam_h = int(asmp.get("jam_operasional_per_hari", 24) or 24)
@@ -940,6 +944,10 @@ def query_server_power(
             "total_tdp_kw": round(sum_tdp / 1000, 2),
             "total_psu_min_w": sum_psu_min,
             "total_psu_rek_w": sum_psu_rek,
+            "overall_total_servers": len(all_servers),
+            "overall_total_tdp_w": overall_tdp,
+            "overall_total_psu_min_w": overall_psu_min,
+            "overall_total_psu_rek_w": overall_psu_rek,
             "est_kwh_month": est_kwh,
             "estimasi_biaya_bulan": est_biaya,
             "avg_tdp_w": avg_tdp,

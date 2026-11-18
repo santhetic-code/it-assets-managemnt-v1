@@ -2221,21 +2221,83 @@ class APIClient:
         self,
         filters: dict[str, Any],
         page: int = 1,
-        page_size: int = 20,
+        page_size: int = 25,
     ) -> dict[str, Any]:
         """Ambil daftar Rekap Watt Server beserta ringkasan ESTIMASI."""
         if USE_MOCK:
             return query_server_power(filters=filters, page=page, page_size=page_size)
+        clean_filters = {
+            k: v
+            for k, v in filters.items()
+            if v is not None and str(v).strip() != ""
+        }
         params: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
-            **filters,
+            **clean_filters,
         }
         try:
             res = await self.request("GET", "/api/v1/watt-server", params=params)
             return res if isinstance(res, dict) else {"items": [], "total": 0, "summary": {}}
         except ServiceUnavailableError:
             return query_server_power(filters=filters, page=page, page_size=page_size)
+
+    async def generate_watt_excel_bytes(
+        self,
+        rows: list[dict[str, Any]],
+        _assumptions: dict[str, Any] | None = None,
+    ) -> bytes:
+        """Hasilkan file Excel (.xlsx) sesuai kolom spreadsheet rekap_watt_server.csv + ESTIMASI."""
+        headers = [
+            "No",
+            "ID Server",
+            "Model Prosesor (CPU)",
+            "Kartu Grafis (GPU)",
+            "Konfigurasi RAM",
+            "Konfigurasi Penyimpanan",
+            "Total TDP (W)",
+            "PSU Minimum (W)",
+            "PSU Rekomendasi (W)",
+        ]
+        data_rows: list[list[str]] = []
+        tot_tdp = 0
+        tot_min = 0
+        tot_rek = 0
+        for idx, r in enumerate(rows, start=1):
+            tdp_v = int(r.get("tdp_total_w") or r.get("watt") or 0)
+            min_v = int(r.get("psu_min_w") or 0)
+            rek_v = int(r.get("psu_rekomendasi_w") or 0)
+            tot_tdp += tdp_v
+            tot_min += min_v
+            tot_rek += rek_v
+            data_rows.append(
+                [
+                    str(idx),
+                    str(r.get("nama_aset", "")),
+                    str(r.get("cpu", "—")),
+                    str(r.get("vga", "—")),
+                    str(r.get("ram", "—")),
+                    str(r.get("hdd_ssd", "—")),
+                    str(tdp_v),
+                    str(min_v),
+                    str(rek_v),
+                ]
+            )
+        data_rows.append(
+            [
+                "",
+                "ESTIMASI",
+                "",
+                "",
+                "",
+                "",
+                str(tot_tdp),
+                str(tot_min),
+                str(tot_rek),
+            ]
+        )
+        widths = [6, 26, 36, 34, 28, 30, 16, 18, 20]
+        return _build_openxml_xlsx(headers, data_rows, widths, is_template=False)
 
     async def save_server_power(
         self,
@@ -2384,59 +2446,6 @@ class APIClient:
             return row
         res = await self.request("POST", "/api/v1/watt-server/scenarios", json_data=payload)
         return res if isinstance(res, dict) else {}
-
-    async def generate_watt_excel_bytes(
-        self,
-        rows: list[dict[str, Any]],
-        assumptions: dict[str, Any],
-    ) -> bytes:
-        """Export Rekap Watt Server ke Excel (.xlsx) dengan aturan Asumsi & Tarif Opsional."""
-        jam = assumptions.get("jam_operasional_per_hari", 24)
-        hari = assumptions.get("hari_per_bulan", 30)
-        fb = assumptions.get("faktor_beban_persen", 100)
-        tarif = assumptions.get("tarif_listrik_per_kwh")
-        has_tarif = tarif is not None and float(tarif or 0) > 0
-
-        headers = [
-            "ID Aset",
-            "Nama Server",
-            "Peran",
-            "Spesifikasi Ringkas",
-            f"Beban Efektif (W) [Faktor {fb}%]",
-            "PSU Min / Rek (W)",
-            "Status PSU Terpasang",
-            f"Energi / Bulan (kWh) [{jam}jx{hari}hr]",
-        ]
-        widths = [12, 24, 14, 42, 18, 18, 18, 22]
-        if has_tarif:
-            headers.append(f"Estimasi Biaya (Rp {int(float(tarif))}/kWh)")
-            widths.append(22)
-        headers.extend(["Beban", "UPS & Utilisasi", "Sumber Kapasitas UPS"])
-        widths.extend([14, 18, 18])
-
-        data_rows: list[list[str]] = []
-        for r in rows:
-            row_vals = [
-                str(r.get("id_aset", "")),
-                str(r.get("nama_aset", "")),
-                str(r.get("grup_server", "")),
-                str(r.get("spesifikasi_ringkas", "")),
-                str(r.get("beban_efektif_w", r.get("tdp_total_w", 0))),
-                f"{r.get('psu_min_w', 0)} / {r.get('psu_rekomendasi_w', 0)} W",
-                str(r.get("status_psu_terpasang", "Belum Diisi")),
-                str(r.get("kwh_display", "")),
-            ]
-            if has_tarif:
-                row_vals.append(str(r.get("biaya_display", "")))
-            row_vals.extend(
-                [
-                    str(r.get("beban_badge", "")),
-                    str(r.get("ups_display", "—")),
-                    str(r.get("ups_source_label", "—")),
-                ]
-            )
-            data_rows.append(row_vals)
-        return _build_openxml_xlsx(headers, data_rows, widths, is_template=False)
 
     async def get_audit_logs(
         self,
