@@ -52,31 +52,104 @@ def _mnt_kpi_card(
     icon_tag: str,
     icon_color: str,
     icon_bg: str,
-    extra_badge: str = "",
+    *,
+    is_hero: bool = False,
+    show_aman_when_zero: bool = False,
 ) -> rx.Component:
-    is_active = MaintenanceState.active_kpi_card == card_key
+    is_filterable = card_key != "jadwal_aktif"
+    is_active = (
+        (MaintenanceState.active_kpi_card == card_key)
+        if is_filterable
+        else rx.Var.create(False)
+    )
+
+    bg_color = (
+        Color.NAVY_800
+        if is_hero
+        else rx.cond(is_active, Color.INFO_BG, Color.SURFACE)
+    )
+    border_style = (
+        rx.cond(is_active, f"2px solid {Color.BLUE_300}", f"2px solid {Color.NAVY_800}")
+        if is_hero
+        else rx.cond(
+            is_active,
+            f"2px solid {Color.ACCENT_BRIGHT}",
+            f"1px solid {Color.BORDER}",
+        )
+    )
+    ring_shadow = (
+        rx.cond(
+            is_active,
+            f"0 0 0 2px {Color.WHITE}, 0 0 0 4px {Color.ACCENT_BRIGHT}",
+            "none",
+        )
+        if is_hero
+        else rx.cond(
+            is_active,
+            "0 0 0 2px rgba(37, 99, 235, 0.18)",
+            "none",
+        )
+    )
+
+    box_props: dict[str, Any] = {}
+    if is_filterable:
+        box_props["aria_pressed"] = rx.cond(is_active, "true", "false")
+
     return rx.box(
         rx.vstack(
             rx.hstack(
-                rx.center(
-                    rx.icon(
-                        tag=icon_tag,
-                        size=16,
-                        color=rx.cond(is_active, Color.WHITE, icon_color),
+                rx.hstack(
+                    rx.center(
+                        rx.icon(
+                            tag=icon_tag,
+                            size=16,
+                            color=Color.WHITE if is_hero else icon_color,
+                        ),
+                        width="30px",
+                        height="30px",
+                        border_radius="8px",
+                        background_color=(
+                            "rgba(255,255,255,0.18)" if is_hero else icon_bg
+                        ),
                     ),
-                    width="30px",
-                    height="30px",
-                    border_radius="8px",
-                    background_color=rx.cond(is_active, Color.WHITE_ALPHA_18, icon_bg),
+                    rx.text(
+                        title,
+                        font_size=FontSize.GROUP_LABEL,
+                        font_weight=FontWeight.BOLD,
+                        color=(
+                            "rgba(255,255,255,0.85)" if is_hero else Color.MUTED
+                        ),
+                        letter_spacing="0.06em",
+                    ),
+                    spacing="2",
+                    align="center",
                 ),
-                rx.text(
-                    title,
-                    font_size=FontSize.GROUP_LABEL,
-                    font_weight=FontWeight.BOLD,
-                    color=rx.cond(is_active, Color.WHITE_85, Color.MUTED),
-                    letter_spacing="0.06em",
+                rx.spacer(),
+                rx.cond(
+                    is_active,
+                    rx.box(
+                        rx.text(
+                            "Filter aktif",
+                            font_size="10px",
+                            font_weight=FontWeight.BOLD,
+                            color=Color.WHITE if is_hero else Color.ACCENT_BRIGHT,
+                        ),
+                        padding="2px 8px",
+                        border_radius=Radius.FULL,
+                        background_color=(
+                            "rgba(255,255,255,0.22)"
+                            if is_hero
+                            else "rgba(37, 99, 235, 0.12)"
+                        ),
+                        border=(
+                            "1px solid rgba(255,255,255,0.4)"
+                            if is_hero
+                            else f"1px solid {Color.ACCENT_BRIGHT}"
+                        ),
+                    ),
+                    rx.fragment(),
                 ),
-                spacing="2",
+                width="100%",
                 align="center",
             ),
             rx.hstack(
@@ -84,21 +157,25 @@ def _mnt_kpi_card(
                     count_val,
                     font_size="30px",
                     font_weight=FontWeight.EXTRABOLD,
-                    color=rx.cond(is_active, Color.WHITE, Color.TEXT),
+                    color=Color.WHITE if is_hero else Color.TEXT,
                     line_height="1.1",
                 ),
                 rx.cond(
-                    extra_badge != "",
+                    show_aman_when_zero & (count_val == 0),
                     rx.box(
                         rx.text(
-                            extra_badge,
+                            "Aman",
                             font_size=FontSize.XS,
                             font_weight=FontWeight.BOLD,
-                            color=Color.SUCCESS_FG,
+                            color=Color.WHITE if is_hero else Color.SUCCESS_FG,
                         ),
                         padding="2px 8px",
                         border_radius=Radius.FULL,
-                        background_color=Color.SUCCESS_BG,
+                        background_color=(
+                            "rgba(255,255,255,0.2)"
+                            if is_hero
+                            else Color.SUCCESS_BG
+                        ),
                     ),
                     rx.fragment(),
                 ),
@@ -108,7 +185,7 @@ def _mnt_kpi_card(
             rx.text(
                 subtitle,
                 font_size=FontSize.XS,
-                color=rx.cond(is_active, Color.WHITE_ALPHA_80, Color.MUTED),
+                color="rgba(255,255,255,0.8)" if is_hero else Color.MUTED,
             ),
             rx.cond(
                 footer_link != "",
@@ -116,7 +193,7 @@ def _mnt_kpi_card(
                     footer_link,
                     font_size=FontSize.XS,
                     font_weight=FontWeight.BOLD,
-                    color=rx.cond(is_active, Color.WHITE, Color.ACCENT),
+                    color=Color.WHITE if is_hero else Color.ACCENT,
                     padding_top="2px",
                 ),
                 rx.fragment(),
@@ -125,25 +202,26 @@ def _mnt_kpi_card(
             align="start",
             width="100%",
         ),
+        role="button",
+        tab_index=0,
         on_click=MaintenanceState.select_kpi_card(card_key),
         style=rx.Style(
             {
                 "padding": "18px 20px",
                 "border_radius": Radius.CARD,
-                "background_color": rx.cond(is_active, Color.NAVY_800, Color.SURFACE),
-                "border": rx.cond(
-                    is_active,
-                    f"2px solid {Color.NAVY_800}",
-                    f"1px solid {Color.BORDER}",
-                ),
+                "background_color": bg_color,
+                "border": border_style,
+                "box_shadow": ring_shadow,
                 "cursor": "pointer",
+                "transition": "all 0.15s ease",
             }
         ),
+        **box_props,
     )
 
 
 def _kpi_cards() -> rx.Component:
-    """4 Kartu KPI yang bisa diklik sesuai Artboard 13."""
+    """4 Kartu KPI sesuai Artboard 13: kartu pertama selalu Hero Navy, klik mengatur filter."""
     return rx.grid(
         _mnt_kpi_card(
             "terlambat",
@@ -154,6 +232,8 @@ def _kpi_cards() -> rx.Component:
             "triangle-alert",
             Color.DANGER_FG,
             Color.DANGER_BG,
+            is_hero=True,
+            show_aman_when_zero=True,
         ),
         _mnt_kpi_card(
             "segera",
@@ -164,7 +244,8 @@ def _kpi_cards() -> rx.Component:
             "clock",
             Color.WARNING_FG,
             Color.WARNING_BG,
-            extra_badge="Aman",
+            is_hero=False,
+            show_aman_when_zero=True,
         ),
         _mnt_kpi_card(
             "jadwal_aktif",
@@ -175,6 +256,7 @@ def _kpi_cards() -> rx.Component:
             "calendar",
             Color.ACCENT,
             Color.INFO_BG,
+            is_hero=False,
         ),
         _mnt_kpi_card(
             "tindak_lanjut",
@@ -185,6 +267,7 @@ def _kpi_cards() -> rx.Component:
             "wrench",
             Color.WARNING_FG,
             Color.WARNING_BG,
+            is_hero=False,
         ),
         columns="4",
         spacing="4",
@@ -550,6 +633,8 @@ def _daftar_tab() -> rx.Component:
 
 def _tandai_selesai_dialog() -> rx.Component:
     """Modal Tandai Selesai sesuai Artboard 14 (Kanan)."""
+    checked_units: Any = MaintenanceState.selesai_checked_units
+    checked_items: Any = MaintenanceState.selesai_checked_items
     return rx.cond(
         MaintenanceState.is_selesai_open,
         rx.box(
@@ -610,7 +695,7 @@ def _tandai_selesai_dialog() -> rx.Component:
                                         rx.hstack(
                                             rx.el.input(
                                                 type="checkbox",
-                                                checked=MaintenanceState.selesai_checked_units.contains(
+                                                checked=checked_units.contains(
                                                     u
                                                 ),
                                                 on_change=MaintenanceState.toggle_selesai_unit(u),
@@ -789,7 +874,7 @@ def _tandai_selesai_dialog() -> rx.Component:
                                     rx.hstack(
                                         rx.el.input(
                                             type="checkbox",
-                                            checked=MaintenanceState.selesai_checked_items.contains(
+                                            checked=checked_items.contains(
                                                 chk
                                             ),
                                             on_change=MaintenanceState.toggle_selesai_checklist(
@@ -972,6 +1057,7 @@ def _tandai_selesai_dialog() -> rx.Component:
 
 def _buat_jadwal_massal_dialog() -> rx.Component:
     """Modal Buat Rencana Maintenance sesuai Artboard 14 (Kiri)."""
+    plan_reminders: Any = MaintenanceState.plan_reminders
     return rx.cond(
         MaintenanceState.is_massal_open,
         rx.box(
@@ -1431,14 +1517,14 @@ def _buat_jadwal_massal_dialog() -> rx.Component:
                                                 "font_size": FontSize.XS,
                                                 "font_weight": FontWeight.BOLD,
                                                 "background_color": rx.cond(
-                                                    MaintenanceState.plan_reminders.contains(
+                                                    plan_reminders.contains(
                                                         rem_lbl
                                                     ),
                                                     Color.INFO_BG,
                                                     Color.SURFACE,
                                                 ),
                                                 "color": rx.cond(
-                                                    MaintenanceState.plan_reminders.contains(
+                                                    plan_reminders.contains(
                                                         rem_lbl
                                                     ),
                                                     Color.ACCENT_BRIGHT,
