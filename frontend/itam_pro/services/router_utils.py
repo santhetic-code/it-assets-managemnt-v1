@@ -3,7 +3,7 @@ Utilitas Router ITAM Pro (Bebas DeprecationWarning RouterData.page).
 """
 
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 
 def get_current_raw_path(router_obj: Any) -> str:
@@ -67,4 +67,71 @@ def get_current_params(router_obj: Any) -> dict[str, Any]:
     return {}
 
 
-__all__ = ["get_current_params", "get_current_raw_path"]
+_INTERNAL_UA_MARKERS = ("python-httpx", "httpx/", "python-requests", "aiohttp")
+
+
+def _clean_router_str(val: Any) -> str:
+    if not isinstance(val, str):
+        return ""
+    cleaned = val.strip()
+    if not cleaned or cleaned.startswith("<"):
+        return ""
+    return cleaned
+
+
+def extract_client_origin_from_router(router_obj: Any) -> tuple[str, str]:
+    """Ambil (client_ip, client_ua) asli browser dari RouterData Reflex 0.9.12."""
+    if router_obj is None or type(router_obj).__name__ in ("MagicMock", "Mock"):
+        return "", ""
+
+    client_ip = ""
+    client_ua = ""
+
+    headers_obj = getattr(router_obj, "headers", None)
+    if headers_obj is not None and type(headers_obj).__name__ not in ("MagicMock", "Mock"):
+        raw_headers = getattr(headers_obj, "raw_headers", None)
+        lower_headers: dict[str, str] = {}
+        if isinstance(raw_headers, dict):
+            lower_headers = {str(k).lower(): str(v) for k, v in raw_headers.items()}
+
+        # Prioritas IP: X-Forwarded-For -> X-Real-IP -> atribut x_forwarded_for -> session.client_ip
+        xff = _clean_router_str(
+            lower_headers.get("x-forwarded-for") or getattr(headers_obj, "x_forwarded_for", "")
+        )
+        if xff:
+            client_ip = xff.split(",")[0].strip()
+        if not client_ip:
+            client_ip = _clean_router_str(lower_headers.get("x-real-ip"))
+
+        raw_ua = _clean_router_str(
+            lower_headers.get("user-agent") or getattr(headers_obj, "user_agent", "")
+        )
+        if raw_ua and not any(m in raw_ua.lower() for m in _INTERNAL_UA_MARKERS):
+            client_ua = raw_ua[:255]
+
+    if not client_ip:
+        session_obj = getattr(router_obj, "session", None)
+        if session_obj is not None and type(session_obj).__name__ not in ("MagicMock", "Mock"):
+            client_ip = _clean_router_str(getattr(session_obj, "client_ip", ""))
+
+    return client_ip, client_ua
+
+
+def build_query_url(base_path: str, params: dict[str, Any]) -> str:
+    """Bangun URL dengan query string bersih hanya untuk parameter yang terisi."""
+    clean = {
+        k: str(v).strip()
+        for k, v in params.items()
+        if v is not None and str(v).strip() not in ("", "False", "false")
+    }
+    if not clean:
+        return base_path
+    return f"{base_path}?{urlencode(clean)}"
+
+
+__all__ = [
+    "build_query_url",
+    "extract_client_origin_from_router",
+    "get_current_params",
+    "get_current_raw_path",
+]

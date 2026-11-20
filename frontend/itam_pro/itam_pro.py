@@ -127,12 +127,12 @@ app.add_page(
     on_load=[AuthState.check_auth, CredentialState.load_page],
 )
 
-# Route Modul Security: Audit Log
+# Route Modul Security: Audit Log (khusus Administrator)
 app.add_page(
     audit_view_page,
     route="/audit-log",
     title="Audit Log · ITAM Pro",
-    on_load=[AuthState.check_auth, AuditState.load_page],
+    on_load=[AuthState.check_auth, AuthState.require_admin, AuditState.load_page],
 )
 
 # Route Modul Admin: Pengaturan Akun

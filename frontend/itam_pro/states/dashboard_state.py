@@ -54,6 +54,7 @@ class ActivityItem(TypedDict):
     actor_and_action: str
     target: str
     relative_time: str
+    href: str
 
 
 def format_id_number(value: int | float, decimals: int = 0) -> str:
@@ -223,13 +224,22 @@ class DashboardState(rx.State):
             for att in data.get("attention_items", [])
         ]
 
+        raw_activities = data.get("recent_activities", [])
+        if USE_MOCK:
+            from itam_pro.services.mock.audit_mock import query_audit_logs
+
+            raw_activities = query_audit_logs({}, page=1, page_size=8).get("items", [])
+
         self.recent_activities = [
             {
-                "actor_and_action": str(act["actor_and_action"]),
-                "target": str(act["target"]),
-                "relative_time": str(act["relative_time"]),
+                "actor_and_action": str(act.get("actor_and_action", "")),
+                "target": str(act.get("target_id") or act.get("target") or ""),
+                "relative_time": str(
+                    act.get("waktu_wib") or act.get("relative_time") or ""
+                ),
+                "href": f"/audit-log?search={act.get('target_id') or ''}",
             }
-            for act in data.get("recent_activities", [])
+            for act in raw_activities
         ]
         self.is_loading = False
 

@@ -12,20 +12,16 @@ from app.core.rate_limit import (
 from app.core.security import create_access_token, verify_password
 from app.deps import CurrentUserDep, SessionDep
 from app.models.user import User
-from app.schemas.audit import record_audit_log
+from app.schemas.audit import extract_client_origin, record_audit_log
 from app.schemas.auth import LoginRequest, TokenResponse, UserPublic
 
 router = APIRouter()
 
 
 def _get_client_ip(request: Request) -> str:
-    """Mendapatkan alamat IP klien dari header x-forwarded-for atau koneksi langsung."""
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
-    return "127.0.0.1"
+    """Mendapatkan alamat IP klien tervalidasi (hanya percaya header dari proxy internal)."""
+    client_ip, _ = extract_client_origin(request)
+    return client_ip
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -35,6 +31,21 @@ def login(payload: LoginRequest, session: SessionDep, request: Request) -> Token
     client_ip = _get_client_ip(request)
 
     if is_login_rate_limited(client_ip, username):
+        record_audit_log(
+            session,
+            username=username or "anonymous",
+            nama_pengguna=username or "Anonymous",
+            role="Viewer",
+            aksi="akun_terkunci",
+            modul="Autentikasi",
+            target_id=username or "-",
+            detail=(
+                f"Akun '{username}' terkunci sementara karena "
+                "terlalu banyak percobaan login gagal"
+            ),
+            status="Ditolak",
+            request=request,
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Terlalu banyak percobaan login gagal. Silakan coba lagi dalam beberapa saat.",
@@ -44,12 +55,36 @@ def login(payload: LoginRequest, session: SessionDep, request: Request) -> Token
 
     if user is None or not verify_password(payload.password, user.password_hash):
         record_failed_login(client_ip, username)
+        record_audit_log(
+            session,
+            username=user.username if user else (username or "anonymous"),
+            nama_pengguna=user.full_name if user else (username or "Anonymous"),
+            role=user.role if user else "Viewer",
+            aksi="login_gagal",
+            modul="Autentikasi",
+            target_id=username or "-",
+            detail=f"Percobaan login gagal untuk akun '{username}'",
+            status="Gagal",
+            request=request,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Username atau password salah",
         )
 
     if not user.is_active:
+        record_audit_log(
+            session,
+            username=user.username,
+            nama_pengguna=user.full_name,
+            role=user.role,
+            aksi="login_gagal",
+            modul="Autentikasi",
+            target_id=user.username,
+            detail=f"Login ditolak karena akun '{user.username}' tidak aktif",
+            status="Ditolak",
+            request=request,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Akun pengguna tidak aktif",
@@ -66,8 +101,8 @@ def login(payload: LoginRequest, session: SessionDep, request: Request) -> Token
         modul="Autentikasi",
         target_id=user.username,
         detail=f"Pengguna '{user.username}' berhasil login ke sistem",
-        level_risiko="Rendah",
-        ip_address=client_ip,
+        status="Berhasil",
+        request=request,
     )
 
     user_public = UserPublic.from_user(user)

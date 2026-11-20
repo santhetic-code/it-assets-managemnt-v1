@@ -41,6 +41,65 @@ class Settings(BaseSettings):
     # Opsional: bila diisi, menggantikan rakitan POSTGRES_* (dipakai untuk tes/SQLite).
     database_url: str | None = None
 
+    # Konfigurasi Audit Log: jaringan internal tepercaya untuk header X-Client-IP / X-Client-UA
+    audit_trusted_proxy_cidrs: tuple[str, ...] = (
+        "127.0.0.0/8",
+        "::1/128",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+    )
+
+    # Kata sensitif: nilai field/detail yang cocok TIDAK pernah dicatat di Audit Log
+    audit_sensitive_keywords: tuple[str, ...] = (
+        "password",
+        "secret",
+        "token",
+        "key",
+        "kredensial",
+        "credential",
+        "nilai_kredensial",
+        "rahasia",
+        "fernet",
+        "hash",
+        "pin",
+        "passphrase",
+    )
+
+    # Pemetaan jenis aksi (kanonik + alias eksisting) ke tingkat Audit Log
+    audit_warning_actions: tuple[str, ...] = (
+        "login_gagal",
+        "akun_terkunci",
+        "reveal_ditolak",
+        "hak_ditolak",
+    )
+    audit_important_actions: tuple[str, ...] = (
+        "reveal",
+        "reveal_kredensial",
+        "copy_kredensial",
+        "password_direset",
+        "reset_password",
+        "password_diubah",
+        "ubah_password_mandiri",
+        "peran_diubah",
+        "ubah_aturan_akses",
+        "pengguna_dibuat",
+        "tambah_pengguna",
+        "pengguna_dinonaktifkan",
+        "pengguna_diaktifkan",
+        "hapus_pengguna",
+        "pengguna_dihapus",
+        "aset_dihapus",
+        "hapus_aset",
+        "aset_diarsipkan",
+        "arsip_aset",
+        "kredensial_dihapus",
+        "hapus_kredensial",
+        "kredensial_diarsipkan",
+        "arsip_kredensial",
+        "audit_diekspor",
+    )
+
     @field_validator("app_env", mode="before")
     @classmethod
     def _normalize_env(cls, value: object) -> object:

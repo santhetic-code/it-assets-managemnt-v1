@@ -2,9 +2,14 @@
 
 from typing import Any
 
+from sqlalchemy import JSON, Column, event
 from sqlmodel import Field, SQLModel
 
 from app.models.base import TimestampMixin
+
+
+class AuditLogImmutableError(ValueError):
+    """Dilempar bila ada upaya mengubah atau menghapus baris AuditLog (append-only)."""
 
 
 class AuditLog(TimestampMixin, SQLModel, table=True):
@@ -31,4 +36,19 @@ class AuditLog(TimestampMixin, SQLModel, table=True):
 
     level_risiko: str = Field(default="Rendah", index=True, max_length=30, nullable=False)
     status: str = Field(default="Sukses", index=True, max_length=30, nullable=False)
-    ip_address: str = Field(default="127.0.0.1", max_length=45, nullable=False)
+    ip_address: str = Field(default="tidak diketahui", max_length=45, nullable=False)
+    user_agent: str = Field(default="tidak diketahui", max_length=255, nullable=False)
+    changes: list[dict[str, Any]] | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+    )
+
+
+@event.listens_for(AuditLog, "before_update")
+def _prevent_audit_log_update(_mapper: Any, _connection: Any, _target: Any) -> None:
+    raise AuditLogImmutableError("Audit log bersifat append-only dan tidak dapat diubah")
+
+
+@event.listens_for(AuditLog, "before_delete")
+def _prevent_audit_log_delete(_mapper: Any, _connection: Any, _target: Any) -> None:
+    raise AuditLogImmutableError("Audit log bersifat append-only dan tidak dapat dihapus")

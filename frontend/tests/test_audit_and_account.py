@@ -1,5 +1,6 @@
 """Pengujian Modul Audit Log dan Pengaturan Akun."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,9 +9,16 @@ from itam_pro.pages.admin.account_settings import account_settings_page
 from itam_pro.pages.security.audit_view import audit_view_page
 from itam_pro.services.mock.audit_mock import (
     MOCK_AUDIT_LOGS,
+    compute_mock_severity,
+    delete_audit_event,
+    export_mock_audit_csv,
+    format_mock_timestamps,
     query_audit_logs,
     record_audit_event,
+    sanitize_csv_cell,
+    update_audit_event,
 )
+from itam_pro.services.router_utils import extract_client_origin_from_router
 from itam_pro.states.account_state import AccountState
 from itam_pro.states.audit_state import AuditState
 
@@ -79,3 +87,53 @@ async def test_account_state_password_validation(monkeypatch):
     state.confirm_password = "short"
     await state.submit_change_password()
     assert "12 hingga 128 karakter" in state.pwd_error
+
+
+def test_frontend_audit_severity_wib_append_only_and_csv_injection():
+    assert compute_mock_severity("login_gagal") == "Peringatan"
+    assert compute_mock_severity("reveal_ditolak") == "Peringatan"
+    assert compute_mock_severity("audit_diekspor") == "Penting"
+    assert compute_mock_severity("asset.update") == "Info"
+
+    # UTC -> WIB
+    ts = format_mock_timestamps("2026-11-18T21:29:00+00:00")
+    assert ts["tanggal_wib"] == "19 Nov 2026"
+    assert ts["jam_wib"] == "04:29 WIB"
+
+    # Append-only guard
+    with pytest.raises(ValueError, match="append-only"):
+        update_audit_event("AUD-000731")
+    with pytest.raises(ValueError, match="append-only"):
+        delete_audit_event("AUD-000731")
+
+    # Anti CSV-injection + event audit_diekspor
+    assert sanitize_csv_cell("=CMD|'calc'!A0").startswith("'")
+    assert sanitize_csv_cell("+1+1").startswith("'")
+    assert sanitize_csv_cell("-2+3").startswith("'")
+    assert sanitize_csv_cell("@SUM(1,2)").startswith("'")
+
+    record_audit_event("Tester", "asset.update", "=MALICIOUS", "password=Secret123")
+    csv_text = export_mock_audit_csv({"search": "MALICIOUS"}, actor="Admin IT").decode(
+        "utf-8-sig"
+    )
+    assert "'=MALICIOUS" in csv_text
+    assert "Secret123" not in csv_text
+    assert MOCK_AUDIT_LOGS[0]["action"] == "audit_diekspor"
+
+
+def test_extract_client_origin_from_reflex_router():
+    fake_router = SimpleNamespace(
+        headers=SimpleNamespace(
+            raw_headers={
+                "X-Forwarded-For": "10.20.5.41, 172.20.0.4",
+                "User-Agent": "Mozilla/5.0 Chrome/130.0.0.0 Windows NT 10.0",
+            },
+            x_forwarded_for="10.20.5.41, 172.20.0.4",
+            user_agent="Mozilla/5.0 Chrome/130.0.0.0 Windows NT 10.0",
+        ),
+        session=SimpleNamespace(client_ip="172.20.0.4"),
+    )
+    ip, ua = extract_client_origin_from_router(fake_router)
+    assert ip == "10.20.5.41"
+    assert "Chrome/130" in ua
+    assert "python-httpx" not in ua

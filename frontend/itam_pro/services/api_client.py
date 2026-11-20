@@ -11,13 +11,19 @@ import os
 import textwrap
 import xml.etree.ElementTree as ET
 import zipfile
+from contextvars import ContextVar
 from typing import Any
 from xml.sax.saxutils import escape as xml_escape
 
 import httpx
 
 from itam_pro.config import USE_MOCK
-from itam_pro.services.mock.audit_mock import query_audit_logs, record_audit_event
+from itam_pro.services.mock.audit_mock import (
+    export_mock_audit_csv,
+    get_mock_audit_detail,
+    query_audit_logs,
+    record_audit_event,
+)
 from itam_pro.services.mock.auth_mock import MOCK_USERS, verify_mock_login
 from itam_pro.services.mock.credential_mock import (
     get_filtered_credentials,
@@ -65,6 +71,9 @@ from itam_pro.services.power_service import (
 )
 
 BACKEND_URL: str = os.getenv("BACKEND_INTERNAL_URL", "http://backend:8001")
+
+_CTX_CLIENT_IP: ContextVar[str] = ContextVar("itam_client_ip", default="")
+_CTX_CLIENT_UA: ContextVar[str] = ContextVar("itam_client_ua", default="")
 
 
 class AuthenticationError(Exception):
@@ -560,6 +569,8 @@ class APIClient:
         self.token: str | None = None
         self._client: httpx.AsyncClient | None = None
         self._client_loop: asyncio.AbstractEventLoop | None = None
+        self.client_ip: str = ""
+        self.client_ua: str = ""
 
     def _get_client(self) -> httpx.AsyncClient:
         """Gunakan kembali koneksi HTTP (keep-alive pool) pada event loop yang aktif."""
@@ -589,6 +600,34 @@ class APIClient:
         """Hapus token sesi saat logout."""
         self.token = None
 
+    def set_client_origin(self, client_ip: str = "", client_ua: str = "") -> None:
+        """Simpan IP & User-Agent browser klien untuk diteruskan ke backend via header."""
+        clean_ip = (client_ip or "").strip()
+        clean_ua = (client_ua or "").strip()
+        if clean_ip:
+            self.client_ip = clean_ip
+            _CTX_CLIENT_IP.set(clean_ip)
+        if clean_ua:
+            self.client_ua = clean_ua
+            _CTX_CLIENT_UA.set(clean_ua)
+
+    def _build_headers(
+        self,
+        token: str | None = None,
+        accept: str = "application/json",
+    ) -> dict[str, str]:
+        headers = {"Accept": accept}
+        effective_token = token or self.token
+        if effective_token:
+            headers["Authorization"] = f"Bearer {effective_token}"
+        eff_ip = _CTX_CLIENT_IP.get() or self.client_ip
+        eff_ua = _CTX_CLIENT_UA.get() or self.client_ua
+        if eff_ip:
+            headers["X-Client-IP"] = eff_ip
+        if eff_ua:
+            headers["X-Client-UA"] = eff_ua
+        return headers
+
     async def request(
         self,
         method: str,
@@ -597,10 +636,7 @@ class APIClient:
         params: dict[str, Any] | None = None,
         json_data: dict[str, Any] | None = None,
     ) -> dict[str, Any] | list[Any]:
-        headers = {"Accept": "application/json"}
-        effective_token = token or self.token
-        if effective_token:
-            headers["Authorization"] = f"Bearer {effective_token}"
+        headers = self._build_headers(token=token, accept="application/json")
 
         client = self._get_client()
         try:
@@ -2451,19 +2487,61 @@ class APIClient:
         self,
         filters: dict[str, Any] | None = None,
         page: int = 1,
-        page_size: int = 15,
+        page_size: int = 10,
     ) -> dict[str, Any]:
         """Ambil daftar Audit Log berhalaman dari Mock atau Backend."""
+        clean_filters = {
+            k: v
+            for k, v in (filters or {}).items()
+            if v is not None and str(v).strip() != ""
+        }
         if self.use_mock:
-            return query_audit_logs(filters or {}, page=page, page_size=page_size)
-        params: dict[str, Any] = {"page": page, "page_size": page_size}
-        if filters:
-            params.update(filters)
+            return query_audit_logs(clean_filters, page=page, page_size=page_size)
+        params: dict[str, Any] = {"page": page, "page_size": page_size, **clean_filters}
         try:
             res = await self.request("GET", "/api/v1/audit-logs", params=params)
             return res if isinstance(res, dict) else {"items": res}
         except ServiceUnavailableError:
-            return query_audit_logs(filters or {}, page=page, page_size=page_size)
+            return query_audit_logs(clean_filters, page=page, page_size=page_size)
+
+    async def get_audit_log_detail(self, identifier: str) -> dict[str, Any]:
+        """Ambil detail satu kejadian Audit Log."""
+        if self.use_mock:
+            return get_mock_audit_detail(identifier)
+        try:
+            res = await self.request("GET", f"/api/v1/audit-logs/{identifier}")
+            return res if isinstance(res, dict) else {}
+        except ServiceUnavailableError:
+            return get_mock_audit_detail(identifier)
+
+    async def export_audit_logs_csv(
+        self,
+        filters: dict[str, Any] | None = None,
+        actor: str = "Administrator IT",
+    ) -> bytes:
+        """Unduh CSV Audit Log sesuai filter aktif (anti CSV-injection + catat audit_diekspor)."""
+        clean_filters = {
+            k: v
+            for k, v in (filters or {}).items()
+            if v is not None and str(v).strip() != ""
+        }
+        if self.use_mock:
+            return export_mock_audit_csv(clean_filters, actor=actor)
+        client = self._get_client()
+        headers = self._build_headers(accept="text/csv")
+        try:
+            response = await client.request(
+                method="GET",
+                url="/api/v1/audit-logs/export",
+                headers=headers,
+                params=clean_filters,
+            )
+            response.raise_for_status()
+            return response.content
+        except ServiceUnavailableError:
+            return export_mock_audit_csv(clean_filters, actor=actor)
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError):
+            return export_mock_audit_csv(clean_filters, actor=actor)
 
     async def get_users(
         self,

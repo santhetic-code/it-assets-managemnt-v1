@@ -14,6 +14,7 @@ from itam_pro.services.api_client import (
     ServiceUnavailableError,
     api_client,
 )
+from itam_pro.services.router_utils import extract_client_origin_from_router
 
 GENERIC_AUTH_ERROR = "Username atau password salah"
 
@@ -56,6 +57,11 @@ class AuthState(rx.State):
         return str(role) if role else "Administrator"
 
     @rx.var(cache=True)
+    def is_admin(self) -> bool:
+        """Bernilai True hanya untuk peran Administrator."""
+        return self.user_role_label.strip().lower() == "administrator"
+
+    @rx.var(cache=True)
     def user_initials(self) -> str:
         """Inisial 2 huruf dari nama lengkap pengguna untuk Avatar bulat."""
         parts = [p for p in self.user_display_name.strip().split() if p]
@@ -65,13 +71,33 @@ class AuthState(rx.State):
             return parts[0][:2].upper()
         return "AI"
 
+    def _sync_client_origin(self) -> None:
+        client_ip, client_ua = extract_client_origin_from_router(self.router)
+        api_client.set_client_origin(client_ip, client_ua)
+
     @rx.event
     def check_auth(self) -> Any:
         """Guard halaman terproteksi: arahkan ke /login jika belum autentikasi."""
+        self._sync_client_origin()
         if not self.is_authenticated:
             return rx.redirect("/login")
         if self.access_token and api_client.token != self.access_token:
             api_client.set_token(self.access_token)
+
+    @rx.event
+    def require_admin(self) -> Any:
+        """Guard khusus halaman Administrator (seperti /audit-log)."""
+        self._sync_client_origin()
+        if not self.is_authenticated:
+            return rx.redirect("/login")
+        if not self.is_admin:
+            return [
+                rx.toast.error(
+                    "Halaman Audit Log hanya dapat diakses oleh Administrator.",
+                    position="top-right",
+                ),
+                rx.redirect("/dashboard"),
+            ]
 
     @rx.event
     def redirect_from_root(self) -> Any:
@@ -149,6 +175,7 @@ class AuthState(rx.State):
         self.error_message = ""
         yield
 
+        self._sync_client_origin()
         try:
             auth_data = await api_client.login(
                 username=str(username_val).strip(),

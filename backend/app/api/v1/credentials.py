@@ -1196,6 +1196,21 @@ def _perform_reveal(
 
     # 1. Cek izin Lapis 1 + Lapis 2 + tindakan "reveal"
     if not can_access_credential(session, v_ctx, row, action="reveal"):
+        record_audit_log(
+            session,
+            username=current_user.username,
+            nama_pengguna=getattr(current_user, "full_name", current_user.username),
+            role=current_user.role,
+            aksi="reveal_ditolak",
+            modul="Kredensial",
+            target_id=row.kode_kredensial,
+            detail=(
+                f"Reveal ditolak pada '{row.nama or row.nama_layanan}' "
+                f"untuk peran '{v_ctx['role_id']}'"
+            ),
+            status="Ditolak",
+            request=request,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
@@ -1257,11 +1272,10 @@ def _perform_reveal(
             detail="Kredensial tidak dapat didekripsi",
         ) from exc
 
-    client_ip = request.client.host if (request and request.client) else "127.0.0.1"
-    user_agent = request.headers.get("user-agent", "unknown")[:120] if request else "testclient"
     aksi_label = "Copy Kredensial" if action_type == "copy" else "Reveal Kredensial"
 
-    # G: Catat di Audit Log tanpa pernah menulis nilai rahasia
+    # G: Catat di Audit Log tanpa pernah menulis nilai rahasia;
+    # IP & UA klien diambil aman dari request
     record_audit_log(
         session,
         username=current_user.username,
@@ -1270,11 +1284,9 @@ def _perform_reveal(
         aksi=aksi_label,
         modul="Kredensial",
         target_id=row.kode_kredensial,
-        detail=(
-            f"{aksi_label} '{row.nama or row.nama_layanan}' "
-            f"(field={field_key}, ip={client_ip}, ua={user_agent})"
-        )[:500],
-        level_risiko="Tinggi",
+        detail=f"{aksi_label} '{row.nama or row.nama_layanan}' (field={field_key})"[:500],
+        status="Berhasil",
+        request=request,
     )
 
     return CredentialRevealResponse(

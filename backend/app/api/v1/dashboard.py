@@ -21,13 +21,12 @@ from app.api.v1.power import _build_power_analytics
 from app.core.master_data import CATEGORIES, LOCATIONS
 from app.deps import CurrentUserDep, SessionDep
 from app.models.asset import Asset
-from app.models.audit import AuditLog
 from app.models.credential import Credential
 from app.models.finance import Purchase
 from app.models.ip_allocation import IPAllocation
 from app.models.maintenance import Maintenance
 from app.models.user import User
-from app.schemas.audit import AuditLogPublic
+from app.schemas.audit import get_recent_audit_logs
 from app.schemas.dashboard import DashboardAlertItem, DashboardResponse
 from app.schemas.finance import PurchasePublic
 from app.schemas.maintenance import MaintenancePublic
@@ -80,14 +79,7 @@ def get_dashboard_overview(
     # 5. Kredensial, Pengguna, & Audit Log
     total_credentials = len(session.exec(select(Credential.id)).all())
     total_users = len(session.exec(select(User.id)).all())
-    recent_audits_rows = list(
-        session.exec(
-            select(AuditLog)
-            .order_by(col(AuditLog.created_at).desc(), col(AuditLog.id).desc())
-            .limit(8)
-        ).all()
-    )
-    recent_activities = [AuditLogPublic.from_model(r) for r in recent_audits_rows]
+    recent_activities = get_recent_audit_logs(session, limit=8)
 
     # 6. Distribusi Aset per Kategori & Lokasi
     cat_counts: dict[str, int] = {c: 0 for c in CATEGORIES}

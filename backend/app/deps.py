@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError
 from sqlmodel import Session, select
@@ -81,12 +81,33 @@ def get_current_user(
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 
-def require_roles(*allowed_roles: UserRole) -> Callable[[User], User]:
-    """Membatasi akses endpoint hanya untuk daftar peran tertentu."""
+def require_roles(*allowed_roles: UserRole) -> Callable[..., User]:
+    """Membatasi akses endpoint hanya untuk daftar peran tertentu dan catat penolakan hak."""
     allowed_values = {role.value for role in allowed_roles}
 
-    def _checker(current_user: CurrentUserDep) -> User:
+    def _checker(
+        current_user: CurrentUserDep,
+        session: SessionDep,
+        request: Request,
+    ) -> User:
         if current_user.role not in allowed_values:
+            from app.schemas.audit import record_audit_log
+
+            record_audit_log(
+                session,
+                username=current_user.username,
+                nama_pengguna=current_user.full_name,
+                role=current_user.role,
+                aksi="hak_ditolak",
+                modul="Keamanan",
+                target_id=request.url.path,
+                detail=(
+                    f"Akses ditolak ke {request.method} {request.url.path} "
+                    f"untuk peran {current_user.role}"
+                ),
+                status="Ditolak",
+                request=request,
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Anda tidak memiliki izin untuk melakukan aksi ini",

@@ -17,6 +17,7 @@ from itam_pro.components.ui import (
     secondary_button,
     stat_card,
 )
+from itam_pro.states.auth_state import AuthState
 from itam_pro.states.dashboard_state import (
     ActivityItem,
     AttentionItem,
@@ -430,11 +431,11 @@ def _attention_card() -> rx.Component:
 
 
 def _activity_row(item: ActivityItem, index: int) -> rx.Component:
-    """Render satu baris 'Aktivitas Terbaru' dengan waktu relatif di kanan."""
-
-    return rx.hstack(
+    """Render satu baris 'Aktivitas Terbaru' dengan waktu WIB dan drill-down ke Audit Log."""
+    row_body = rx.hstack(
         rx.text(
             item["actor_and_action"],
+            " ",
             rx.el.strong(
                 item["target"],
                 style=_STRONG_TARGET_STYLE,
@@ -467,11 +468,15 @@ def _activity_row(item: ActivityItem, index: int) -> rx.Component:
             }
         ),
     )
+    return rx.cond(
+        AuthState.is_admin,
+        rx.link(row_body, href=item["href"], underline="none", width="100%"),
+        row_body,
+    )
 
 
 def _recent_activities_card() -> rx.Component:
-    """Kolom 3 Baris 3: Kartu 'Aktivitas Terbaru'."""
-
+    """Kolom 3 Baris 3: Kartu 'Aktivitas Terbaru' (sumber sama dengan Audit Log)."""
     return app_card(
         rx.vstack(
             rx.foreach(DashboardState.recent_activities, _activity_row),
@@ -479,8 +484,8 @@ def _recent_activities_card() -> rx.Component:
             width="100%",
         ),
         title="Aktivitas Terbaru",
-        action_label="Audit Log",
-        on_action_click=DashboardState.show_coming_soon("Halaman Audit Log"),
+        action_label=rx.cond(AuthState.is_admin, "Audit Log", ""),
+        on_action_click=rx.redirect("/audit-log"),
     )
 
 
