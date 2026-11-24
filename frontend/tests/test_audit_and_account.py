@@ -40,6 +40,47 @@ def test_audit_logs_query_and_record():
 def test_audit_view_page_compilation():
     comp = audit_view_page()
     assert comp is not None
+    rendered = str(comp.render())
+    # Verifikasi tab tingkat, banner 24 jam, latar #FEF2F2, dan drawer detail (<900px + Escape)
+    assert "Hanya Administrator" in rendered
+    assert "Sembunyikan login berhasil" in rendered
+    assert "Tampilkan" in rendered
+    assert "#FEF2F2" in rendered
+    assert "Detail kejadian Audit Log" in rendered
+    assert "Log hanya-baca" in rendered
+    assert "Salin ID kejadian" in rendered
+    assert "@media (max-width: 899px)" in rendered
+    assert "Escape" in rendered
+
+
+@pytest.mark.anyio
+async def test_audit_drawer_and_banner_interaction():
+    state = AuditState()
+    load_res = state.load_page()
+    if hasattr(load_res, "__await__"):
+        await load_res
+    assert len(state.logs) >= 1
+    first = state.logs[0]
+    assert "actor_initials" in first
+    assert "tingkat_variant" in first
+
+    # Klik Tampilkan pada banner peringatan 24 jam
+    state.show_warnings_from_banner()
+    assert state.severity_tab == "Peringatan"
+    assert state.period_filter == "Hari ini"
+
+    # Reset & buka drawer detail
+    state.reset_filters()
+    target_kode = state.logs[0]["kode_audit"]
+    state.open_detail_drawer(target_kode)
+    assert state.drawer_open is True
+    assert state.active_row_id == target_kode
+    assert state.selected_kode_audit == target_kode
+    assert state.selected_row_dom_id == f"table-row-{target_kode}"
+
+    state.close_detail_drawer()
+    assert state.drawer_open is False
+    assert state.active_row_id == ""
 
 
 def test_account_settings_page_compilation():

@@ -73,6 +73,7 @@ def _tab_button(
         on_click=on_change(tab_key),
         style=rx.Style(
             {
+                "min_height": "44px",
                 "padding": "12px 18px",
                 "background": "transparent",
                 "border": "none",

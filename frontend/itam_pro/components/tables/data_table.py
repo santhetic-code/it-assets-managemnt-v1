@@ -49,6 +49,7 @@ class ColumnDef(TypedDict, total=False):
     sort_key: str
     badge_variant_key: str
     date_tone_key: str
+    accessor: Any
 
 
 _TWO_LINE_CLAMP_STYLE = rx.Style(
@@ -568,6 +569,8 @@ def reusable_data_table(
     empty_subtitle: Any = "Coba ubah kata kunci pencarian atau atur ulang kriteria filter Anda.",
     empty_action_label: Any = "Reset filter",
     on_empty_action: Any | None = None,
+    danger_row_key: str | None = None,
+    danger_row_value: Any = True,
     *,
     items: Any = None,
 ) -> rx.Component:
@@ -643,11 +646,17 @@ def reusable_data_table(
             if selected_ids is not None and active_row_id is not None
             else (active_row_id == row_id if active_row_id is not None else False)
         )
-        is_conflict = (row["is_conflict"] == True) if has_ip_col else False  # noqa: E712
+        if danger_row_key is not None:
+            is_danger_row: Any = row[danger_row_key] == danger_row_value
+        elif has_ip_col:
+            is_danger_row = row["is_conflict"] == True  # noqa: E712
+        else:
+            is_danger_row = False
+
         row_bg = rx.cond(
             is_highlighted,
             Color.ROW_SELECTED,
-            rx.cond(is_conflict, Color.CONFLICT_ROW_BG, Color.SURFACE),
+            rx.cond(is_danger_row, Color.CONFLICT_ROW_BG, Color.SURFACE),
         )
 
         cb_td_props = {}

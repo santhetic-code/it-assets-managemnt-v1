@@ -217,6 +217,7 @@ def table_filter_bar(
     hidden_columns: Any | None = None,
     on_toggle_column: Any | None = None,
     on_reset_columns: Any | None = None,
+    extra_controls: rx.Component | None = None,
     *,
     on_search: Any = None,
 ) -> rx.Component:
@@ -266,6 +267,7 @@ def table_filter_bar(
             ),
             # Dropdown Filter
             *[_filter_select(d) for d in actual_dropdowns],
+            extra_controls if extra_controls is not None else rx.fragment(),
             # Tombol Reset Filter
             rx.el.button(
                 "Reset filter",
@@ -274,6 +276,7 @@ def table_filter_bar(
                 style=rx.Style(
                     {
                         "height": Size.FILTER_CONTROL_H,
+                        "min_height": "44px",
                         "padding": "0 12px",
                         "background": "transparent",
                         "border": "none",

@@ -678,7 +678,7 @@ def _ip_detail_drawer(
                                                     align="center",
                                                 ),
                                                 type="button",
-                                                on_click=lambda: IPState.open_host_drawer_by_code(
+                                                on_click=IPState.open_host_drawer_by_code(
                                                     IPState.active_host_name
                                                 ),
                                                 style=rx.Style(
@@ -798,7 +798,7 @@ def _ip_detail_drawer(
                                                     align="center",
                                                 ),
                                                 type="button",
-                                                on_click=lambda: IPState.open_host_drawer_by_code(
+                                                on_click=IPState.open_host_drawer_by_code(
                                                     IPState.active_host_name
                                                 ),
                                                 style=rx.Style(
@@ -900,10 +900,8 @@ def _ip_detail_drawer(
                                                         background_color=Color.SURFACE,
                                                         width="100%",
                                                         cursor="pointer",
-                                                        on_click=lambda: (
-                                                            IPState.open_detail_drawer_by_id(
-                                                                vm["id"]
-                                                            )
+                                                        on_click=IPState.open_detail_drawer_by_id(
+                                                            vm["id"]
                                                         ),
                                                         _hover=rx.Style(
                                                             {
@@ -1132,12 +1130,12 @@ def _ip_detail_drawer(
 def detail_drawer(
     is_open: Any,
     on_close: Any,
-    code_var: Any,
-    title_var: Any,
-    active_tab: Any,
-    on_tab_change: Any,
-    general_items: Any,
-    usage_items: Any,
+    code_var: Any = "",
+    title_var: Any = "",
+    active_tab: Any = None,
+    on_tab_change: Any = None,
+    general_items: Any = None,
+    usage_items: Any = None,
     history_items: Any = None,
     on_edit: Any = None,
     on_duplicate: Any = None,
@@ -1160,6 +1158,11 @@ def detail_drawer(
         ("detail", "Rincian Aset"),
         ("history", "Riwayat & Log"),
     ),
+    custom_header: rx.Component | None = None,
+    custom_body: rx.Component | None = None,
+    custom_footer: rx.Component | None = None,
+    show_tabs: bool = True,
+    aria_label: str = "Rincian Item",
 ) -> rx.Component:
     """
     Komponen Drawer Kanan Generik (440px).
@@ -1221,7 +1224,9 @@ def detail_drawer(
             # Panel Drawer Kanan 440px (Layar penuh di <900px)
             rx.box(
                 # 1. Header Drawer
-                rx.vstack(
+                custom_header
+                if custom_header is not None
+                else rx.vstack(
                     rx.hstack(
                         rx.hstack(
                             rx.text(
@@ -1309,10 +1314,14 @@ def detail_drawer(
                     width="100%",
                     padding_x="24px",
                     style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
-                ),
+                )
+                if show_tabs
+                else rx.fragment(),
                 # 3. Body Drawer (Scrollable)
                 rx.box(
-                    rx.cond(
+                    custom_body
+                    if custom_body is not None
+                    else rx.cond(
                         active_tab == tab1_key,
                         rx.vstack(
                             _drawer_section(section1_title, general_items),
@@ -1359,7 +1368,9 @@ def detail_drawer(
                     ),
                 ),
                 # 4. Footer Tombol Aksi
-                rx.hstack(
+                custom_footer
+                if custom_footer is not None
+                else rx.hstack(
                     rx.el.button(
                         rx.hstack(
                             rx.icon(tag="pencil", size=Size.ICON_SM, color=Color.TEXT),
@@ -1461,7 +1472,7 @@ def detail_drawer(
                 id="global-detail-drawer",
                 role="dialog",
                 aria_modal="true",
-                aria_label="Rincian Item",
+                aria_label=aria_label,
                 tab_index=-1,
                 style=rx.Style(
                     {

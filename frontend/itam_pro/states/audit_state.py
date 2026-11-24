@@ -117,6 +117,70 @@ class AuditState(rx.State):
     def selected_target_link_label(self) -> str:
         return str(self.selected_log.get("target_link_label", ""))
 
+    @rx.var(cache=True)
+    def active_row_id(self) -> str:
+        return str(self.selected_log.get("kode_audit", "")) if self.drawer_open else ""
+
+    @rx.var(cache=True)
+    def selected_kode_audit(self) -> str:
+        return str(self.selected_log.get("kode_audit") or self.selected_log.get("id") or "")
+
+    @rx.var(cache=True)
+    def selected_aksi_label(self) -> str:
+        return str(self.selected_log.get("aksi_label") or self.selected_log.get("aksi") or "")
+
+    @rx.var(cache=True)
+    def selected_waktu_lengkap(self) -> str:
+        return str(
+            self.selected_log.get("waktu_lengkap") or self.selected_log.get("waktu_wib") or ""
+        )
+
+    @rx.var(cache=True)
+    def selected_tingkat(self) -> str:
+        return str(self.selected_log.get("tingkat") or "Info")
+
+    @rx.var(cache=True)
+    def selected_tingkat_variant(self) -> str:
+        return str(self.selected_log.get("tingkat_variant") or "neutral")
+
+    @rx.var(cache=True)
+    def selected_hasil(self) -> str:
+        return str(self.selected_log.get("hasil") or "Berhasil")
+
+    @rx.var(cache=True)
+    def selected_hasil_variant(self) -> str:
+        return str(self.selected_log.get("hasil_variant") or "success")
+
+    @rx.var(cache=True)
+    def selected_actor_display(self) -> str:
+        return str(
+            self.selected_log.get("actor_display") or self.selected_log.get("nama_pengguna") or ""
+        )
+
+    @rx.var(cache=True)
+    def selected_role(self) -> str:
+        return str(self.selected_log.get("role") or "-")
+
+    @rx.var(cache=True)
+    def selected_modul(self) -> str:
+        return str(self.selected_log.get("modul") or "-")
+
+    @rx.var(cache=True)
+    def selected_target_id(self) -> str:
+        return str(self.selected_log.get("target_id") or "-")
+
+    @rx.var(cache=True)
+    def selected_ip_address(self) -> str:
+        return str(self.selected_log.get("ip_address") or "tidak diketahui")
+
+    @rx.var(cache=True)
+    def selected_perangkat(self) -> str:
+        return str(self.selected_log.get("perangkat") or "Tidak diketahui")
+
+    @rx.var(cache=True)
+    def selected_detail(self) -> str:
+        return str(self.selected_log.get("detail") or "-")
+
     def _build_filters_dict(self) -> dict[str, Any]:
         period_map = {
             "Hari ini": "hari_ini",
@@ -182,8 +246,46 @@ class AuditState(rx.State):
         )
         return rx.call_script(f"window.history.replaceState(null, '', {url!r});")
 
+    @staticmethod
+    def _initials(name: str) -> str:
+        parts = [p for p in (name or "").strip().split() if p]
+        if len(parts) >= 2:
+            return f"{parts[0][0]}{parts[1][0]}".upper()
+        if len(parts) == 1:
+            return parts[0][:2].upper()
+        return "SY"
+
+    def _normalize_row(self, raw: dict[str, Any]) -> dict[str, Any]:
+        row = dict(raw)
+        kode = str(row.get("kode_audit") or row.get("id") or "")
+        actor = str(row.get("nama_pengguna") or row.get("actor") or "System")
+        uname = str(row.get("username") or "")
+        tingkat = str(row.get("tingkat") or "Info")
+        hasil = str(row.get("hasil") or row.get("status") or "Berhasil")
+        cnt = int(row.get("group_count") or 1)
+        row["kode_audit"] = kode
+        row["nama_pengguna"] = actor
+        row["actor"] = actor
+        row["actor_initials"] = self._initials(actor)
+        row["actor_display"] = f"{actor} ({uname})" if uname else actor
+        row["aksi_label"] = str(
+            row.get("aksi_label") or row.get("action") or row.get("aksi") or "-"
+        )
+        row["tingkat"] = tingkat
+        row["tingkat_variant"] = (
+            "danger"
+            if tingkat == "Peringatan"
+            else ("warning" if tingkat == "Penting" else "neutral")
+        )
+        row["hasil"] = hasil
+        row["hasil_variant"] = "success" if hasil == "Berhasil" else "danger"
+        row["group_badge"] = f"×{cnt}" if cnt > 1 else ""
+        row["tanggal_wib"] = str(row.get("tanggal_wib") or row.get("tanggal") or "")
+        row["jam_wib"] = str(row.get("jam_wib") or "")
+        return row
+
     def _apply_response(self, res: dict[str, Any]) -> None:
-        self.logs = list(res.get("items", []))
+        self.logs = [self._normalize_row(item) for item in res.get("items", [])]
         self.total_items = int(res.get("total", len(self.logs)))
         self.raw_total_items = int(res.get("raw_total", self.total_items))
 
@@ -387,7 +489,7 @@ class AuditState(rx.State):
         self.selected_log = dict(found)
         self.selected_changes = list(found.get("changes") or [])
         self.selected_grouped_timestamps = list(found.get("grouped_timestamps") or [])
-        self.selected_row_dom_id = f"audit-row-{target}"
+        self.selected_row_dom_id = f"table-row-{target}"
         self.drawer_open = True
 
     @rx.event
