@@ -154,5 +154,13 @@ class Color:
     GRADIENT_PURPLE = "linear-gradient(135deg, #A855F7 0%, #7E22CE 100%)"
     SCRIM_DARK = "rgba(15, 23, 42, 0.4)"
 
+    # Topbar & Semantic Row/Border Tokens
+    TOPBAR_BG = "rgba(255, 255, 255, 0.88)"
+    WARNING_BORDER = "#FDE68A"
+    WARNING_ROW_BG = "#FFFBEB"
+    DANGER_ROW_BG = "#FEF2F2"
+    STICKY_COL_SHADOW = "1px 0 0 0 rgba(226, 232, 240, 1)"
+    STICKY_ESTIMASI_SHADOW = "1px 0 0 0 rgba(191, 219, 254, 1)"
+
 
 __all__ = ["Color"]

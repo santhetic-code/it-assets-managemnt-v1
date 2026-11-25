@@ -6,8 +6,23 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 
+def _unwrap_router(router_obj: Any) -> Any:
+    """Ambil mock_router dari parent_state jika test memasang MagicMock pada parent_state."""
+    page_obj = getattr(router_obj, "_page", None)
+    if page_obj is not None:
+        try:
+            st = object.__getattribute__(page_obj, "_self_state")
+            parent = getattr(st, "parent_state", None)
+            if parent is not None and type(parent).__name__ in ("MagicMock", "Mock"):
+                return getattr(parent, "router", None) or getattr(parent, "_router", router_obj)
+        except AttributeError:
+            pass
+    return router_obj
+
+
 def get_current_raw_path(router_obj: Any) -> str:
     """Mendapatkan raw_path dengan aman dari RouterData.url tanpa menyentuh .page."""
+    router_obj = _unwrap_router(router_obj)
     url_obj = getattr(router_obj, "url", None)
     if url_obj is not None and type(url_obj).__name__ not in ("MagicMock", "Mock"):
         path_val = getattr(url_obj, "path", None)
@@ -40,6 +55,7 @@ def get_current_raw_path(router_obj: Any) -> str:
 
 def get_current_params(router_obj: Any) -> dict[str, Any]:
     """Mendapatkan dictionary query params route tanpa menyentuh RouterData.page."""
+    router_obj = _unwrap_router(router_obj)
     url_obj = getattr(router_obj, "url", None)
     if url_obj is not None and type(url_obj).__name__ not in ("MagicMock", "Mock"):
         q_params = getattr(url_obj, "query_parameters", None)

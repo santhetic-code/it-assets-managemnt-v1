@@ -72,3 +72,5 @@ class Shadow:
     LOGIN_CARD = "0 30px 80px rgba(10, 26, 68, 0.28)"
     DRAWER = "-12px 0 36px -4px rgba(10, 26, 68, 0.16)"
     POPOVER = "0 12px 32px -4px rgba(15, 27, 61, 0.12)"
+    AVATAR = "0 2px 6px rgba(29, 78, 216, 0.25)"
+    MODAL = "0 20px 25px -5px rgba(0, 0, 0, 0.1)"

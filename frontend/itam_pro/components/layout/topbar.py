@@ -8,7 +8,7 @@ import reflex as rx
 
 from itam_pro.states.auth_state import AuthState
 from itam_pro.states.nav_state import NavState
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Size
 
 
 def _mobile_menu_trigger() -> rx.Component:
@@ -268,7 +268,7 @@ def _profile_menu() -> rx.Component:
                         style=rx.Style(
                             {
                                 "background": Color.GRADIENT_BLUE,
-                                "box_shadow": "0 2px 6px rgba(29, 78, 216, 0.25)",
+                                "box_shadow": Shadow.AVATAR,
                             }
                         ),
                     ),
@@ -366,7 +366,7 @@ def topbar(
             {
                 "width": "100%",
                 "height": Size.TOPBAR_HEIGHT,
-                "background_color": "rgba(255, 255, 255, 0.88)",
+                "background_color": Color.TOPBAR_BG,
                 "backdrop_filter": "blur(12px)",
                 "-webkit-backdrop-filter": "blur(12px)",
                 "border_bottom": f"1px solid {Color.BORDER}",

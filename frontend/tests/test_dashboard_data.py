@@ -119,13 +119,22 @@ def test_dashboard_mock_integration_with_service() -> None:
 @pytest.mark.anyio
 async def test_asset_state_url_parametric_query() -> None:
     """6. Uji penanganan argumen query URL ?status dan ?kategori pada AssetState."""
+    mock_router = MagicMock()
+    parent_state = MagicMock()
+    parent_state.parent_state = None
+    parent_state.dirty_substates = set()
+    parent_state.router = mock_router
+    parent_state._router = mock_router
+
     state = AssetState()
-    state.router = MagicMock()
-    page: Any = state.router.page
+    object.__setattr__(state, "parent_state", parent_state)
+    page: Any = mock_router.page
 
     # Simulasi ?status=Digunakan
     page.params = {"status": "Digunakan"}
     page.path = "/assets"
+    mock_router.url.query_parameters = {"status": "Digunakan"}
+    mock_router.url.path = "/assets"
     await state.load_view_data()
 
     assert state.status_filter == "Digunakan"
@@ -135,6 +144,8 @@ async def test_asset_state_url_parametric_query() -> None:
     # Simulasi ?kategori=Monitor
     page.params = {"kategori": "Monitor"}
     page.path = "/assets"
+    mock_router.url.query_parameters = {"kategori": "Monitor"}
+    mock_router.url.path = "/assets"
     await state.load_view_data()
 
     assert state.status_filter == ""

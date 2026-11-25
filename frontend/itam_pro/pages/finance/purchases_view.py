@@ -785,7 +785,8 @@ def purchases_view_page() -> rx.Component:
             _pay_bill_dialog(),
             spacing="5",
             width="100%",
-        )
+        ),
+        breadcrumb=("Finance", "Pembelian & Invoice"),
     )
 
 
