@@ -24,6 +24,10 @@ RenderType = Literal[
     "text",
     "bold",
     "bold_blue",
+    "currency",
+    "currency_bold",
+    "number",
+    "link_icon",
     "ip_address",
     "name_with_sub",
     "chip",
@@ -42,6 +46,7 @@ class ColumnDef(TypedDict, total=False):
     header: Required[Any]
     width: str
     min_width: str
+    align: Literal["left", "center", "right"]
     render_type: RenderType
     sub_key: str
     sticky_left: bool
@@ -288,6 +293,44 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
             letter_spacing=rx.cond(has_sec, "0.1em", "normal"),
         )
 
+    if rtype in ("currency", "currency_bold", "number"):
+        return rx.text(
+            row[key],
+            title=row[key],
+            font_size=FontSize.SM,
+            font_weight=FontWeight.BOLD if rtype == "currency_bold" else FontWeight.MEDIUM,
+            color=Color.TEXT,
+            style=rx.Style(
+                {
+                    "text_align": "right",
+                    "font_variant_numeric": "tabular-nums",
+                    "white_space": "nowrap",
+                    "display": "block",
+                    "width": "100%",
+                }
+            ),
+        )
+
+    if rtype == "link_icon":
+        return rx.cond(
+            row[key] != "",
+            rx.link(
+                rx.center(
+                    rx.icon(tag="external-link", size=14, color=Color.ACCENT),
+                    width="28px",
+                    height="28px",
+                    border_radius=Radius.SM,
+                    background_color=Color.INFO_BG,
+                    border=f"1px solid {Color.BLUE_BORDER}",
+                ),
+                href=row[key],
+                is_external=True,
+                on_click=rx.stop_propagation,
+                title=row[key],
+            ),
+            rx.text("—", font_size=FontSize.SM, color=Color.MUTED),
+        )
+
     return rx.text(
         row[key],
         title=row[key],
@@ -314,13 +357,14 @@ def _header_cell(
     is_sortable = bool(col.get("sortable", False)) and (on_sort is not None)
     s_key = str(col.get("sort_key", key))
     min_w = col.get("min_width", col.get("width", "110px"))
+    col_align = str(col.get("align", "left"))
 
     header_style: dict[str, Any] = {
         "width": col.get("width", "auto"),
         "min_width": min_w,
         "height": Size.TABLE_HEADER_H,
         "padding": "0 16px",
-        "text_align": "left",
+        "text_align": col_align,
         "font_size": FontSize.XS,
         "font_weight": FontWeight.BOLD,
         "color": Color.MUTED,
@@ -611,6 +655,7 @@ def reusable_data_table(
             "max_width": col.get("width", "260px"),
             "min_height": Size.TABLE_ROW_H,
             "padding": "8px 16px",
+            "text_align": str(col.get("align", "left")),
             "border_bottom": f"1px solid {Color.DIVIDER}",
             "overflow": "hidden",
             "vertical_align": "middle",
@@ -641,11 +686,14 @@ def reusable_data_table(
 
     def _render_row(row: dict[str, Any]) -> rx.Component:
         row_id = row[id_key]
-        is_highlighted = (
-            (selected_ids.contains(row_id) | (active_row_id == row_id))
-            if selected_ids is not None and active_row_id is not None
-            else (active_row_id == row_id if active_row_id is not None else False)
-        )
+        if selected_ids is not None and active_row_id is not None:
+            is_highlighted: Any = selected_ids.contains(row_id) | (active_row_id == row_id)
+        elif selected_ids is not None:
+            is_highlighted = selected_ids.contains(row_id)
+        elif active_row_id is not None:
+            is_highlighted = active_row_id == row_id
+        else:
+            is_highlighted = False
         if danger_row_key is not None:
             is_danger_row: Any = row[danger_row_key] == danger_row_value
         elif has_ip_col:

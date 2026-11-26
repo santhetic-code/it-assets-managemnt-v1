@@ -3,6 +3,8 @@ State Manajemen Finansial (Pembelian, Invoice, Tagihan Berulang) ITAM Pro (Tahap
 Dioptimalkan dengan @rx.var(cache=True), filter guards, dan parser nominal Rupiah yang aman.
 """
 
+import csv
+import io
 import math
 import re
 from datetime import date
@@ -11,7 +13,13 @@ from typing import Any
 import reflex as rx
 
 from itam_pro.services.api_client import api_client
+from itam_pro.services.mock.finance_mock import (
+    action_create_purchase,
+    action_import_purchases,
+    action_jadikan_aset,
+)
 from itam_pro.services.router_utils import get_current_params
+from itam_pro.services.validators import format_rupiah, format_tanggal
 
 VALID_TABS = ("pembelian", "invoice", "tagihan")
 TAB_LABELS = {"pembelian": "pembelian", "invoice": "invoice", "tagihan": "tagihan"}
@@ -47,21 +55,35 @@ class FinanceState(rx.State):
     page_size: int = 10
     search_query: str = ""
 
-    # Tab 1: Rekap Pembelian
+    # Tab 1: Rekap Pembelian — Filter, Kolom Opsional & Seleksi Massal
     purchases: list[dict[str, Any]] = []
     status_filter: str = "Semua"
     status_options: list[str] = [
         "Semua",
         "Belum didaftarkan",
-        "Sebagian",
         "Terdaftar",
-        "Bukan aset",
+        "Habis pakai · tidak perlu aset",
+    ]
+    marketplace_filter: str = "Semua"
+    marketplace_options: list[str] = ["Semua", "Shopee", "Tokopedia", "Offline", "Lainnya"]
+    period_filter: str = "Semua"
+    period_options: list[str] = [
+        "Semua",
+        "Bulan ini",
+        "3 bulan terakhir",
+        "6 bulan terakhir",
+        "Tahun ini",
     ]
     summary: dict[str, Any] = {
         "total_belanja": 0,
         "belanja_terbesar": 0,
         "belum_dicatat": 0,
+        "total_all_purchases": 0,
+        "nearest_bill_name": "—",
+        "nearest_bill_note": "",
     }
+    hidden_columns: list[str] = ["link_marketplace", "dibeli_oleh"]
+    selected_purchase_ids: list[str] = []
 
     # Tab 2: Invoice (arsip bukti pembayaran)
     invoices: list[dict[str, Any]] = []
@@ -130,6 +152,33 @@ class FinanceState(rx.State):
         "Gudang",
     ]
 
+    # Prefill & Mode Massal Modal Daftarkan Aset
+    bulk_target_ids: list[str] = []
+    asset_form_nama: str = ""
+    asset_form_harga_display: str = ""
+    asset_form_tanggal_display: str = ""
+
+    # Modal + Catat Pembelian
+    is_add_purchase_modal_open: bool = False
+    new_purchase_tanggal: str = ""
+    new_purchase_produk: str = ""
+    new_purchase_harga: str = ""
+    new_purchase_pcs: str = "1"
+    new_purchase_toko: str = ""
+    new_purchase_link: str = ""
+    new_purchase_pembeli: str = "Ridho"
+    new_purchase_status: str = "Belum didaftarkan"
+    new_purchase_error: str = ""
+
+    # Modal Import CSV Pembelian
+    is_import_modal_open: bool = False
+    import_csv_text: str = (
+        "Tanggal,Produk,Harga,Pcs,Toko,Link Marketplace,Dibeli Oleh\n"
+        "2026-11-20,SSD NVMe 512GB,650000,1,Shopee,https://shopee.co.id/ssd-nvme,Ridho"
+    )
+    import_error: str = ""
+    import_success: str = ""
+
     # --- COMPUTED PROPERTIES ---
 
     @rx.var(cache=True)
@@ -165,7 +214,7 @@ class FinanceState(rx.State):
             return f"Menampilkan 0 dari 0 {label}"
         start = (self.page - 1) * self.page_size + 1
         end = min(self.total_items, self.page * self.page_size)
-        return f"Menampilkan {start}-{end} dari {self.total_items} {label}"
+        return f"Menampilkan {start}–{end} dari {self.total_items} {label}"
 
     @rx.var(cache=True)
     def result_count_label(self) -> str:
@@ -173,22 +222,69 @@ class FinanceState(rx.State):
 
     @rx.var(cache=True)
     def total_belanja_display(self) -> str:
-        val = _parse_int_safe(self.summary.get("total_belanja", 0))
-        return f"Rp {val:,}".replace(",", ".")
+        return format_rupiah(_parse_int_safe(self.summary.get("total_belanja", 0)))
 
     @rx.var(cache=True)
     def belanja_terbesar_display(self) -> str:
-        val = _parse_int_safe(self.summary.get("belanja_terbesar", 0))
-        return f"Rp {val:,}".replace(",", ".")
+        return format_rupiah(_parse_int_safe(self.summary.get("belanja_terbesar", 0)))
 
     @rx.var(cache=True)
     def belum_dicatat_count(self) -> int:
         return _parse_int_safe(self.summary.get("belum_dicatat", 0))
 
     @rx.var(cache=True)
+    def filtered_purchases_note(self) -> str:
+        return f"{self.total_items} pembelian"
+
+    @rx.var(cache=True)
+    def belum_dicatat_note(self) -> str:
+        total_all = _parse_int_safe(
+            self.summary.get("total_all_purchases", self.total_items)
+        )
+        return f"dari {total_all} pembelian"
+
+    @rx.var(cache=True)
+    def nearest_bill_name(self) -> str:
+        return str(self.summary.get("nearest_bill_name") or "—")
+
+    @rx.var(cache=True)
+    def nearest_bill_note(self) -> str:
+        return str(self.summary.get("nearest_bill_note") or "")
+
+    @rx.var(cache=True)
     def bills_perlu_dibayar_display(self) -> str:
-        val = _parse_int_safe(self.bills_summary.get("perlu_dibayar_30d", 0))
-        return f"Rp{val:,}".replace(",", ".")
+        return format_rupiah(_parse_int_safe(self.bills_summary.get("perlu_dibayar_30d", 0)))
+
+    @rx.var(cache=True)
+    def selected_purchases_count(self) -> int:
+        return len(self.selected_purchase_ids)
+
+    @rx.var(cache=True)
+    def has_selected_purchases(self) -> bool:
+        return len(self.selected_purchase_ids) > 0
+
+    @rx.var(cache=True)
+    def selected_purchases_label(self) -> str:
+        return f"{len(self.selected_purchase_ids)} pembelian dipilih"
+
+    @rx.var(cache=True)
+    def all_purchases_selected(self) -> bool:
+        if not self.purchases or not self.selected_purchase_ids:
+            return False
+        selected = set(self.selected_purchase_ids)
+        return all(str(p.get("id_pembelian", "")) in selected for p in self.purchases)
+
+    @rx.var(cache=True)
+    def is_bulk_register_mode(self) -> bool:
+        return len(self.bulk_target_ids) > 1
+
+    @rx.var(cache=True)
+    def is_link_col_visible(self) -> bool:
+        return "link_marketplace" not in self.hidden_columns
+
+    @rx.var(cache=True)
+    def is_buyer_col_visible(self) -> bool:
+        return "dibeli_oleh" not in self.hidden_columns
 
     # --- FETCH ---
 
@@ -214,7 +310,12 @@ class FinanceState(rx.State):
 
     @rx.event
     async def fetch_purchases(self) -> None:
-        filters = {"search": self.search_query, "aset_status": self.status_filter}
+        filters = {
+            "search": self.search_query,
+            "aset_status": self.status_filter,
+            "marketplace": self.marketplace_filter,
+            "periode": self.period_filter,
+        }
         res = await api_client.get_purchases(filters, self.page, self.page_size)
         self.purchases = res.get("items", [])
         self.total_items = _parse_int_safe(res.get("total", 0))
@@ -224,6 +325,11 @@ class FinanceState(rx.State):
             "total_belanja": _parse_int_safe(raw_summary.get("total_belanja", 0)),
             "belanja_terbesar": _parse_int_safe(raw_summary.get("belanja_terbesar", 0)),
             "belum_dicatat": _parse_int_safe(raw_summary.get("belum_dicatat", 0)),
+            "total_all_purchases": _parse_int_safe(
+                raw_summary.get("total_all_purchases", self.total_items)
+            ),
+            "nearest_bill_name": str(raw_summary.get("nearest_bill_name") or "—"),
+            "nearest_bill_note": str(raw_summary.get("nearest_bill_note") or ""),
         }
 
     @rx.event
@@ -284,6 +390,22 @@ class FinanceState(rx.State):
         await self.fetch_purchases()
 
     @rx.event
+    async def set_marketplace_filter(self, val: str) -> None:
+        if self.marketplace_filter == val:
+            return
+        self.marketplace_filter = val
+        self.page = 1
+        await self.fetch_purchases()
+
+    @rx.event
+    async def set_period_filter(self, val: str) -> None:
+        if self.period_filter == val:
+            return
+        self.period_filter = val
+        self.page = 1
+        await self.fetch_purchases()
+
+    @rx.event
     async def set_invoice_link_filter(self, val: str) -> None:
         if self.invoice_link_filter == val:
             return
@@ -303,15 +425,76 @@ class FinanceState(rx.State):
     async def reset_filters(self) -> None:
         self.search_query = ""
         self.status_filter = "Semua"
+        self.marketplace_filter = "Semua"
+        self.period_filter = "Semua"
         self.invoice_link_filter = "Semua"
         self.bill_status_filter = "Semua"
         self.page = 1
         await self._refetch()
 
+    @rx.event
+    def toggle_column_visibility(self, col_key: str, _checked: Any = None) -> None:
+        if col_key in self.hidden_columns:
+            self.hidden_columns = [k for k in self.hidden_columns if k != col_key]
+        else:
+            self.hidden_columns = [*self.hidden_columns, col_key]
+
+    @rx.event
+    def toggle_purchase_selection(self, purchase_id: str, _checked: Any = None) -> None:
+        if purchase_id in self.selected_purchase_ids:
+            self.selected_purchase_ids = [
+                x for x in self.selected_purchase_ids if x != purchase_id
+            ]
+        else:
+            self.selected_purchase_ids = [*self.selected_purchase_ids, purchase_id]
+
+    @rx.event
+    def toggle_select_all_purchases(self, _checked: Any = None) -> None:
+        page_ids = [
+            str(p.get("id_pembelian", "")) for p in self.purchases if p.get("id_pembelian")
+        ]
+        if self.all_purchases_selected:
+            self.selected_purchase_ids = [
+                x for x in self.selected_purchase_ids if x not in page_ids
+            ]
+        else:
+            merged = list(self.selected_purchase_ids)
+            for pid in page_ids:
+                if pid not in merged:
+                    merged.append(pid)
+            self.selected_purchase_ids = merged
+
+    @rx.event
+    def clear_purchase_selection(self) -> None:
+        self.selected_purchase_ids = []
+
     # --- MODAL DAFTARKAN JADI ASET (SEKSI 10) ---
+
+    def _guess_kategori(self, produk: str) -> str:
+        low = produk.lower()
+        if "ram" in low:
+            return "RAM"
+        if "ssd" in low:
+            return "SSD"
+        if "hdd" in low:
+            return "HDD"
+        if "monitor" in low:
+            return "Monitor"
+        if "ups" in low:
+            return "UPS"
+        if "cctv" in low:
+            return "CCTV"
+        if "switch" in low or "router" in low:
+            return "Router/Switch"
+        if "keyboard" in low:
+            return "Keyboard"
+        if "mouse" in low:
+            return "Mouse"
+        return "PC"
 
     @rx.event
     def open_jadikan_aset_modal(self, purchase_id: str) -> None:
+        self.bulk_target_ids = [purchase_id]
         self.selected_purchase_id = purchase_id
         self.asset_form_error = ""
         for p in self.purchases:
@@ -321,23 +504,54 @@ class FinanceState(rx.State):
                 sisa = max(1, pcs_val - reg_cnt)
                 self.selected_purchase_max_qty = sisa
                 self.asset_form_qty = str(sisa)
-                self.selected_purchase_title = (
-                    f"{p.get('produk', '')} — Maks. {sisa} dari {pcs_val} unit"
+                self.asset_form_nama = str(p.get("produk", ""))
+                self.asset_form_harga_display = str(
+                    p.get("harga_display") or format_rupiah(p.get("harga", 0))
                 )
-                prod_low = str(p.get("produk", "")).lower()
-                if "ram" in prod_low:
-                    self.asset_form_kategori = "RAM"
-                elif "ssd" in prod_low:
-                    self.asset_form_kategori = "SSD"
-                elif "hdd" in prod_low:
-                    self.asset_form_kategori = "HDD"
-                elif "monitor" in prod_low:
-                    self.asset_form_kategori = "Monitor"
-                elif "ups" in prod_low:
-                    self.asset_form_kategori = "UPS"
-                else:
-                    self.asset_form_kategori = "PC"
+                self.asset_form_tanggal_display = str(
+                    p.get("tanggal_display") or format_tanggal(p.get("tanggal", ""))
+                )
+                self.selected_purchase_title = (
+                    f"{purchase_id} · Maks. {sisa} dari {pcs_val} unit"
+                )
+                self.asset_form_kategori = self._guess_kategori(self.asset_form_nama)
                 break
+        self.asset_form_lokasi = (
+            "Gudang"
+            if self.asset_form_kategori in ("RAM", "SSD", "HDD", "VGA", "PSU")
+            else "Head Office (Office Blok 14)"
+        )
+        self.is_asset_modal_open = True
+
+    @rx.event
+    def open_bulk_asset_modal(self) -> None:
+        if not self.selected_purchase_ids:
+            return
+        if len(self.selected_purchase_ids) == 1:
+            self.open_jadikan_aset_modal(self.selected_purchase_ids[0])
+            return
+        self.bulk_target_ids = list(self.selected_purchase_ids)
+        self.selected_purchase_id = self.selected_purchase_ids[0]
+        self.asset_form_error = ""
+        self.asset_form_nama = f"{len(self.bulk_target_ids)} pembelian terpilih"
+        selected_rows = [
+            p for p in self.purchases if p.get("id_pembelian") in self.bulk_target_ids
+        ]
+        total_val = sum(int(p.get("total", 0) or 0) for p in selected_rows)
+        self.asset_form_harga_display = format_rupiah(total_val)
+        self.asset_form_tanggal_display = (
+            str(selected_rows[0].get("tanggal_display", "—")) if selected_rows else "—"
+        )
+        self.selected_purchase_title = (
+            f"Daftarkan {len(self.bulk_target_ids)} pembelian sekaligus (purchase_id tertaut)"
+        )
+        self.selected_purchase_max_qty = 999
+        self.asset_form_qty = "1"
+        self.asset_form_kategori = (
+            self._guess_kategori(str(selected_rows[0].get("produk", "")))
+            if selected_rows
+            else "PC"
+        )
         self.asset_form_lokasi = "Head Office (Office Blok 14)"
         self.is_asset_modal_open = True
 
@@ -348,6 +562,10 @@ class FinanceState(rx.State):
         self.selected_purchase_id = ""
         self.selected_purchase_title = ""
         self.asset_form_error = ""
+
+    @rx.event
+    def set_asset_form_nama(self, val: str) -> None:
+        self.asset_form_nama = val
 
     @rx.event
     def set_asset_form_kategori(self, val: str) -> None:
@@ -369,36 +587,207 @@ class FinanceState(rx.State):
 
     @rx.event
     async def submit_bukan_aset(self) -> None:
-        await api_client.convert_purchase_to_asset(
-            self.selected_purchase_id,
-            {"bukan_aset": True, "kategori": "Bukan aset"},
+        targets = self.bulk_target_ids or (
+            [self.selected_purchase_id] if self.selected_purchase_id else []
         )
+        for pid in targets:
+            await api_client.convert_purchase_to_asset(
+                pid,
+                {"bukan_aset": True, "kategori": "Bukan aset"},
+            )
         self.is_asset_modal_open = False
+        self.bulk_target_ids = []
+        self.selected_purchase_ids = []
         await self.fetch_purchases()
 
     @rx.event
     async def submit_jadikan_aset(self) -> None:
-        try:
-            qty_int = int(self.asset_form_qty.strip() or "1")
-        except ValueError:
-            self.asset_form_error = "Jumlah unit harus berupa angka bulat."
-            return
-        if qty_int < 1 or qty_int > self.selected_purchase_max_qty:
-            self.asset_form_error = (
-                f"Jumlah unit harus antara 1 sampai {self.selected_purchase_max_qty}."
+        targets = self.bulk_target_ids or (
+            [self.selected_purchase_id] if self.selected_purchase_id else []
+        )
+        if len(targets) > 1:
+            for pid in targets:
+                action_jadikan_aset(
+                    id_pembelian=pid,
+                    kategori=self.asset_form_kategori,
+                    kepemilikan="XML",
+                    lokasi=self.asset_form_lokasi,
+                    garansi_sampai=self.asset_form_garansi.strip() or None,
+                )
+        else:
+            try:
+                qty_int = int(self.asset_form_qty.strip() or "1")
+            except ValueError:
+                self.asset_form_error = "Jumlah unit harus berupa angka bulat."
+                return
+            if qty_int < 1 or qty_int > self.selected_purchase_max_qty:
+                self.asset_form_error = (
+                    f"Jumlah unit harus antara 1 sampai {self.selected_purchase_max_qty}."
+                )
+                return
+            action_jadikan_aset(
+                id_pembelian=self.selected_purchase_id,
+                kategori=self.asset_form_kategori,
+                kepemilikan="XML",
+                lokasi=self.asset_form_lokasi,
+                jumlah_daftar=qty_int,
+                nama_aset=self.asset_form_nama.strip() or None,
+                garansi_sampai=self.asset_form_garansi.strip() or None,
             )
-            return
 
-        payload: dict[str, Any] = {
-            "kategori": self.asset_form_kategori,
-            "kepemilikan": "XML",
-            "lokasi": self.asset_form_lokasi,
-            "jumlah": qty_int,
-            "garansi_sampai": self.asset_form_garansi.strip() or None,
-        }
-        await api_client.convert_purchase_to_asset(self.selected_purchase_id, payload)
         self.is_asset_modal_open = False
+        self.bulk_target_ids = []
+        self.selected_purchase_ids = []
         await self.fetch_purchases()
+
+    # --- MODAL CATAT PEMBELIAN, IMPORT CSV, & EXPORT CSV ---
+
+    @rx.event
+    def open_add_purchase_modal(self) -> None:
+        self.new_purchase_tanggal = date.today().isoformat()
+        self.new_purchase_produk = ""
+        self.new_purchase_harga = ""
+        self.new_purchase_pcs = "1"
+        self.new_purchase_toko = ""
+        self.new_purchase_link = ""
+        self.new_purchase_pembeli = "Ridho"
+        self.new_purchase_status = "Belum didaftarkan"
+        self.new_purchase_error = ""
+        self.is_add_purchase_modal_open = True
+
+    @rx.event
+    def close_add_purchase_modal(self) -> None:
+        self.is_add_purchase_modal_open = False
+        self.new_purchase_error = ""
+
+    @rx.event
+    def set_new_purchase_tanggal(self, val: str) -> None:
+        self.new_purchase_tanggal = val
+
+    @rx.event
+    def set_new_purchase_produk(self, val: str) -> None:
+        self.new_purchase_produk = val
+
+    @rx.event
+    def set_new_purchase_harga(self, val: str) -> None:
+        self.new_purchase_harga = val
+
+    @rx.event
+    def set_new_purchase_pcs(self, val: str) -> None:
+        self.new_purchase_pcs = val
+
+    @rx.event
+    def set_new_purchase_toko(self, val: str) -> None:
+        self.new_purchase_toko = val
+
+    @rx.event
+    def set_new_purchase_link(self, val: str) -> None:
+        self.new_purchase_link = val
+
+    @rx.event
+    def set_new_purchase_pembeli(self, val: str) -> None:
+        self.new_purchase_pembeli = val
+
+    @rx.event
+    def set_new_purchase_status(self, val: str) -> None:
+        self.new_purchase_status = val
+
+    @rx.event
+    async def submit_new_purchase(self) -> None:
+        self.new_purchase_error = ""
+        harga = _parse_int_safe(self.new_purchase_harga)
+        pcs = _parse_int_safe(self.new_purchase_pcs)
+        if not self.new_purchase_produk.strip():
+            self.new_purchase_error = "Nama produk wajib diisi."
+            return
+        if harga <= 0 or pcs < 1:
+            self.new_purchase_error = "Harga satuan (> 0) dan Pcs (>= 1) wajib valid."
+            return
+        try:
+            action_create_purchase(
+                {
+                    "tanggal": self.new_purchase_tanggal or date.today().isoformat(),
+                    "produk": self.new_purchase_produk.strip(),
+                    "harga": harga,
+                    "pcs": pcs,
+                    "nama_toko": self.new_purchase_toko.strip() or "Offline",
+                    "link_marketplace": self.new_purchase_link.strip(),
+                    "dibeli_oleh": self.new_purchase_pembeli.strip() or "Ridho",
+                    "aset_status": (
+                        "Bukan aset"
+                        if self.new_purchase_status == "Habis pakai · tidak perlu aset"
+                        else "Belum didaftarkan"
+                    ),
+                }
+            )
+        except ValueError as exc:
+            self.new_purchase_error = str(exc)
+            return
+        self.is_add_purchase_modal_open = False
+        self.page = 1
+        await self.fetch_purchases()
+
+    @rx.event
+    def open_import_modal(self) -> None:
+        self.import_error = ""
+        self.import_success = ""
+        self.is_import_modal_open = True
+
+    @rx.event
+    def close_import_modal(self) -> None:
+        self.is_import_modal_open = False
+
+    @rx.event
+    def set_import_csv_text(self, val: str) -> None:
+        self.import_csv_text = val
+
+    @rx.event
+    async def submit_import_csv(self) -> None:
+        self.import_error = ""
+        self.import_success = ""
+        imported, errs = action_import_purchases(self.import_csv_text)
+        if errs:
+            self.import_error = " · ".join(errs[:3])
+        if imported > 0:
+            self.import_success = f"{imported} pembelian berhasil diimpor."
+            self.page = 1
+            await self.fetch_purchases()
+            if not errs:
+                self.is_import_modal_open = False
+
+    @rx.event
+    def export_purchases_csv(self) -> Any:
+        """Unduh CSV pembelian sesuai filter halaman saat ini."""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(
+            [
+                "Tanggal",
+                "Produk",
+                "Harga Satuan",
+                "Pcs",
+                "Total",
+                "Toko",
+                "Link Marketplace",
+                "Dibeli Oleh",
+                "Status Aset",
+            ]
+        )
+        for p in self.purchases:
+            writer.writerow(
+                [
+                    p.get("tanggal_display", p.get("tanggal", "")),
+                    p.get("produk", ""),
+                    p.get("harga_display", p.get("harga", 0)),
+                    p.get("pcs", 1),
+                    p.get("total_display", p.get("total", 0)),
+                    p.get("toko_chip", p.get("nama_toko", "")),
+                    p.get("link_marketplace", ""),
+                    p.get("dibeli_oleh", ""),
+                    p.get("aset_status_label", p.get("aset_status", "")),
+                ]
+            )
+        return rx.download(data=buf.getvalue(), filename="Rekap_Pembelian_ITAM_Pro.csv")
 
     # --- MODAL TANDAI DIBAYAR ---
 

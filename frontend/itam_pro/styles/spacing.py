@@ -74,3 +74,4 @@ class Shadow:
     POPOVER = "0 12px 32px -4px rgba(15, 27, 61, 0.12)"
     AVATAR = "0 2px 6px rgba(29, 78, 216, 0.25)"
     MODAL = "0 20px 25px -5px rgba(0, 0, 0, 0.1)"
+    CARD_HOVER = "0 2px 8px rgba(0, 0, 0, 0.05)"

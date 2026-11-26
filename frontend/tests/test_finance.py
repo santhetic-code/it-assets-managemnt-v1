@@ -25,6 +25,12 @@ from itam_pro.services.mock.finance_mock import (
 )
 from itam_pro.services.mock.seed import MOCK_ASSETS
 from itam_pro.services.recurrence import add_months, calculate_bill_status, next_due
+from itam_pro.services.validators import (
+    format_rupiah as format_rupiah_id,
+)
+from itam_pro.services.validators import (
+    format_tanggal,
+)
 
 
 def test_parse_marketplace_domain() -> None:
@@ -236,3 +242,32 @@ def test_query_invoices_summary_and_filters() -> None:
     assert res["items"][0]["total_display"] == "Rp1.250.000"  # terbaru: NOTA-0187
     assert query_invoices({"tautan": "Belum ditautkan"})["total"] == 1
     assert query_invoices({"search": "hosting"})["total"] == 1
+
+
+def test_formatters_rupiah_dan_tanggal() -> None:
+    """11. Uji helper format_rupiah dan format_tanggal sesuai standar UI Indonesia."""
+    assert format_rupiah_id(1533700) == "Rp 1.533.700"
+    assert format_rupiah_id(711688) == "Rp 711.688"
+    assert format_rupiah_id(0) == "Rp 0"
+    assert format_tanggal("2026-11-20") == "20 Nov 2026"
+    assert format_tanggal("2026-06-02") == "2 Jun 2026"
+    assert format_tanggal("") == "—"
+
+
+def test_query_purchases_formatted_fields_and_marketplace_filter() -> None:
+    """12. Uji kolom terformat, filter marketplace, dan 3 status aset di query_purchases."""
+    res = query_purchases(filters={}, page=1, page_size=10)
+    first = res["items"][0]
+    assert first["harga_display"].startswith("Rp ")
+    assert first["total_display"].startswith("Rp ")
+    assert "-" not in first["tanggal_display"]
+    assert first["aset_status_variant"] in ("warning", "success", "neutral")
+    assert "nearest_bill_name" in res["summary"]
+
+    shopee = query_purchases(filters={"marketplace": "Shopee"}, page=1, page_size=10)
+    assert all(item["toko_chip"] == "Shopee" for item in shopee["items"])
+
+    habis = query_purchases(
+        filters={"aset_status": "Habis pakai · tidak perlu aset"}, page=1, page_size=10
+    )
+    assert all(item["aset_status_variant"] == "neutral" for item in habis["items"])
