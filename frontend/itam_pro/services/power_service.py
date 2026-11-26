@@ -1,5 +1,6 @@
 """Layanan kalkulasi konsumsi daya (Thermal Design Power / TDP) server ITAM Pro."""
 
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -538,6 +539,94 @@ def energi_kwh_bulan(
     return round((total_w * total_hours) / 1000.0, 1)
 
 
+def calculate_ups_load_pct(tdp_w: float, ups_capacity_watt: float) -> float:
+    """Hitung persentase beban UPS: (TDP server ÷ kapasitas Watt UPS) × 100."""
+    if ups_capacity_watt <= 0 or tdp_w <= 0:
+        return 0.0
+    return round((float(tdp_w) / float(ups_capacity_watt)) * 100.0, 1)
+
+
+def classify_tdp_psu_status(tdp_w: int, psu_min_w: int) -> dict[str, Any]:
+    """Klasifikasi status daya dari rasio TDP / PSU minimum:
+    Aman (<70%), Waspada (>=70%), Kritis (>=90%).
+    """
+    if psu_min_w <= 0 or tdp_w <= 0:
+        return {
+            "ratio_pct": 0,
+            "bar_width": "0%",
+            "status": "Aman",
+            "label": "Aman",
+            "variant": "success",
+        }
+    ratio = round((tdp_w / psu_min_w) * 100)
+    clamped = max(6, min(100, ratio))
+    if ratio >= 90:
+        return {
+            "ratio_pct": ratio,
+            "bar_width": f"{clamped}%",
+            "status": "Kritis",
+            "label": f"Kritis {ratio}%",
+            "variant": "danger",
+        }
+    if ratio >= 70:
+        return {
+            "ratio_pct": ratio,
+            "bar_width": f"{clamped}%",
+            "status": "Waspada",
+            "label": f"Waspada {ratio}%",
+            "variant": "warning",
+        }
+    return {
+        "ratio_pct": ratio,
+        "bar_width": f"{clamped}%",
+        "status": "Aman",
+        "label": "Aman",
+        "variant": "success",
+    }
+
+
+def _compact_cpu(cpu: str) -> str:
+    """Ringkas nama CPU untuk tampilan tabel (nama penuh tampil di tooltip/drawer)."""
+    if not cpu or cpu == "—":
+        return "—"
+    cleaned = re.sub(r"\b(Intel|AMD)\s+", "", cpu, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*\d+[,.]\d+\s*GHz.*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+Desktop\b", "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned or cpu
+
+
+def _compact_gpu(vga: str) -> str:
+    """Ringkas nama GPU untuk tampilan tabel (nama penuh tampil di tooltip/drawer)."""
+    if not vga or vga == "—":
+        return "—"
+    cleaned = re.sub(r"\bIntel\s+UHD\s+Graphics\s*", "UHD ", vga, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bNVIDIA\s+GeForce\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+Desktop\b", "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned or vga
+
+
+def _compact_ram_storage(ram: str, hdd_ssd: str) -> str:
+    """Ringkas konfigurasi RAM & Penyimpanan menjadi satu kolom padat."""
+    ram_short = (
+        re.sub(r"\s+dengan\s+kilat\s+LED", "", ram, flags=re.IGNORECASE)
+        .replace("x ", "× ")
+        .strip()
+        if ram and ram != "—"
+        else ""
+    )
+    disk_short = ""
+    if hdd_ssd and hdd_ssd != "—":
+        disk_short = (
+            hdd_ssd.replace("x SSD SATA", " SATA")
+            .replace("x SSD M.2", " M.2")
+            .replace("x HDD SATA", " HDD")
+            .replace(", ", " + ")
+            .strip()
+        )
+    parts = [p for p in (ram_short, disk_short) if p]
+    return " · ".join(parts) if parts else "—"
+
+
 def _build_ups_links_and_items(
     all_assets: list[dict[str, Any]],
     asmp: dict[str, Any],
@@ -570,7 +659,6 @@ def _build_ups_links_and_items(
         raw_target = str(attrs.get("beban_perangkat") or a.get("digunakan_oleh") or "").upper()
         norm_target = (
             raw_target.replace("OTOMAX", "OTO")
-            .replace("MENYUPLAI SERVER ", "")
             .replace("MENYUPLAI ", "")
             .strip()
         )
@@ -598,7 +686,7 @@ def _build_ups_links_and_items(
             eff_s = w_ukur if w_ukur > 0 else round(tdp_s * (faktor_beban / 100.0))
             load_w += eff_s
 
-        util_pct = round((load_w / eff_cap_w) * 100.0, 1) if eff_cap_w > 0 else 0.0
+        util_pct = calculate_ups_load_pct(load_w, eff_cap_w)
         if util_pct <= 0:
             st_util = "Tanpa Beban"
             st_var = "neutral"
@@ -743,6 +831,11 @@ def enrich_server_power_row(
     u_id = str(u_info.get("id_aset", ""))
     u_pct = float(u_info.get("utilisasi_pct", 0.0))
 
+    tdp_psu_info = classify_tdp_psu_status(tdp_w, psu_min_w)
+    cpu_short = _compact_cpu(cpu)
+    vga_short = _compact_gpu(vga)
+    ram_storage_short = _compact_ram_storage(ram, hdd_ssd)
+
     return {
         "id": id_aset,
         "id_aset": id_aset,
@@ -750,10 +843,13 @@ def enrich_server_power_row(
         "sub_label": f"{id_aset} · {grup_server}",
         "grup_server": grup_server,
         "cpu": cpu,
+        "cpu_short": cpu_short,
         "cpu_brand": cpu_brand,
         "vga": vga,
+        "vga_short": vga_short,
         "ram": ram,
         "hdd_ssd": hdd_ssd,
+        "ram_storage_short": ram_storage_short,
         "spesifikasi_ringkas": spesifikasi_ringkas,
         "tdp_total_w": tdp_w,
         "beban_efektif_w": beban_efektif_w,
@@ -767,6 +863,11 @@ def enrich_server_power_row(
         "psu_terpasang_w": psu_terpasang_w,
         "status_psu_terpasang": psu_status,
         "status_psu_variant": psu_variant,
+        "tdp_psu_ratio_pct": tdp_psu_info["ratio_pct"],
+        "tdp_psu_bar_width": tdp_psu_info["bar_width"],
+        "power_status": tdp_psu_info["status"],
+        "power_status_label": tdp_psu_info["label"],
+        "power_status_variant": tdp_psu_info["variant"],
         "tdp_display": f"{beban_efektif_w} W",
         "psu_min_display": f"{psu_min_w} W",
         "psu_rek_display": f"{psu_rek_w} W",
@@ -784,6 +885,8 @@ def enrich_server_power_row(
         "ups_status": str(u_info.get("status_utilisasi") or u_info.get("status", "—")),
         "ups_source_label": str(u_info.get("sumber_kapasitas", "")),
         "ups_display": f"{u_id} · {round(u_pct)}%" if u_id else "—",
+        "has_ups": bool(u_id),
+        "ups_chip_label": f"{u_id} · {round(u_pct)}%" if u_id else "Belum ditautkan",
         "lokasi": str(asset.get("lokasi", "Kantor Pusat")),
         "status": str(asset.get("status", "Digunakan")),
         "catatan": str(asset.get("catatan", "") or "—"),
@@ -803,6 +906,7 @@ def query_server_power(
     tab = str(filters.get("tab", "Semua")).strip()
     cpu_brand = str(filters.get("cpu_brand", "")).strip()
     beban_level = str(filters.get("beban_level", "")).strip()
+    power_status_filter = str(filters.get("power_status", "")).strip()
     ups_filter = str(filters.get("ups_id", "")).strip().upper()
     psu_filter = str(filters.get("psu_status", "")).strip()
     sort_by = str(filters.get("sort_by", "")).strip()
@@ -853,11 +957,17 @@ def query_server_power(
         ):
             continue
         if (
-            ups_filter
-            and ups_filter not in ("SEMUA", "ALL")
-            and item["ups_id_aset"].upper() != ups_filter
+            power_status_filter
+            and power_status_filter not in ("Semua", "Semua status", "all")
+            and item["power_status"].lower() != power_status_filter.lower()
         ):
             continue
+        if ups_filter and ups_filter not in ("SEMUA", "SEMUA UPS", "ALL"):
+            if ups_filter == "BELUM DITAUTKAN":
+                if item["ups_id_aset"]:
+                    continue
+            elif item["ups_id_aset"].upper() != ups_filter:
+                continue
         if psu_filter and item["status_psu_terpasang"].lower() != psu_filter.lower():
             continue
         if search:
@@ -881,6 +991,7 @@ def query_server_power(
         numeric_keys = {
             "tdp_total_w",
             "beban_efektif_w",
+            "tdp_psu_ratio_pct",
             "psu_min_w",
             "psu_rekomendasi_w",
             "kwh_per_bulan",
@@ -1049,12 +1160,54 @@ def save_server_power_entry(
     }
 
     if asset_id:
+        old_asset = next(
+            (a for a in MOCK_ASSETS if str(a.get("id_aset", "")) == asset_id),
+            None,
+        )
         updated = update_mock_asset(asset_id=asset_id, payload=asset_payload)
         if updated:
+            changes: list[dict[str, Any]] = []
+            if old_asset:
+                old_attrs = old_asset.get("attributes") or {}
+                diff_fields = [
+                    ("ID Server", old_asset.get("nama_aset", ""), nama_aset),
+                    ("CPU", old_attrs.get("cpu", ""), attributes["cpu"]),
+                    ("GPU", old_attrs.get("vga", ""), attributes["vga"]),
+                    ("RAM", old_attrs.get("ram", ""), attributes["ram"]),
+                    ("Penyimpanan", old_attrs.get("hdd_ssd", ""), attributes["hdd_ssd"]),
+                    ("Total TDP (W)", f"{old_attrs.get('tdp_total_w', 0)} W", f"{tdp_w} W"),
+                    ("PSU Minimum (W)", f"{old_attrs.get('psu_min_w', 0)} W", f"{psu_min_w} W"),
+                    (
+                        "PSU Rekomendasi (W)",
+                        f"{old_attrs.get('psu_rekomendasi_w', 0)} W",
+                        f"{psu_rek_w} W",
+                    ),
+                ]
+                for lbl, before_v, after_v in diff_fields:
+                    if str(before_v) != str(after_v):
+                        changes.append(
+                            {"field": lbl, "before": str(before_v), "after": str(after_v)}
+                        )
+            record_audit_event(
+                "Administrator IT",
+                "power.server.update",
+                asset_id,
+                f"Memperbarui spesifikasi daya {nama_aset} (TDP {tdp_w} W)",
+                modul="Rekap Watt Server",
+                changes=changes,
+            )
             return enrich_server_power_row(updated)
 
     created_list = create_mock_assets(payload=asset_payload, count=1)
-    return enrich_server_power_row(created_list[0])
+    created_row = enrich_server_power_row(created_list[0])
+    record_audit_event(
+        "Administrator IT",
+        "power.server.create",
+        created_row["id_aset"],
+        f"Menambahkan data watt server {nama_aset} (TDP {tdp_w} W)",
+        modul="Rekap Watt Server",
+    )
+    return created_row
 
 
 def remove_server_power_entry(asset_id: str) -> bool:
@@ -1069,6 +1222,8 @@ __all__ = [
     "STANDARD_PSU_SIZES",
     "_build_ups_links_and_items",
     "calculate_psu_specs",
+    "calculate_ups_load_pct",
+    "classify_tdp_psu_status",
     "energi_kwh_bulan",
     "enrich_server_power_row",
     "evaluate_psu_terpasang",

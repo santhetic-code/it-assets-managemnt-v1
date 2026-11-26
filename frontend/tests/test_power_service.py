@@ -188,3 +188,37 @@ def test_psu_formula_and_optional_tarif_and_ups_datasheet() -> None:
 
     # Kembalikan ke default tarif kosong
     update_mock_power_assumptions({"tarif_listrik_per_kwh": None})
+
+
+def test_ups_load_ratio_and_tdp_psu_status_thresholds() -> None:
+    """8. Uji rumus beban UPS (TDP / kapasitas Watt) & ambang status TDP/PSU min."""
+    from itam_pro.services.power_service import (
+        calculate_ups_load_pct,
+        classify_tdp_psu_status,
+    )
+
+    # Beban UPS = TDP / kapasitas Watt UPS
+    assert calculate_ups_load_pct(211, 390) == pytest.approx(54.1)
+    assert calculate_ups_load_pct(162, 390) == pytest.approx(41.5)
+    assert calculate_ups_load_pct(200, 0) == 0.0
+
+    # Ambang status TDP / PSU Min: Aman <70%, Waspada >=70%, Kritis >=90%
+    assert classify_tdp_psu_status(159, 250)["status"] == "Aman"
+    assert classify_tdp_psu_status(159, 250)["variant"] == "success"
+
+    waspada = classify_tdp_psu_status(211, 300)
+    assert waspada["status"] == "Waspada"
+    assert waspada["variant"] == "warning"
+    assert waspada["ratio_pct"] == 70
+
+    kritis = classify_tdp_psu_status(275, 300)
+    assert kritis["status"] == "Kritis"
+    assert kritis["variant"] == "danger"
+    assert kritis["ratio_pct"] == 92
+
+    # Filter power_status & UPS Belum ditautkan di query_server_power
+    res_waspada = query_server_power(filters={"power_status": "Waspada"})
+    assert all(item["power_status"] == "Waspada" for item in res_waspada["items"])
+
+    res_unlinked = query_server_power(filters={"ups_id": "Belum ditautkan"})
+    assert all(item["ups_chip_label"] == "Belum ditautkan" for item in res_unlinked["items"])

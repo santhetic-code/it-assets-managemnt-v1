@@ -11,7 +11,13 @@ import reflex as rx
 from itam_pro.components.feedback import confirm_delete_dialog
 from itam_pro.components.layout import base_layout
 from itam_pro.components.tables import ColumnDef
-from itam_pro.components.ui import action_primary_button, secondary_button
+from itam_pro.components.ui import (
+    action_primary_button,
+    app_badge,
+    detail_drawer,
+    secondary_button,
+    stat_card,
+)
 from itam_pro.states.power_state import PowerState
 from itam_pro.styles import (
     FONT_FAMILY,
@@ -19,113 +25,74 @@ from itam_pro.styles import (
     FontSize,
     FontWeight,
     Radius,
+    Shadow,
     Size,
     Space,
 )
 
 WATT_TABLE_COLUMNS: list[ColumnDef] = [
-    {"key": "no", "header": "No", "width": "52px", "min_width": "48px", "render_type": "text"},
     {
         "key": "nama_aset",
         "header": "ID Server",
-        "width": "220px",
-        "min_width": "195px",
-        "render_type": "bold",
+        "width": "195px",
         "sticky_left": True,
         "sortable": True,
-        "sort_key": "nama_aset",
     },
-    {
-        "key": "cpu",
-        "header": "Model Prosesor (CPU)",
-        "width": "250px",
-        "min_width": "210px",
-        "render_type": "text",
-    },
-    {
-        "key": "vga",
-        "header": "Kartu Grafis (GPU)",
-        "width": "230px",
-        "min_width": "190px",
-        "render_type": "text",
-    },
-    {
-        "key": "ram",
-        "header": "Konfigurasi RAM",
-        "width": "195px",
-        "min_width": "170px",
-        "render_type": "text",
-    },
-    {
-        "key": "hdd_ssd",
-        "header": "Konfigurasi Penyimpanan",
-        "width": "210px",
-        "min_width": "180px",
-        "render_type": "text",
-    },
-    {
-        "key": "tdp_num_display",
-        "header": "Total TDP (W)",
-        "width": "135px",
-        "min_width": "125px",
-        "render_type": "bold_blue",
-        "sortable": True,
-        "sort_key": "tdp_total_w",
-    },
-    {
-        "key": "psu_min_num_display",
-        "header": "PSU Minimum (W)",
-        "width": "150px",
-        "min_width": "135px",
-        "render_type": "bold",
-        "sortable": True,
-        "sort_key": "psu_min_w",
-    },
-    {
-        "key": "psu_rek_num_display",
-        "header": "PSU Rekomendasi (W)",
-        "width": "170px",
-        "min_width": "155px",
-        "render_type": "bold",
-        "sortable": True,
-        "sort_key": "psu_rekomendasi_w",
-    },
+    {"key": "cpu", "header": "CPU", "width": "150px"},
+    {"key": "vga", "header": "GPU", "width": "135px"},
+    {"key": "ram_storage", "header": "RAM · Penyimpanan", "width": "210px"},
+    {"key": "tdp_total_w", "header": "TDP (W)", "width": "95px", "sortable": True},
+    {"key": "tdp_psu_ratio", "header": "TDP / PSU Min", "width": "135px", "sortable": True},
+    {"key": "psu_min_w", "header": "PSU Min", "width": "95px", "sortable": True},
+    {"key": "psu_rekomendasi_w", "header": "PSU Rek", "width": "95px", "sortable": True},
+    {"key": "ups", "header": "UPS Penyuplai", "width": "155px"},
+    {"key": "status", "header": "Status", "width": "125px"},
 ]
+
+_TOGGLEABLE_COLUMNS: list[tuple[str, str]] = [
+    ("cpu", "CPU"),
+    ("vga", "GPU"),
+    ("ram_storage", "RAM · Penyimpanan"),
+    ("tdp_psu_ratio", "TDP / PSU Min"),
+    ("psu_min_w", "PSU Min"),
+    ("psu_rekomendasi_w", "PSU Rek"),
+    ("ups", "UPS Penyuplai"),
+    ("status", "Status"),
+]
+
+_KPI_GRID_STYLE = rx.Style(
+    {
+        "width": "100%",
+        "display": "grid",
+        "grid_template_columns": "repeat(5, minmax(0, 1fr))",
+        "gap": Space.S4,
+        "@media (max-width: 1099px)": {"grid_template_columns": "repeat(3, minmax(0, 1fr))"},
+        "@media (max-width: 699px)": {"grid_template_columns": "repeat(2, minmax(0, 1fr))"},
+        "@media (max-width: 479px)": {"grid_template_columns": "1fr"},
+    }
+)
 
 
 def _watt_header() -> rx.Component:
-    """Header halaman Rekap Watt Server dengan chip petir dan tombol + Tambah Server."""
+    """Header halaman Rekap Watt Server dengan tombol Export, Cetak A4, dan + Tambah Server."""
     return rx.hstack(
-        rx.hstack(
-            rx.center(
-                rx.icon(tag="zap", size=24, color=Color.ACCENT_BRIGHT),
-                width="48px",
-                height="48px",
-                background_color=Color.INFO_BG,
-                border=f"1px solid {Color.BLUE_BORDER}",
-                border_radius=Radius.CARD,
-                flex_shrink="0",
+        rx.vstack(
+            rx.heading(
+                "Rekap Watt Server",
+                font_size=FontSize.TITLE,
+                font_weight=FontWeight.EXTRABOLD,
+                color=Color.TEXT,
+                line_height="1.2",
+                letter_spacing="-0.02em",
             ),
-            rx.vstack(
-                rx.heading(
-                    "Rekap Watt Server",
-                    font_size=FontSize.TITLE,
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.TEXT,
-                    line_height="1.2",
-                    letter_spacing="-0.02em",
-                ),
-                rx.text(
-                    "Rekap kebutuhan daya per server: TDP, PSU minimum, dan PSU rekomendasi. "
-                    "Data diisi manual.",
-                    font_size=FontSize.BASE,
-                    color=Color.MUTED,
-                ),
-                spacing="1",
-                align="start",
+            rx.text(
+                "Kebutuhan daya per server: TDP, PSU minimum, PSU rekomendasi, "
+                "dan beban UPS penyuplai.",
+                font_size=FontSize.BASE,
+                color=Color.MUTED,
             ),
-            spacing="3",
-            align="center",
+            spacing="1",
+            align="start",
         ),
         rx.hstack(
             secondary_button("Export", on_click=PowerState.export_watt_excel),
@@ -139,16 +106,55 @@ def _watt_header() -> rx.Component:
         justify="between",
         align="center",
         wrap="wrap",
+        spacing="3",
     )
+
+
+def _watt_kpi_row() -> rx.Component:
+    """5 Kartu KPI Rekap Watt Server (kartu pertama biru Color.BRAND)."""
+    return rx.box(
+        stat_card(
+            "TOTAL TDP",
+            PowerState.kpi_total_tdp_display,
+            note=PowerState.kpi_total_tdp_note,
+            primary=True,
+        ),
+        stat_card(
+            "PSU MINIMUM",
+            PowerState.kpi_psu_min_display,
+            note=PowerState.kpi_psu_min_note,
+        ),
+        stat_card(
+            "PSU REKOMENDASI",
+            PowerState.kpi_psu_rek_display,
+            note="acuan pembelian PSU",
+        ),
+        stat_card(
+            "EST. ENERGI / BULAN",
+            PowerState.kpi_est_kwh_display,
+            note="batas atas (TDP × 24 jam × 30 hari)",
+        ),
+        stat_card(
+            "TDP TERTINGGI",
+            PowerState.kpi_max_tdp_display,
+            note=PowerState.kpi_max_tdp_server,
+        ),
+        style=_KPI_GRID_STYLE,
+    )
+
+
+def _col_display(col_key: str) -> Any:
+    return rx.cond(PowerState.hidden_columns.contains(col_key), "none", "table-cell")
 
 
 def _sortable_th(
     label: str,
     sort_key: str,
     *,
+    col_key: str = "",
     align_right: bool = False,
     sticky_left: bool = False,
-    min_w: str = "130px",
+    min_w: str = "110px",
 ) -> rx.Component:
     is_sorted = PowerState.sort_by == sort_key
     th_style: dict[str, Any] = {
@@ -156,7 +162,7 @@ def _sortable_th(
         "top": "0",
         "background_color": Color.TABLE_HEADER_BG,
         "padding": "12px 14px",
-        "font_size": "11px",
+        "font_size": FontSize.GROUP_LABEL,
         "font_weight": FontWeight.EXTRABOLD,
         "color": Color.MUTED,
         "text_transform": "uppercase",
@@ -168,22 +174,24 @@ def _sortable_th(
         "user_select": "none",
         "z_index": "4" if sticky_left else "2",
     }
+    if col_key:
+        th_style["display"] = _col_display(col_key)
     if sticky_left:
         th_style["left"] = "0"
-        th_style["box_shadow"] = "1px 0 0 0 rgba(226, 232, 240, 1)"
+        th_style["box_shadow"] = Color.STICKY_COL_SHADOW
 
     return rx.el.th(
         rx.hstack(
-            rx.text(label, font_size="11px", font_weight=FontWeight.EXTRABOLD),
+            rx.text(label, font_size=FontSize.GROUP_LABEL, font_weight=FontWeight.EXTRABOLD),
             rx.cond(
                 is_sorted,
                 rx.text(
                     rx.cond(PowerState.sort_dir == "asc", "↑", "↓"),
-                    font_size="11px",
+                    font_size=FontSize.GROUP_LABEL,
                     font_weight=FontWeight.EXTRABOLD,
                     color=Color.ACCENT_BRIGHT,
                 ),
-                rx.text("↕", font_size="11px", color=Color.SLATE_400),
+                rx.text("↕", font_size=FontSize.GROUP_LABEL, color=Color.SLATE_400),
             ),
             spacing="1",
             align="center",
@@ -195,57 +203,64 @@ def _sortable_th(
     )
 
 
-def _static_th(label: str, *, min_w: str = "140px", align_center: bool = False) -> rx.Component:
-    return rx.el.th(
-        label,
-        style=rx.Style(
-            {
-                "position": "sticky",
-                "top": "0",
-                "z_index": "2",
-                "background_color": Color.TABLE_HEADER_BG,
-                "padding": "12px 14px",
-                "font_size": "11px",
-                "font_weight": FontWeight.EXTRABOLD,
-                "color": Color.MUTED,
-                "text_transform": "uppercase",
-                "letter_spacing": "0.05em",
-                "text_align": "center" if align_center else "left",
-                "border_bottom": f"1px solid {Color.BORDER}",
-                "white_space": "nowrap",
-                "min_width": min_w,
-            }
-        ),
-    )
+def _static_th(
+    label: str,
+    *,
+    col_key: str = "",
+    min_w: str = "130px",
+    align_right: bool = False,
+) -> rx.Component:
+    th_style: dict[str, Any] = {
+        "position": "sticky",
+        "top": "0",
+        "z_index": "2",
+        "background_color": Color.TABLE_HEADER_BG,
+        "padding": "12px 14px",
+        "font_size": FontSize.GROUP_LABEL,
+        "font_weight": FontWeight.EXTRABOLD,
+        "color": Color.MUTED,
+        "text_transform": "uppercase",
+        "letter_spacing": "0.05em",
+        "text_align": "right" if align_right else "left",
+        "border_bottom": f"1px solid {Color.BORDER}",
+        "white_space": "nowrap",
+        "min_width": min_w,
+    }
+    if col_key:
+        th_style["display"] = _col_display(col_key)
+    return rx.el.th(label, style=rx.Style(th_style))
 
 
 def _server_table_row(row: dict[str, Any]) -> rx.Component:
-    """Satu baris data server sesuai urutan kolom spreadsheet."""
-    cell_base = {
-        "padding": "11px 14px",
+    """Satu baris data server dengan bar TDP/PSU Min, chip UPS, status, dan klik drawer."""
+    row_bg = rx.match(
+        row["power_status"],
+        ("Kritis", Color.DANGER_ROW_BG),
+        ("Waspada", Color.WARNING_ROW_BG),
+        Color.SURFACE,
+    )
+    bar_color = rx.match(
+        row["power_status"],
+        ("Kritis", Color.PROGRESS_HIGH),
+        ("Waspada", Color.PROGRESS_MED),
+        Color.PROGRESS_LOW,
+    )
+    cell_base: dict[str, Any] = {
+        "padding": "12px 14px",
         "font_size": FontSize.SM,
         "color": Color.TEXT,
         "border_bottom": f"1px solid {Color.DIVIDER}",
-        "background_color": Color.SURFACE,
+        "background_color": row_bg,
+        "vertical_align": "middle",
     }
-    num_cell_base = {
+    num_cell_base: dict[str, Any] = {
         **cell_base,
         "text_align": "right",
         "font_variant_numeric": "tabular-nums",
         "white_space": "nowrap",
     }
     return rx.el.tr(
-        rx.el.td(
-            row["no"],
-            style=rx.Style(
-                {
-                    **cell_base,
-                    "color": Color.MUTED,
-                    "font_variant_numeric": "tabular-nums",
-                    "width": "48px",
-                }
-            ),
-        ),
+        # 1. ID Server (sticky left)
         rx.el.td(
             rx.text(
                 row["nama_aset"],
@@ -259,160 +274,286 @@ def _server_table_row(row: dict[str, Any]) -> rx.Component:
                     "position": "sticky",
                     "left": "0",
                     "z_index": "1",
-                    "box_shadow": "1px 0 0 0 rgba(226, 232, 240, 1)",
+                    "box_shadow": Color.STICKY_COL_SHADOW,
                     "white_space": "nowrap",
                 }
             ),
         ),
-        rx.el.td(row["cpu"], style=rx.Style(cell_base)),
-        rx.el.td(row["vga"], style=rx.Style(cell_base)),
-        rx.el.td(row["ram"], style=rx.Style(cell_base)),
-        rx.el.td(row["hdd_ssd"], style=rx.Style(cell_base)),
+        # 2. CPU (ringkas + tooltip penuh)
+        rx.el.td(
+            rx.text(row["cpu_short"], title=row["cpu"], white_space="nowrap"),
+            style=rx.Style({**cell_base, "display": _col_display("cpu")}),
+        ),
+        # 3. GPU (ringkas + tooltip penuh)
+        rx.el.td(
+            rx.text(row["vga_short"], title=row["vga"], white_space="nowrap"),
+            style=rx.Style({**cell_base, "display": _col_display("vga")}),
+        ),
+        # 4. RAM · Penyimpanan (ringkas + tooltip penuh)
+        rx.el.td(
+            rx.text(
+                row["ram_storage_short"],
+                title=f"{row['ram']} · {row['hdd_ssd']}",
+                white_space="nowrap",
+            ),
+            style=rx.Style({**cell_base, "display": _col_display("ram_storage")}),
+        ),
+        # 5. TDP (W) (rata kanan)
         rx.el.td(
             row["tdp_num_display"],
+            style=rx.Style({**num_cell_base, "font_weight": FontWeight.EXTRABOLD}),
+        ),
+        # 6. TDP / PSU Min (progress bar + warna ambang)
+        rx.el.td(
+            rx.box(
+                rx.box(
+                    style=rx.Style(
+                        {
+                            "width": row["tdp_psu_bar_width"],
+                            "height": "100%",
+                            "background_color": bar_color,
+                            "border_radius": Radius.FULL,
+                            "transition": "width 0.2s ease",
+                        }
+                    )
+                ),
+                title=f"{row['tdp_psu_ratio_pct']}% dari PSU minimum",
+                style=rx.Style(
+                    {
+                        "width": "100%",
+                        "min_width": "88px",
+                        "height": Size.PROGRESS_H,
+                        "background_color": Color.PROGRESS_TRACK,
+                        "border_radius": Radius.FULL,
+                        "overflow": "hidden",
+                    }
+                ),
+            ),
+            style=rx.Style({**cell_base, "display": _col_display("tdp_psu_ratio")}),
+        ),
+        # 7. PSU Min (rata kanan)
+        rx.el.td(
+            row["psu_min_num_display"],
             style=rx.Style(
                 {
                     **num_cell_base,
-                    "font_weight": FontWeight.EXTRABOLD,
-                    "color": Color.ACCENT_BRIGHT,
+                    "font_weight": FontWeight.MEDIUM,
+                    "display": _col_display("psu_min_w"),
                 }
             ),
         ),
-        rx.el.td(
-            row["psu_min_num_display"],
-            style=rx.Style({**num_cell_base, "font_weight": FontWeight.SEMIBOLD}),
-        ),
+        # 8. PSU Rek (rata kanan)
         rx.el.td(
             row["psu_rek_num_display"],
-            style=rx.Style({**num_cell_base, "font_weight": FontWeight.SEMIBOLD}),
-        ),
-        rx.el.td(
-            rx.hstack(
-                rx.el.button(
-                    rx.icon(tag="pencil", size=14, color=Color.TEXT),
-                    type="button",
-                    title="Edit Server",
-                    on_click=PowerState.open_edit_modal(row["id_aset"]),
-                    style=rx.Style(
-                        {
-                            "width": "28px",
-                            "height": "28px",
-                            "display": "inline-flex",
-                            "align_items": "center",
-                            "justify_content": "center",
-                            "background_color": Color.SURFACE,
-                            "border": f"1px solid {Color.BORDER}",
-                            "border_radius": "6px",
-                            "cursor": "pointer",
-                        }
-                    ),
-                ),
-                rx.el.button(
-                    rx.icon(tag="copy", size=14, color=Color.ACCENT_BRIGHT),
-                    type="button",
-                    title="Duplikat Server",
-                    on_click=PowerState.open_duplicate_modal(row["id_aset"]),
-                    style=rx.Style(
-                        {
-                            "width": "28px",
-                            "height": "28px",
-                            "display": "inline-flex",
-                            "align_items": "center",
-                            "justify_content": "center",
-                            "background_color": Color.INFO_BG,
-                            "border": f"1px solid {Color.BLUE_BORDER}",
-                            "border_radius": "6px",
-                            "cursor": "pointer",
-                        }
-                    ),
-                ),
-                rx.el.button(
-                    rx.icon(tag="trash-2", size=14, color=Color.DANGER_FG),
-                    type="button",
-                    title="Hapus Server",
-                    on_click=PowerState.confirm_delete_entry(row["id_aset"]),
-                    style=rx.Style(
-                        {
-                            "width": "28px",
-                            "height": "28px",
-                            "display": "inline-flex",
-                            "align_items": "center",
-                            "justify_content": "center",
-                            "background_color": Color.DANGER_BG,
-                            "border": f"1px solid {Color.DANGER_BORDER}",
-                            "border_radius": "6px",
-                            "cursor": "pointer",
-                        }
-                    ),
-                ),
-                spacing="1",
-                justify="center",
-                align="center",
+            style=rx.Style(
+                {
+                    **num_cell_base,
+                    "font_weight": FontWeight.MEDIUM,
+                    "display": _col_display("psu_rekomendasi_w"),
+                }
             ),
-            style=rx.Style({**cell_base, "text_align": "center", "white_space": "nowrap"}),
         ),
+        # 9. UPS Penyuplai (chip biru bila tertaut, teks muted bila belum ditautkan)
+        rx.el.td(
+            rx.cond(
+                row["has_ups"],
+                app_badge(label=row["ups_chip_label"], variant="info"),
+                rx.text(
+                    "Belum ditautkan",
+                    font_size=FontSize.XS,
+                    color=Color.MUTED,
+                    white_space="nowrap",
+                ),
+            ),
+            style=rx.Style({**cell_base, "white_space": "nowrap", "display": _col_display("ups")}),
+        ),
+        # 10. Status (Aman / Waspada / Kritis)
+        rx.el.td(
+            app_badge(label=row["power_status_label"], variant=row["power_status_variant"]),
+            style=rx.Style(
+                {**cell_base, "white_space": "nowrap", "display": _col_display("status")}
+            ),
+        ),
+        on_click=PowerState.open_detail_drawer(row["id_aset"]),
+        style=rx.Style({"cursor": "pointer"}),
+        _hover=rx.Style({"filter": "brightness(0.985)"}),
     )
 
 
 def _pinned_estimasi_row() -> rx.Component:
-    """Baris ESTIMASI yang dipin (sticky bottom) dengan background biru muda."""
-    est_cell = {
+    """Baris ESTIMASI sticky bottom dengan sel 1-per-1 agar sejajar saat kolom disembunyikan."""
+    est_cell: dict[str, Any] = {
         "position": "sticky",
         "bottom": "0",
         "z_index": "2",
-        "background_color": Color.INFO_BG,
+        "background_color": Color.TABLE_HEADER_BG,
         "padding": "12px 14px",
-        "border_top": f"2px solid {Color.BLUE_BORDER}",
+        "border_top": f"1.5px solid {Color.BORDER}",
         "font_size": FontSize.SM,
         "font_weight": FontWeight.EXTRABOLD,
         "color": Color.TEXT,
+        "white_space": "nowrap",
     }
-    est_num = {
+    est_num: dict[str, Any] = {
         **est_cell,
         "text_align": "right",
         "font_variant_numeric": "tabular-nums",
-        "white_space": "nowrap",
     }
     return rx.el.tfoot(
         rx.el.tr(
-            rx.el.td("", style=rx.Style(est_cell)),
             rx.el.td(
-                "ESTIMASI",
+                rx.vstack(
+                    rx.text("ESTIMASI", font_size=FontSize.SM, font_weight=FontWeight.EXTRABOLD),
+                    rx.text(
+                        PowerState.estimasi_search_subnote,
+                        font_size=FontSize.XS,
+                        font_weight=FontWeight.MEDIUM,
+                        color=Color.MUTED,
+                    ),
+                    spacing="0",
+                    align="start",
+                ),
                 style=rx.Style(
                     {
                         **est_cell,
                         "left": "0",
                         "z_index": "3",
-                        "letter_spacing": "0.04em",
-                        "box_shadow": "1px 0 0 0 rgba(191, 219, 254, 1)",
+                        "box_shadow": Color.STICKY_ESTIMASI_SHADOW,
                     }
                 ),
             ),
+            rx.el.td("", style=rx.Style({**est_cell, "display": _col_display("cpu")})),
+            rx.el.td("", style=rx.Style({**est_cell, "display": _col_display("vga")})),
+            rx.el.td("", style=rx.Style({**est_cell, "display": _col_display("ram_storage")})),
+            rx.el.td(PowerState.estimasi_tdp_display, style=rx.Style(est_num)),
+            rx.el.td("", style=rx.Style({**est_cell, "display": _col_display("tdp_psu_ratio")})),
             rx.el.td(
-                rx.text(
-                    PowerState.estimasi_search_subnote,
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.SEMIBOLD,
-                    color=Color.MUTED,
-                ),
-                col_span=4,
-                style=rx.Style(est_cell),
+                PowerState.estimasi_psu_min_display,
+                style=rx.Style({**est_num, "display": _col_display("psu_min_w")}),
             ),
             rx.el.td(
-                PowerState.estimasi_tdp_display,
-                style=rx.Style({**est_num, "color": Color.ACCENT_BRIGHT}),
+                PowerState.estimasi_psu_rek_display,
+                style=rx.Style({**est_num, "display": _col_display("psu_rekomendasi_w")}),
             ),
-            rx.el.td(PowerState.estimasi_psu_min_display, style=rx.Style(est_num)),
-            rx.el.td(PowerState.estimasi_psu_rek_display, style=rx.Style(est_num)),
-            rx.el.td("", style=rx.Style(est_cell)),
+            rx.el.td("", style=rx.Style({**est_cell, "display": _col_display("ups")})),
+            rx.el.td("", style=rx.Style({**est_cell, "display": _col_display("status")})),
         )
     )
 
 
+def _column_chooser_popover() -> rx.Component:
+    """Popover 'Atur kolom' untuk menyembunyikan/menampilkan kolom tabel Watt Server."""
+    return rx.popover.root(
+        rx.popover.trigger(
+            rx.el.button(
+                "Atur kolom",
+                type="button",
+                style=rx.Style(
+                    {
+                        "height": Size.FILTER_CONTROL_H,
+                        "padding": "0 14px",
+                        "background_color": Color.SURFACE,
+                        "color": Color.TEXT,
+                        "border": f"1px solid {Color.INPUT_BORDER}",
+                        "border_radius": Radius.CONTROL,
+                        "font_family": FONT_FAMILY,
+                        "font_size": FontSize.SM,
+                        "font_weight": FontWeight.SEMIBOLD,
+                        "cursor": "pointer",
+                        "white_space": "nowrap",
+                    }
+                ),
+            )
+        ),
+        rx.popover.content(
+            rx.vstack(
+                rx.hstack(
+                    rx.text(
+                        "TAMPILKAN KOLOM",
+                        font_size=FontSize.GROUP_LABEL,
+                        font_weight=FontWeight.BOLD,
+                        color=Color.MUTED,
+                    ),
+                    rx.el.button(
+                        "Default",
+                        type="button",
+                        on_click=PowerState.reset_column_visibility,
+                        style=rx.Style(
+                            {
+                                "background": "transparent",
+                                "border": "none",
+                                "color": Color.ACCENT,
+                                "font_size": FontSize.XS,
+                                "font_weight": FontWeight.BOLD,
+                                "cursor": "pointer",
+                            }
+                        ),
+                    ),
+                    width="100%",
+                    justify="between",
+                    align="center",
+                ),
+                *[
+                    rx.el.label(
+                        rx.hstack(
+                            rx.el.input(
+                                type="checkbox",
+                                checked=~PowerState.hidden_columns.contains(col_key),
+                                on_change=PowerState.toggle_column_visibility(col_key),
+                                style=rx.Style(
+                                    {
+                                        "width": Size.TABLE_CHECKBOX,
+                                        "height": Size.TABLE_CHECKBOX,
+                                        "accent_color": Color.ACCENT,
+                                        "cursor": "pointer",
+                                    }
+                                ),
+                            ),
+                            rx.text(col_label, font_size=FontSize.SM, color=Color.TEXT),
+                            spacing="2",
+                            align="center",
+                        ),
+                        style=rx.Style({"cursor": "pointer", "padding": "3px 0"}),
+                    )
+                    for col_key, col_label in _TOGGLEABLE_COLUMNS
+                ],
+                spacing="1",
+                width="200px",
+                align="start",
+            ),
+            style=rx.Style(
+                {
+                    "background_color": Color.SURFACE,
+                    "border": f"1px solid {Color.BORDER}",
+                    "border_radius": Radius.CONTROL,
+                    "box_shadow": Shadow.POPOVER,
+                    "padding": "12px 14px",
+                }
+            ),
+        ),
+    )
+
+
+def _filter_select_style() -> rx.Style:
+    return rx.Style(
+        {
+            "height": Size.FILTER_CONTROL_H,
+            "padding": "0 12px",
+            "background_color": Color.SURFACE,
+            "color": Color.TEXT,
+            "border": f"1px solid {Color.INPUT_BORDER}",
+            "border_radius": Radius.CONTROL,
+            "font_family": FONT_FAMILY,
+            "font_size": FontSize.SM,
+            "font_weight": FontWeight.MEDIUM,
+            "cursor": "pointer",
+        }
+    )
+
+
 def _watt_table_card() -> rx.Component:
-    """Kartu Tabel Rekap Watt Server dengan kotak pencarian sederhana dan baris ESTIMASI sticky."""
+    """Kartu Tabel Rekap Watt Server dengan filter Status, UPS, Atur kolom, & ESTIMASI sticky."""
     return rx.box(
-        # Bar Pencarian Sederhana (Tanpa Tab & Tanpa Dropdown)
         rx.hstack(
             rx.hstack(
                 rx.box(
@@ -432,12 +573,12 @@ def _watt_table_card() -> rx.Component:
                     ),
                     rx.el.input(
                         type="text",
-                        placeholder="Cari ID server, CPU, GPU, RAM, penyimpanan...",
+                        placeholder="Cari ID server, CPU, GPU, RAM...",
                         value=PowerState.search_query,
                         on_change=PowerState.set_search_query,
                         style=rx.Style(
                             {
-                                "width": "340px",
+                                "width": "280px",
                                 "max_width": "100%",
                                 "height": Size.FILTER_CONTROL_H,
                                 "padding": "0 12px 0 36px",
@@ -453,6 +594,22 @@ def _watt_table_card() -> rx.Component:
                     ),
                     style=rx.Style({"position": "relative"}),
                 ),
+                rx.el.select(
+                    rx.el.option("Semua status", value=""),
+                    rx.foreach(
+                        PowerState.status_options, lambda opt: rx.el.option(opt, value=opt)
+                    ),
+                    value=PowerState.status_filter,
+                    on_change=PowerState.set_status_filter,
+                    style=_filter_select_style(),
+                ),
+                rx.el.select(
+                    rx.el.option("Semua UPS", value=""),
+                    rx.foreach(PowerState.ups_options, lambda opt: rx.el.option(opt, value=opt)),
+                    value=PowerState.ups_filter,
+                    on_change=PowerState.set_ups_filter,
+                    style=_filter_select_style(),
+                ),
                 rx.cond(
                     PowerState.has_search,
                     rx.el.button(
@@ -462,10 +619,10 @@ def _watt_table_card() -> rx.Component:
                         style=rx.Style(
                             {
                                 "height": Size.FILTER_CONTROL_H,
-                                "padding": "0 12px",
+                                "padding": "0 10px",
                                 "background": "transparent",
                                 "border": "none",
-                                "color": Color.ACCENT_BRIGHT,
+                                "color": Color.ACCENT,
                                 "font_family": FONT_FAMILY,
                                 "font_size": FontSize.XS,
                                 "font_weight": FontWeight.BOLD,
@@ -477,55 +634,62 @@ def _watt_table_card() -> rx.Component:
                 ),
                 spacing="2",
                 align="center",
+                wrap="wrap",
             ),
-            rx.text(
-                PowerState.result_count_label,
-                font_size=FontSize.XS,
-                font_weight=FontWeight.BOLD,
-                color=Color.MUTED,
+            rx.hstack(
+                _column_chooser_popover(),
+                rx.text(
+                    PowerState.result_count_label,
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.SEMIBOLD,
+                    color=Color.MUTED,
+                    white_space="nowrap",
+                ),
+                spacing="3",
+                align="center",
             ),
             width="100%",
             justify="between",
             align="center",
             wrap="wrap",
+            spacing="3",
             padding="14px 18px",
             style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
         ),
-        # Area Tabel Scrollable dengan Header Sticky Top & Baris ESTIMASI Sticky Bottom
         rx.box(
             rx.el.table(
                 rx.el.thead(
                     rx.el.tr(
-                        _static_th("No", min_w="48px"),
-                        _sortable_th("ID Server", "nama_aset", sticky_left=True, min_w="200px"),
-                        _static_th("Model Prosesor (CPU)", min_w="230px"),
-                        _static_th("Kartu Grafis (GPU)", min_w="210px"),
-                        _static_th("Konfigurasi RAM", min_w="180px"),
-                        _static_th("Konfigurasi Penyimpanan", min_w="195px"),
+                        _sortable_th("ID Server", "nama_aset", sticky_left=True, min_w="185px"),
+                        _static_th("CPU", col_key="cpu", min_w="140px"),
+                        _static_th("GPU", col_key="vga", min_w="120px"),
+                        _static_th("RAM · Penyimpanan", col_key="ram_storage", min_w="195px"),
+                        _sortable_th("TDP (W)", "tdp_total_w", align_right=True, min_w="90px"),
                         _sortable_th(
-                            "Total TDP (W)",
-                            "tdp_total_w",
-                            align_right=True,
-                            min_w="135px",
+                            "TDP / PSU Min",
+                            "tdp_psu_ratio_pct",
+                            col_key="tdp_psu_ratio",
+                            min_w="125px",
                         ),
                         _sortable_th(
-                            "PSU Minimum (W)",
+                            "PSU Min",
                             "psu_min_w",
+                            col_key="psu_min_w",
                             align_right=True,
-                            min_w="150px",
+                            min_w="90px",
                         ),
                         _sortable_th(
-                            "PSU Rekomendasi (W)",
+                            "PSU Rek",
                             "psu_rekomendasi_w",
+                            col_key="psu_rekomendasi_w",
                             align_right=True,
-                            min_w="170px",
+                            min_w="90px",
                         ),
-                        _static_th("Aksi", min_w="110px", align_center=True),
+                        _static_th("UPS Penyuplai", col_key="ups", min_w="145px"),
+                        _static_th("Status", col_key="status", min_w="120px"),
                     )
                 ),
-                rx.el.tbody(
-                    rx.foreach(PowerState.items, _server_table_row),
-                ),
+                rx.el.tbody(rx.foreach(PowerState.items, _server_table_row)),
                 _pinned_estimasi_row(),
                 style=rx.Style(
                     {
@@ -539,7 +703,7 @@ def _watt_table_card() -> rx.Component:
             style=rx.Style(
                 {
                     "width": "100%",
-                    "max_height": "calc(100vh - 230px)",
+                    "max_height": "calc(100vh - 340px)",
                     "overflow_x": "auto",
                     "overflow_y": "auto",
                 }
@@ -865,7 +1029,7 @@ def _watt_form_modal() -> rx.Component:
                         "background_color": Color.SURFACE,
                         "border": f"1px solid {Color.BORDER}",
                         "border_radius": Radius.CARD,
-                        "box_shadow": "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+                        "box_shadow": Shadow.MODAL,
                         "padding": "24px",
                         "z_index": "90",
                     }
@@ -876,11 +1040,225 @@ def _watt_form_modal() -> rx.Component:
     )
 
 
+def _drawer_spec_row(label: str, value: Any) -> rx.Component:
+    return rx.hstack(
+        rx.text(label, font_size=FontSize.SM, color=Color.MUTED, width="38%", flex_shrink="0"),
+        rx.text(
+            value,
+            font_size=FontSize.SM,
+            font_weight=FontWeight.SEMIBOLD,
+            color=Color.TEXT,
+            width="62%",
+            text_align="right",
+        ),
+        width="100%",
+        justify="between",
+        align="start",
+        padding_y="7px",
+        style=rx.Style({"border_bottom": f"1px solid {Color.DIVIDER}"}),
+    )
+
+
+def _watt_detail_drawer() -> rx.Component:
+    """Drawer detail server: spesifikasi lengkap, riwayat pengeditan, dan tombol Edit."""
+    custom_header = rx.vstack(
+        rx.hstack(
+            rx.text(
+                PowerState.selected_id_aset,
+                font_size=FontSize.XS,
+                font_weight=FontWeight.BOLD,
+                color=Color.ACCENT,
+            ),
+            rx.el.button(
+                rx.icon(tag="x", size=18, color=Color.MUTED),
+                type="button",
+                aria_label="Tutup detail server",
+                on_click=PowerState.close_detail_drawer,
+                style=rx.Style(
+                    {
+                        "width": "34px",
+                        "height": "34px",
+                        "border": f"1px solid {Color.BORDER}",
+                        "border_radius": Radius.CONTROL,
+                        "background_color": Color.SURFACE,
+                        "cursor": "pointer",
+                        "display": "inline-flex",
+                        "align_items": "center",
+                        "justify_content": "center",
+                    }
+                ),
+            ),
+            width="100%",
+            justify="between",
+            align="center",
+        ),
+        rx.heading(
+            PowerState.selected_nama_aset,
+            font_size=FontSize.LOGO,
+            font_weight=FontWeight.EXTRABOLD,
+            color=Color.TEXT,
+        ),
+        rx.hstack(
+            app_badge(
+                label=PowerState.selected_power_status_label,
+                variant=PowerState.selected_power_status_variant,
+            ),
+            app_badge(label=PowerState.selected_ups_chip_label, variant="info"),
+            spacing="2",
+            align="center",
+            wrap="wrap",
+        ),
+        spacing="2",
+        align="start",
+        width="100%",
+        padding="20px 24px 16px 24px",
+        style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
+    )
+
+    custom_body = rx.vstack(
+        rx.vstack(
+            rx.text(
+                "SPESIFIKASI LENGKAP",
+                font_size=FontSize.GROUP_LABEL,
+                font_weight=FontWeight.BOLD,
+                color=Color.MUTED,
+                letter_spacing="0.06em",
+            ),
+            _drawer_spec_row("Model Prosesor (CPU)", PowerState.selected_cpu),
+            _drawer_spec_row("Kartu Grafis (GPU)", PowerState.selected_vga),
+            _drawer_spec_row("Konfigurasi RAM", PowerState.selected_ram),
+            _drawer_spec_row("Penyimpanan", PowerState.selected_hdd_ssd),
+            _drawer_spec_row("Lokasi", PowerState.selected_lokasi),
+            _drawer_spec_row("Catatan", PowerState.selected_catatan),
+            spacing="0",
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text(
+                "KEBUTUHAN DAYA & UPS",
+                font_size=FontSize.GROUP_LABEL,
+                font_weight=FontWeight.BOLD,
+                color=Color.MUTED,
+                letter_spacing="0.06em",
+            ),
+            _drawer_spec_row("Total TDP", PowerState.selected_tdp_display),
+            _drawer_spec_row("Rasio TDP / PSU Min", PowerState.selected_tdp_psu_ratio_display),
+            _drawer_spec_row("PSU Minimum", PowerState.selected_psu_min_display),
+            _drawer_spec_row("PSU Rekomendasi", PowerState.selected_psu_rek_display),
+            _drawer_spec_row("Est. Energi / Bulan (batas atas)", PowerState.selected_kwh_display),
+            _drawer_spec_row("UPS Penyuplai", PowerState.selected_ups_chip_label),
+            spacing="0",
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text(
+                "RIWAYAT PENGEDITAN",
+                font_size=FontSize.GROUP_LABEL,
+                font_weight=FontWeight.BOLD,
+                color=Color.MUTED,
+                letter_spacing="0.06em",
+            ),
+            rx.cond(
+                PowerState.has_edit_history,
+                rx.vstack(
+                    rx.foreach(
+                        PowerState.selected_edit_history,
+                        lambda h: rx.vstack(
+                            rx.hstack(
+                                rx.text(
+                                    h["pelaku"],
+                                    font_size=FontSize.XS,
+                                    font_weight=FontWeight.BOLD,
+                                    color=Color.TEXT,
+                                ),
+                                rx.text(h["waktu"], font_size=FontSize.XS, color=Color.MUTED),
+                                width="100%",
+                                justify="between",
+                            ),
+                            rx.text(h["detail"], font_size=FontSize.SM, color=Color.TEXT),
+                            spacing="1",
+                            align="start",
+                            width="100%",
+                            padding="8px 10px",
+                            style=rx.Style(
+                                {
+                                    "background_color": Color.TABLE_HEADER_BG,
+                                    "border": f"1px solid {Color.BORDER}",
+                                    "border_radius": Radius.CONTROL,
+                                }
+                            ),
+                        ),
+                    ),
+                    spacing="2",
+                    width="100%",
+                ),
+                rx.text(
+                    "Belum ada riwayat pengeditan tercatat untuk server ini.",
+                    font_size=FontSize.SM,
+                    color=Color.MUTED,
+                ),
+            ),
+            spacing="2",
+            align="start",
+            width="100%",
+        ),
+        spacing="5",
+        align="start",
+        width="100%",
+    )
+
+    custom_footer = rx.hstack(
+        action_primary_button("Edit Server", on_click=PowerState.open_edit_from_drawer),
+        secondary_button("Duplikat", on_click=PowerState.open_duplicate_from_drawer),
+        rx.el.button(
+            "Hapus",
+            type="button",
+            on_click=PowerState.confirm_delete_from_drawer,
+            style=rx.Style(
+                {
+                    "height": Size.BUTTON_MD_H,
+                    "padding": "0 14px",
+                    "background_color": Color.DANGER_BG,
+                    "color": Color.DANGER_FG,
+                    "border": f"1px solid {Color.DANGER_BORDER}",
+                    "border_radius": Radius.CONTROL,
+                    "font_family": FONT_FAMILY,
+                    "font_size": FontSize.SM,
+                    "font_weight": FontWeight.BOLD,
+                    "cursor": "pointer",
+                }
+            ),
+        ),
+        width="100%",
+        justify="start",
+        spacing="2",
+        padding="14px 24px",
+        style=rx.Style(
+            {
+                "border_top": f"1px solid {Color.BORDER}",
+                "background_color": Color.SURFACE,
+            }
+        ),
+    )
+
+    return detail_drawer(
+        is_open=PowerState.drawer_open,
+        on_close=PowerState.close_detail_drawer,
+        custom_header=custom_header,
+        custom_body=custom_body,
+        custom_footer=custom_footer,
+        show_tabs=False,
+        aria_label="Detail Rekap Watt Server",
+    )
+
+
 def watt_server_page() -> rx.Component:
-    """Halaman utama `/watt-server` (Tabel Rekap Manual sesuai spreadsheet)."""
+    """Halaman utama `/watt-server` (KPI 5 kartu, tabel TDP/PSU/UPS, drawer detail, & CRUD)."""
     content = rx.vstack(
         _watt_header(),
+        _watt_kpi_row(),
         _watt_table_card(),
+        _watt_detail_drawer(),
         _watt_form_modal(),
         confirm_delete_dialog(
             is_open=PowerState.delete_dialog_open,
