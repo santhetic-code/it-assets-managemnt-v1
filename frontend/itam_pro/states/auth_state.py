@@ -51,6 +51,17 @@ class AuthState(rx.State):
         return str(name) if name else "Admin IT"
 
     @rx.var(cache=True)
+    def user_username(self) -> str:
+        """Username login asli pengguna (read-only pada Pengaturan Akun)."""
+        uname = self.current_user.get("username")
+        return str(uname) if uname else "admin"
+
+    @rx.var(cache=True)
+    def user_status_label(self) -> str:
+        """Status aktif akun pengguna saat ini."""
+        return "Aktif" if self.current_user.get("is_active", True) else "Nonaktif"
+
+    @rx.var(cache=True)
     def user_role_label(self) -> str:
         """Nama role pengguna untuk ditampilkan di Topbar."""
         role = self.current_user.get("role")

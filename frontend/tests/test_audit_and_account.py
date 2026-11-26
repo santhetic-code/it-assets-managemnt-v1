@@ -1,5 +1,6 @@
 """Pengujian Modul Audit Log dan Pengaturan Akun."""
 
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,6 +18,11 @@ from itam_pro.services.mock.audit_mock import (
     record_audit_event,
     sanitize_csv_cell,
     update_audit_event,
+)
+from itam_pro.services.mock.auth_mock import (
+    MOCK_ACTIVE_SESSIONS,
+    MOCK_USERS,
+    toggle_mock_user_active,
 )
 from itam_pro.services.router_utils import extract_client_origin_from_router
 from itam_pro.states.account_state import AccountState
@@ -208,3 +214,50 @@ def test_audit_grouped_tab_counts_and_unauthenticated_login_attribution():
     assert "Administrator IT" not in normalized["actor_display"]
     assert "ADMIN" in normalized["actor_display"]
     assert "192.168.1.111" in normalized["actor_display"]
+
+
+def test_account_live_password_rules_and_last_admin_guard():
+    """Uji 4 aturan password live, skor meter 4 segmen, dan guard Admin aktif terakhir."""
+    state = AccountState()
+    state.current_username = "admin"
+    state.current_password = "OldPassword2026!"
+
+    # Gagal: terlalu pendek + memuat username
+    state.new_password = "admin123"
+    state.confirm_password = "admin123"
+    assert not state.pwd_rule_min_len
+    assert not state.pwd_rule_no_username
+    assert not state.pwd_rule_not_common
+    assert not state.can_submit_password
+
+    # Gagal: sama dengan password lama
+    state.new_password = "OldPassword2026!"
+    state.confirm_password = "OldPassword2026!"
+    assert not state.pwd_rule_diff_from_old
+    assert not state.can_submit_password
+
+    # Lulus semua 4 syarat
+    state.new_password = "SangatKuatBaru2026!"
+    state.confirm_password = "SangatKuatBaru2026!"
+    assert state.pwd_rule_min_len
+    assert state.pwd_rule_no_username
+    assert state.pwd_rule_not_common
+    assert state.pwd_rule_diff_from_old
+    assert state.pwd_strength_score == 4
+    assert state.can_submit_password
+
+    # Guard Administrator aktif terakhir
+    snap_users = deepcopy(MOCK_USERS)
+    snap_sessions = deepcopy(MOCK_ACTIVE_SESSIONS)
+    try:
+        ok, msg = toggle_mock_user_active("admin")
+        assert not ok
+        assert "Administrator aktif terakhir" in msg
+
+        ok_mem, _ = toggle_mock_user_active("member")
+        assert ok_mem
+    finally:
+        MOCK_USERS.clear()
+        MOCK_USERS.update(snap_users)
+        MOCK_ACTIVE_SESSIONS.clear()
+        MOCK_ACTIVE_SESSIONS.update(snap_sessions)
