@@ -36,7 +36,7 @@ def format_date_short_id(iso_str: str | None) -> str:
     """Format '2026-11-07' -> '07 Nov 2026' sesuai Artboard 13 & 14."""
     d = parse_date_flexible(iso_str)
     if d is None:
-        return str(iso_str or "—")
+        return iso_str or "—"
     return f"{d.day:02d} {_BULAN_SHORT_ID[d.month]} {d.year}"
 
 
@@ -440,7 +440,7 @@ MOCK_MAINTENANCE_PLANS: list[dict[str, Any]] = [
     },
     {
         "id": "MP-011",
-        "objek_asset_id": "UPS-0001",
+        "objek_asset_id": "UPS-001",
         "objek_teks": "",
         "kegiatan": "Kalibrasi sensor & uji discharge baterai",
         "jenis": "Servis",
@@ -530,8 +530,21 @@ MOCK_MAINTENANCE_LOGS: list[dict[str, Any]] = [
 
 
 def _get_asset_name_map() -> dict[str, str]:
-    """Peta id_aset ke nama_aset untuk visualisasi nama objek yang jelas."""
-    return {a["id_aset"]: a.get("nama_aset", "") for a in MOCK_ASSETS if "id_aset" in a}
+    """Peta id_aset ke nama_aset dari MOCK_ASSETS (mendukung alias 3-digit & 4-digit)."""
+    name_map: dict[str, str] = {}
+    for a in MOCK_ASSETS:
+        aid = str(a.get("id_aset", "")).strip()
+        if not aid:
+            continue
+        nama = str(a.get("nama_aset", "")).strip()
+        name_map[aid] = nama
+        if "-" in aid:
+            prefix, num = aid.split("-", 1)
+            if num.isdigit():
+                n = int(num)
+                name_map.setdefault(f"{prefix}-{n:03d}", nama)
+                name_map.setdefault(f"{prefix}-{n:04d}", nama)
+    return name_map
 
 
 def calculate_plan_status(jadwal_berikutnya: str, pengingat_hari: int = 7) -> dict[str, str]:
@@ -729,8 +742,8 @@ def action_tandai_selesai(
                     "pelaksana_tipe": (
                         pelaksana_tipe or plan.get("pelaksana_tipe", "Internal")
                     ),
-                    "biaya": int(biaya or 0),
-                    "biaya_display": f"Rp {int(biaya or 0):,}".replace(",", "."),
+                    "biaya": biaya or 0,
+                    "biaya_display": f"Rp {biaya or 0:,}".replace(",", "."),
                     "unit_dikerjakan": ", ".join(done_units),
                     "checklist_hasil": checklist_hasil or [],
                     "ada_temuan": ada_temuan,

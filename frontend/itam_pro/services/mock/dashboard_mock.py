@@ -2,42 +2,78 @@
 Data Mock Ringkasan Dashboard ITAM Pro (USE_MOCK=true).
 """
 
+from datetime import date
 from typing import Any
 
-from itam_pro.services.dashboard_service import calculate_dashboard_metrics
-from itam_pro.services.mock.finance_mock import MOCK_BILLS, MOCK_PURCHASES
+from itam_pro.services.dashboard_service import (
+    aggregate_monthly_purchases,
+    calculate_dashboard_metrics,
+)
+from itam_pro.services.mock.audit_mock import query_audit_logs
+from itam_pro.services.mock.finance_mock import MOCK_BILLS
 from itam_pro.services.mock.ip_mock import get_ip_conflict_summary
 from itam_pro.services.mock.maintenance_mock import (
     MOCK_MAINTENANCE_PLANS,
     calculate_plan_status,
 )
+from itam_pro.services.mock.seed import MOCK_ASSETS
 from itam_pro.services.recurrence import calculate_bill_status
+from itam_pro.services.validators import format_tanggal
 
 
 def build_maintenance_alerts() -> list[dict[str, str]]:
-    """Peringatan Maintenance: jadwal terlambat dan hasil 'Perlu tindak lanjut'."""
+    """Peringatan Maintenance: jadwal terlambat (badge 'Terlambat N hari') & tindak lanjut."""
     alerts: list[dict[str, str]] = []
     for plan in MOCK_MAINTENANCE_PLANS:
         target = plan.get("objek_asset_id") or plan.get("objek_teks", "")
-        # 1. Deteksi hasil 'Perlu tindak lanjut'
-        if plan.get("terakhir_hasil") == "Perlu tindak lanjut":
-            alerts.append(
-                {
-                    "title": f"Tindak Lanjut: {target}",
-                    "description": f"{plan.get('kegiatan', '')} - Perlu penanganan",
-                    "badge_label": "Maintenance",
-                    "badge_variant": "warning",
-                }
-            )
-        # 2. Deteksi status Terlambat
+        kegiatan = str(plan.get("kegiatan", "")).strip()
+        pic = str(plan.get("pic", "")).strip()
+        jadwal_fmt = format_tanggal(plan.get("jadwal_berikutnya", ""))
         status_info = calculate_plan_status(plan.get("jadwal_berikutnya", ""))
+
         if status_info["status"] == "Terlambat":
             alerts.append(
                 {
-                    "title": f"Maintenance: {target}",
-                    "description": f"{plan.get('kegiatan', '')} ({status_info['label']})",
-                    "badge_label": "Maintenance",
+                    "title": f"{target} · {kegiatan}" if kegiatan else str(target),
+                    "description": f"Jadwal {jadwal_fmt}" + (f" · {pic}" if pic else ""),
+                    "badge_label": status_info["label"],
                     "badge_variant": "danger",
+                }
+            )
+        elif plan.get("terakhir_hasil") == "Perlu tindak lanjut":
+            alerts.append(
+                {
+                    "title": f"{target} · {kegiatan}" if kegiatan else str(target),
+                    "description": f"Perlu tindak lanjut · {pic}" if pic else "Perlu tindak lanjut",
+                    "badge_label": "Tindak lanjut",
+                    "badge_variant": "warning",
+                }
+            )
+    return alerts
+
+
+def build_warranty_alerts(today: date | None = None) -> list[dict[str, str]]:
+    """Peringatan aset dengan garansi berakhir <= 30 hari dari MOCK_ASSETS."""
+    ref = today or date.today()
+    alerts: list[dict[str, str]] = []
+    for asset in MOCK_ASSETS:
+        raw_due = str(asset.get("garansi_sampai") or "").strip()
+        if not raw_due:
+            continue
+        try:
+            due = date.fromisoformat(raw_due[:10])
+        except ValueError:
+            continue
+        diff = (due - ref).days
+        if 0 <= diff <= 30:
+            aid = str(asset.get("id_aset", ""))
+            nama = str(asset.get("nama_aset", ""))
+            alerts.append(
+                {
+                    "title": f"{aid} · {nama}".strip(" ·"),
+                    "description": f"Garansi berakhir {format_tanggal(due)}",
+                    "badge_label": "Hari ini" if diff == 0 else f"Garansi {diff} hari",
+                    "badge_variant": "danger" if diff <= 7 else "warning",
                 }
             )
     return alerts
@@ -57,7 +93,7 @@ def build_bill_alerts() -> list[dict[str, str]]:
                     "description": (
                         f"Jatuh tempo terlewat {stat['label'].replace('Terlambat ', '')}"
                     ),
-                    "badge_label": "Finance",
+                    "badge_label": stat["label"],
                     "badge_variant": "danger",
                 }
             )
@@ -66,7 +102,7 @@ def build_bill_alerts() -> list[dict[str, str]]:
                 {
                     "title": f"Tagihan: {bill['nama']}",
                     "description": f"Jatuh tempo {stat['label']}",
-                    "badge_label": "Finance",
+                    "badge_label": stat["label"],
                     "badge_variant": "warning",
                 }
             )
@@ -74,38 +110,8 @@ def build_bill_alerts() -> list[dict[str, str]]:
 
 
 def get_dynamic_monthly_purchases() -> list[dict[str, Any]]:
-    """Agregasi dinamis 6 bulan terakhir dari data MOCK_PURCHASES."""
-    month_names = {5: "Mei", 6: "Jun", 7: "Jul", 8: "Agu", 9: "Sep", 10: "Okt"}
-    base_totals: dict[str, float] = {
-        "Mei": 42.0,
-        "Jun": 18.0,
-        "Jul": 65.0,
-        "Agu": 31.0,
-        "Sep": 88.0,
-        "Okt": 0.0,
-    }
-    for item in MOCK_PURCHASES:
-        tgl = str(item.get("tanggal", ""))
-        try:
-            m = int(tgl.split("-")[1])
-            m_name = month_names.get(m)
-            if m_name:
-                total_val = float(item.get("harga", 0)) * float(item.get("pcs", 1))
-                base_totals[m_name] = base_totals.get(m_name, 0.0) + (total_val / 1_000_000)
-        except (IndexError, ValueError):
-            pass
-
-    if base_totals["Okt"] == 0:
-        base_totals["Okt"] = 54.0
-
-    return [
-        {"month": "Mei", "amount_million": round(base_totals["Mei"]), "is_latest": False},
-        {"month": "Jun", "amount_million": round(base_totals["Jun"]), "is_latest": False},
-        {"month": "Jul", "amount_million": round(base_totals["Jul"]), "is_latest": False},
-        {"month": "Agu", "amount_million": round(base_totals["Agu"]), "is_latest": False},
-        {"month": "Sep", "amount_million": round(base_totals["Sep"]), "is_latest": False},
-        {"month": "Okt", "amount_million": max(1, round(base_totals["Okt"])), "is_latest": True},
-    ]
+    """Agregasi dinamis dari MOCK_PURCHASES melalui aggregate_monthly_purchases."""
+    return aggregate_monthly_purchases()["items"]
 
 
 def build_ip_conflict_alert() -> dict[str, str] | None:
@@ -130,82 +136,30 @@ def build_ip_conflict_alert() -> dict[str, str] | None:
 
 
 def get_mock_dashboard_summary() -> dict[str, Any]:
-    """Kembalikan data mentah ringkasan dashboard."""
+    """Kembalikan ringkasan dashboard 100% terhitung dari sumber data mock."""
     attention_items: list[dict[str, str]] = []
+    attention_items.extend(build_maintenance_alerts())
+    attention_items.extend(build_bill_alerts())
+    attention_items.extend(build_warranty_alerts())
 
     conflict_alert = build_ip_conflict_alert()
     if conflict_alert is not None:
         attention_items.append(conflict_alert)
 
-    attention_items.extend(build_maintenance_alerts())
-    attention_items.extend(build_bill_alerts())
-
-    attention_items.extend(
-        [
-            {
-                "title": "Server Rack-02",
-                "description": "Garansi habis 12 hari lagi",
-                "badge_label": "Garansi",
-                "badge_variant": "warning",
-            },
-            {
-                "title": "UPS Server 1",
-                "description": "Baterai berumur > 3 tahun",
-                "badge_label": "Baterai",
-                "badge_variant": "warning",
-            },
-        ]
-    )
-
-    overdue_maint_count = sum(
-        1
-        for p in MOCK_MAINTENANCE_PLANS
-        if calculate_plan_status(p.get("jadwal_berikutnya", ""))["status"] == "Terlambat"
-    )
-
     metrics = calculate_dashboard_metrics()
-    kpis = dict(metrics.get("kpis", {}))
-    kpis.setdefault("new_assets_this_month", 2)
-    kpis.setdefault("in_maintenance", metrics["kpis"].get("maintenance_attention", 0))
-    kpis.setdefault("overdue_maintenance", overdue_maint_count)
-    kpis.setdefault("expiring_warranty_30d", 2)
+    important_logs = query_audit_logs(
+        {"hide_login_success": "true"},
+        page=1,
+        page_size=5,
+    ).get("items", [])
 
     return {
-        "kpis": kpis,
+        "kpis": dict(metrics.get("kpis", {})),
         "monthly_purchases": metrics.get("monthly_purchases", []),
+        "purchase_total_rp": metrics.get("purchase_total_rp", 0),
+        "purchase_total_million": metrics.get("purchase_total_million", 0.0),
         "assets_by_category": metrics.get("assets_by_category", []),
-        "ups_loads": [
-            {"name": "UPS Server 1", "capacity_kva": 6.0, "load_percent": 78},
-            {"name": "UPS Server 2", "capacity_kva": 6.0, "load_percent": 64},
-            {"name": "UPS Jaringan", "capacity_kva": 2.0, "load_percent": 91},
-            {"name": "UPS Office", "capacity_kva": 1.5, "load_percent": 43},
-        ],
+        "ups_loads": metrics.get("ups_loads", []),
         "attention_items": attention_items,
-        "recent_activities": [
-            {
-                "actor_and_action": "Admin IT menambah aset ",
-                "target": "PC-0214",
-                "relative_time": "5 mnt lalu",
-            },
-            {
-                "actor_and_action": "Teknisi 1 menjadwalkan maintenance ",
-                "target": "UPS-03",
-                "relative_time": "1 jam lalu",
-            },
-            {
-                "actor_and_action": "Admin IT mengunggah invoice ",
-                "target": "INV-2026-1017",
-                "relative_time": "3 jam lalu",
-            },
-            {
-                "actor_and_action": "Teknisi 2 mengubah IP ",
-                "target": "VM-App-03",
-                "relative_time": "Kemarin",
-            },
-            {
-                "actor_and_action": "Admin IT membuka kredensial ",
-                "target": "Router Core",
-                "relative_time": "Kemarin",
-            },
-        ],
+        "recent_activities": important_logs,
     }

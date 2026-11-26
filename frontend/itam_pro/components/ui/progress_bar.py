@@ -17,7 +17,7 @@ def metric_progress_bar(
 ) -> rx.Component:
     """Bar persentase dengan warna otomatis berdasarkan ambang batas beban."""
     bar_color = rx.cond(
-        percent > 85,
+        percent >= 80,
         Color.PROGRESS_HIGH,
         rx.cond(
             percent >= 70,
@@ -26,10 +26,15 @@ def metric_progress_bar(
         ),
     )
     text_color = rx.cond(
-        percent > 85,
+        percent >= 80,
         Color.DANGER_FG,
-        Color.TEXT,
+        rx.cond(
+            percent >= 70,
+            Color.AMBER_600,
+            Color.PROGRESS_LOW,
+        ),
     )
+    clamped_width = rx.cond(percent > 100, "100%", f"{percent}%")
 
     return rx.vstack(
         rx.hstack(
@@ -44,6 +49,7 @@ def metric_progress_bar(
                 font_size=FontSize.SM,
                 font_weight=FontWeight.BOLD,
                 color=text_color,
+                style=rx.Style({"font_variant_numeric": "tabular-nums"}),
             ),
             width="100%",
             justify="between",
@@ -53,7 +59,7 @@ def metric_progress_bar(
             rx.box(
                 style=rx.Style(
                     {
-                        "width": f"{percent}%",
+                        "width": clamped_width,
                         "height": "100%",
                         "background_color": bar_color,
                         "border_radius": Radius.FULL,

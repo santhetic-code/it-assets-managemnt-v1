@@ -1,9 +1,7 @@
 """
-
 Halaman Overview -> Dashboard (/dashboard).
 
 Dioptimalkan dengan pre-compiled static rx.Style untuk rendering komponen grafik & grid.
-
 """
 
 import reflex as rx
@@ -116,12 +114,8 @@ _CATEGORY_WRAPPER_STYLE = rx.Style(
 )
 
 
-_STRONG_TARGET_STYLE = rx.Style({"font_weight": FontWeight.BOLD, "color": Color.TEXT})
-
-
 def _dashboard_header() -> rx.Component:
-    """1) Header: Judul, subjudul di kiri; tombol Export Laporan & + Tambah Aset di kanan."""
-
+    """1) Header: Judul, waktu pembaruan WIB di kiri; Export Laporan & + Tambah Aset di kanan."""
     return rx.box(
         rx.vstack(
             rx.heading(
@@ -133,7 +127,8 @@ def _dashboard_header() -> rx.Component:
                 letter_spacing="-0.02em",
             ),
             rx.text(
-                "Ringkasan aset IT dan kondisi infrastruktur — data contoh",
+                "Ringkasan aset IT, jadwal, dan keamanan — "
+                f"diperbarui {DashboardState.last_updated_wib}",
                 font_size=FontSize.BASE,
                 font_weight=FontWeight.REGULAR,
                 color=Color.MUTED,
@@ -144,11 +139,11 @@ def _dashboard_header() -> rx.Component:
         rx.hstack(
             secondary_button(
                 label="Export Laporan",
-                on_click=DashboardState.show_coming_soon("Export Laporan"),
+                on_click=DashboardState.export_dashboard_report,
             ),
             action_primary_button(
                 label="+ Tambah Aset",
-                on_click=DashboardState.show_coming_soon("Form Tambah Aset"),
+                on_click=rx.redirect("/assets"),
             ),
             spacing="3",
             align="center",
@@ -157,9 +152,55 @@ def _dashboard_header() -> rx.Component:
     )
 
 
+def _alert_banner() -> rx.Component:
+    """Banner ringkas amber di bawah header: jadwal terlambat, login gagal, aset belum tertaut."""
+    return rx.cond(
+        DashboardState.banner_visible,
+        rx.hstack(
+            rx.text(
+                DashboardState.banner_summary,
+                font_size=FontSize.SM,
+                font_weight=FontWeight.SEMIBOLD,
+                color=Color.WARNING_FG,
+            ),
+            rx.el.button(
+                "Tinjau semua →",
+                type="button",
+                on_click=DashboardState.scroll_to_attention,
+                style=rx.Style(
+                    {
+                        "background": "transparent",
+                        "border": "none",
+                        "padding": "0",
+                        "color": Color.ACCENT,
+                        "font_family": FONT_FAMILY,
+                        "font_size": FontSize.SM,
+                        "font_weight": FontWeight.BOLD,
+                        "cursor": "pointer",
+                        "white_space": "nowrap",
+                    }
+                ),
+            ),
+            width="100%",
+            justify="between",
+            align="center",
+            wrap="wrap",
+            spacing="3",
+            padding="11px 16px",
+            style=rx.Style(
+                {
+                    "background_color": Color.WARNING_BG,
+                    "border": f"1px solid {Color.WARNING_BORDER}",
+                    "border_radius": Radius.CONTROL,
+                }
+            ),
+        ),
+        rx.fragment(),
+    )
+
+
 def _kpi_row() -> rx.Component:
     """2) Baris KPI: 5 kolom, gap 16px (2 kolom di <900px, 1 kolom di <560px)."""
-
     return rx.box(
         rx.foreach(DashboardState.kpi_cards, stat_card),
         style=_KPI_GRID_STYLE,
@@ -168,7 +209,6 @@ def _kpi_row() -> rx.Component:
 
 def _monthly_purchases_card() -> rx.Component:
     """Kartu grafik batang 'Pembelian per Bulan' (rx.recharts bar chart)."""
-
     return app_card(
         rx.box(
             rx.recharts.responsive_container(
@@ -187,8 +227,8 @@ def _monthly_purchases_card() -> rx.Component:
                     rx.recharts.y_axis(
                         axis_line=False,
                         tick_line=False,
-                        width=34,
-                        domain=[0, 100],
+                        width=38,
+                        domain=[0, "auto"],
                         custom_attrs={"fontSize": "12px", "fill": Color.MUTED},
                     ),
                     rx.recharts.tooltip(),
@@ -216,13 +256,12 @@ def _monthly_purchases_card() -> rx.Component:
         title="Pembelian per Bulan",
         subtitle=DashboardState.purchase_subtitle,
         action_label="Rekap Pembelian",
-        on_action_click=DashboardState.show_coming_soon("Halaman Rekap Pembelian"),
+        on_action_click=rx.redirect("/finance/purchases"),
     )
 
 
 def _category_legend_row(item: CategoryAssetItem) -> rx.Component:
     """Baris legenda untuk donut chart Aset per Kategori."""
-
     return rx.link(
         rx.hstack(
             rx.hstack(
@@ -273,7 +312,6 @@ def _category_legend_row(item: CategoryAssetItem) -> rx.Component:
 
 def _assets_by_category_card() -> rx.Component:
     """Kartu donut chart 'Aset per Kategori' beserta angka total di tengah & legenda."""
-
     return app_card(
         rx.box(
             # Donut Chart dengan label total di tengah
@@ -340,7 +378,6 @@ def _assets_by_category_card() -> rx.Component:
 
 def _charts_row() -> rx.Component:
     """3) Baris 2: Grid 2fr 1fr (1 kolom di <900px)."""
-
     return rx.box(
         _monthly_purchases_card(),
         _assets_by_category_card(),
@@ -350,7 +387,6 @@ def _charts_row() -> rx.Component:
 
 def _ups_load_row(item: UPSLoadItem) -> rx.Component:
     """Render satu baris progress bar Beban UPS."""
-
     return metric_progress_bar(
         label=item["label"],
         percent=item["percent"],
@@ -359,23 +395,21 @@ def _ups_load_row(item: UPSLoadItem) -> rx.Component:
 
 
 def _ups_loads_card() -> rx.Component:
-    """Kolom 1 Baris 3: Kartu 'Beban UPS'."""
-
+    """Kolom 1 Baris 3: Kartu 'Beban UPS tertinggi' (3 teratas)."""
     return app_card(
         rx.vstack(
             rx.foreach(DashboardState.ups_loads, _ups_load_row),
             spacing="4",
             width="100%",
         ),
-        title="Beban UPS",
-        action_label="Rekap UPS",
-        on_action_click=DashboardState.show_coming_soon("Halaman Rekap UPS"),
+        title="Beban UPS tertinggi",
+        action_label="Rekap Watt",
+        on_action_click=rx.redirect("/watt-server"),
     )
 
 
 def _attention_row(item: AttentionItem, index: int) -> rx.Component:
     """Render satu baris item 'Perlu Perhatian' dengan badge status."""
-
     return rx.hstack(
         rx.vstack(
             rx.text(
@@ -416,35 +450,36 @@ def _attention_row(item: AttentionItem, index: int) -> rx.Component:
 
 
 def _attention_card() -> rx.Component:
-    """Kolom 2 Baris 3: Kartu 'Perlu Perhatian'."""
-
-    return app_card(
-        rx.vstack(
-            rx.foreach(DashboardState.attention_items, _attention_row),
-            spacing="0",
-            width="100%",
+    """Kolom 2 Baris 3: Kartu 'Perlu Perhatian' (jadwal terlambat, garansi, tagihan)."""
+    return rx.box(
+        app_card(
+            rx.cond(
+                DashboardState.has_attention_items,
+                rx.vstack(
+                    rx.foreach(DashboardState.attention_items, _attention_row),
+                    spacing="0",
+                    width="100%",
+                ),
+                rx.text(
+                    "Semua jadwal, garansi, dan tagihan dalam kondisi aman.",
+                    font_size=FontSize.SM,
+                    color=Color.MUTED,
+                ),
+            ),
+            title="Perlu Perhatian",
+            action_label="Lihat semua",
+            on_action_click=rx.redirect("/maintenance"),
         ),
-        title="Perlu Perhatian",
-        action_label="Lihat semua",
-        on_action_click=DashboardState.show_coming_soon("Daftar Perlu Perhatian"),
+        id="dashboard-attention-section",
+        width="100%",
     )
 
 
 def _activity_row(item: ActivityItem, index: int) -> rx.Component:
-    """Render satu baris 'Aktivitas Terbaru' dengan waktu WIB dan drill-down ke Audit Log."""
-    row_body = rx.hstack(
-        rx.text(
-            item["actor_and_action"],
-            " ",
-            rx.el.strong(
-                item["target"],
-                style=_STRONG_TARGET_STYLE,
-            ),
-            font_size=FontSize.SM,
-            font_weight=FontWeight.REGULAR,
-            color=Color.TEXT,
-            line_height="1.4",
-        ),
+    """Satu baris 'Aktivitas Penting' (tanpa login sukses) + badge waktu peringatan."""
+    time_elem = rx.cond(
+        item["is_warning"],
+        app_badge(label=item["relative_time"], variant="warning"),
         rx.text(
             item["relative_time"],
             font_size=FontSize.FOOTER,
@@ -452,12 +487,33 @@ def _activity_row(item: ActivityItem, index: int) -> rx.Component:
             color=Color.MUTED,
             white_space="nowrap",
             flex_shrink="0",
+            style=rx.Style({"font_variant_numeric": "tabular-nums"}),
         ),
+    )
+    row_body = rx.hstack(
+        rx.vstack(
+            rx.text(
+                item["title"],
+                font_size=FontSize.SM,
+                font_weight=FontWeight.SEMIBOLD,
+                color=Color.TEXT,
+                line_height="1.35",
+            ),
+            rx.text(
+                item["actor"],
+                font_size=FontSize.XS,
+                color=Color.MUTED,
+                line_height="1.25",
+            ),
+            spacing="0",
+            align="start",
+        ),
+        time_elem,
         width="100%",
         justify="between",
         align="center",
         spacing="3",
-        padding_y="11px",
+        padding_y="10px",
         style=rx.Style(
             {
                 "border_top": rx.cond(
@@ -476,22 +532,38 @@ def _activity_row(item: ActivityItem, index: int) -> rx.Component:
 
 
 def _recent_activities_card() -> rx.Component:
-    """Kolom 3 Baris 3: Kartu 'Aktivitas Terbaru' (sumber sama dengan Audit Log)."""
+    """Kolom 3 Baris 3: Kartu 'Aktivitas Penting' (tanpa login sukses)."""
     return app_card(
         rx.vstack(
-            rx.foreach(DashboardState.recent_activities, _activity_row),
-            spacing="0",
+            rx.vstack(
+                rx.foreach(DashboardState.recent_activities, _activity_row),
+                spacing="0",
+                width="100%",
+            ),
+            rx.cond(
+                AuthState.is_admin,
+                rx.link(
+                    "Buka Audit Log →",
+                    href="/audit-log",
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.BOLD,
+                    color=Color.ACCENT,
+                    underline="hover",
+                    padding_top="8px",
+                ),
+                rx.fragment(),
+            ),
+            spacing="2",
+            align="start",
             width="100%",
         ),
-        title="Aktivitas Terbaru",
-        action_label=rx.cond(AuthState.is_admin, "Audit Log", ""),
-        on_action_click=rx.redirect("/audit-log"),
+        title="Aktivitas Penting",
+        subtitle="tanpa login sukses",
     )
 
 
 def _bottom_three_columns_row() -> rx.Component:
     """4) Baris 3: 3 kolom sama lebar (1 kolom di <900px)."""
-
     return rx.box(
         _ups_loads_card(),
         _attention_card(),
@@ -502,9 +574,9 @@ def _bottom_three_columns_row() -> rx.Component:
 
 def dashboard_page() -> rx.Component:
     """Halaman utama /dashboard yang dibungkus dengan base_layout."""
-
     content = rx.vstack(
         _dashboard_header(),
+        _alert_banner(),
         _kpi_row(),
         _charts_row(),
         _bottom_three_columns_row(),

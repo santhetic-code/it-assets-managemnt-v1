@@ -131,7 +131,61 @@ def stat_card(
         Color.TEXT,
     )
 
-    is_primary_bool = is_primary is True
+    is_primary_var = isinstance(is_primary, rx.Var)
+    is_primary_bool = (is_primary is True) if not is_primary_var else False
+
+    label_color = (
+        rx.cond(is_primary, Color.WHITE_ALPHA_80, Color.MUTED)
+        if is_primary_var
+        else (Color.WHITE_ALPHA_80 if is_primary_bool else Color.MUTED)
+    )
+    icon_color = (
+        rx.cond(is_primary, Color.WHITE, chip_fg)
+        if is_primary_var
+        else (Color.WHITE if is_primary_bool else chip_fg)
+    )
+    icon_bg = (
+        rx.cond(is_primary, Color.WHITE_ALPHA_16, chip_bg)
+        if is_primary_var
+        else (Color.WHITE_ALPHA_16 if is_primary_bool else chip_bg)
+    )
+    val_color = (
+        rx.cond(is_primary, Color.WHITE, value_color)
+        if is_primary_var
+        else (Color.WHITE if is_primary_bool else value_color)
+    )
+    footer_color = (
+        rx.cond(is_primary, Color.WHITE_ALPHA_80, note_color)
+        if is_primary_var
+        else (Color.WHITE_ALPHA_80 if is_primary_bool else note_color)
+    )
+    box_style = (
+        rx.Style(
+            {
+                "width": "100%",
+                "background_color": rx.cond(is_primary, Color.BRAND, Color.SURFACE),
+                "border": rx.cond(
+                    is_primary,
+                    f"1px solid {Color.BRAND}",
+                    f"1px solid {Color.BORDER}",
+                ),
+                "border_radius": Radius.CARD,
+                "padding": Space.S5,
+                "display": "flex",
+                "flex_direction": "column",
+                "justify_content": "space-between",
+                "transition": "all 0.15s ease",
+                "_hover": {
+                    "border_color": Color.ACCENT,
+                    "transform": "translateY(-1px)",
+                    "box_shadow": Shadow.CARD_HOVER,
+                },
+            }
+        )
+        if is_primary_var
+        else (_STAT_CARD_PRIMARY_STYLE if is_primary_bool else _STAT_CARD_STYLE)
+    )
+
     if isinstance(ic, rx.Var):
         icon_chip: rx.Component = rx.cond(
             ic != "",
@@ -139,12 +193,12 @@ def stat_card(
                 rx.icon(
                     tag=ic,
                     size=Size.ICON_MD,
-                    color=Color.WHITE if is_primary_bool else chip_fg,
+                    color=icon_color,
                     stroke_width=2,
                 ),
                 width=Size.STAT_ICON_CHIP,
                 height=Size.STAT_ICON_CHIP,
-                background_color=Color.WHITE_ALPHA_16 if is_primary_bool else chip_bg,
+                background_color=icon_bg,
                 border_radius=Radius.CHIP,
                 flex_shrink="0",
             ),
@@ -155,12 +209,12 @@ def stat_card(
             rx.icon(
                 tag=ic,
                 size=Size.ICON_MD,
-                color=Color.WHITE if is_primary_bool else chip_fg,
+                color=icon_color,
                 stroke_width=2,
             ),
             width=Size.STAT_ICON_CHIP,
             height=Size.STAT_ICON_CHIP,
-            background_color=Color.WHITE_ALPHA_16 if is_primary_bool else chip_bg,
+            background_color=icon_bg,
             border_radius=Radius.CHIP,
             flex_shrink="0",
         )
@@ -172,7 +226,7 @@ def stat_card(
             label,
             font_size=FontSize.GROUP_LABEL,
             font_weight=FontWeight.BOLD,
-            color=Color.WHITE_ALPHA_80 if is_primary_bool else Color.MUTED,
+            color=label_color,
             line_height="1.3",
             letter_spacing="0.04em",
             style=rx.Style({"text_transform": "uppercase"}),
@@ -189,7 +243,7 @@ def stat_card(
             val,
             font_size=FontSize.KPI_VALUE,
             font_weight=FontWeight.EXTRABOLD,
-            color=Color.WHITE if is_primary_bool else value_color,
+            color=val_color,
             line_height="1.15",
             letter_spacing="-0.02em",
             margin_top="10px",
@@ -202,12 +256,12 @@ def stat_card(
                 note_val,
                 font_size=FontSize.FOOTER,
                 font_weight=FontWeight.MEDIUM,
-                color=Color.WHITE_ALPHA_80 if is_primary_bool else note_color,
+                color=footer_color,
                 line_height="1.3",
             ),
             rx.fragment(),
         ),
-        style=_STAT_CARD_PRIMARY_STYLE if is_primary_bool else _STAT_CARD_STYLE,
+        style=box_style,
     )
 
     return rx.cond(

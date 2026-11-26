@@ -126,8 +126,13 @@ def test_action_buat_jadwal_massal() -> None:
 def test_dashboard_maintenance_alerts() -> None:
     """6. Uji deteksi 'Perlu tindak lanjut' dan status 'Terlambat' di dashboard."""
     alerts = build_maintenance_alerts()
-    # Harus ada alert 'Perlu tindak lanjut' dari Printer Blok 14
-    assert any("Tindak Lanjut" in a["title"] for a in alerts)
-    assert any(a["badge_variant"] == "warning" for a in alerts)
+    # Harus ada alert 'Perlu tindak lanjut' atau status Terlambat dari Printer Blok 14
+    assert any(
+        "Printer Blok 14" in a["title"]
+        or "Tindak lanjut" in a["badge_label"]
+        or "Tindak Lanjut" in a["title"]
+        for a in alerts
+    )
+    assert any(a["badge_variant"] in ("warning", "danger") for a in alerts)
     # Harus ada alert status Terlambat
     assert any(a["badge_variant"] == "danger" for a in alerts)

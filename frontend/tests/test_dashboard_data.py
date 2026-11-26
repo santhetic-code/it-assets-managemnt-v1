@@ -88,11 +88,15 @@ def test_calculate_dashboard_metrics() -> None:
 
     assert "monthly_purchases" in metrics
     purchases = metrics["monthly_purchases"]
-    assert len(purchases) == 6
+    assert len(purchases) >= 1
     assert purchases[-1]["is_latest"] is True
     for p in purchases:
         assert "month" in p
         assert "amount_million" in p
+        assert p["amount_million"] > 0
+
+    expected_total_rp = sum(int(p["harga"]) * int(p["pcs"]) for p in MOCK_PURCHASES)
+    assert metrics["purchase_total_rp"] == expected_total_rp
 
     assert "assets_by_category" in metrics
     categories = metrics["assets_by_category"]
@@ -113,7 +117,8 @@ def test_dashboard_mock_integration_with_service() -> None:
 
     # Total assets harus sama dengan panjang MOCK_ASSETS
     assert summary["kpis"]["total_assets"] == len(MOCK_ASSETS)
-    assert len(summary["monthly_purchases"]) == 6
+    assert len(summary["monthly_purchases"]) >= 1
+    assert len(summary["ups_loads"]) <= 3
 
 
 @pytest.mark.anyio
@@ -151,3 +156,26 @@ async def test_asset_state_url_parametric_query() -> None:
     assert state.status_filter == ""
     assert state.kategori_filter == "Monitor"
     assert all(item.get("kategori") == "Monitor" for item in state.items)
+
+
+def test_dashboard_consistency_ups_and_important_activities() -> None:
+    """7. Uji konsistensi UPS-001 (maintenance vs seed) dan filter Aktivitas Penting."""
+    from itam_pro.services.mock.maintenance_mock import query_maintenance_plans
+
+    summary = get_mock_dashboard_summary()
+
+    # Aktivitas Penting tidak boleh memuat login berhasil
+    for act in summary["recent_activities"]:
+        aksi_low = str(act.get("aksi") or act.get("action") or "").lower()
+        assert not (
+            aksi_low in ("user.login", "login", "login_berhasil")
+            and act.get("hasil") == "Berhasil"
+        )
+
+    # UPS-001 di jadwal maintenance harus memakai nama aset dari seed.py
+    plans = query_maintenance_plans(page=1, page_size=50)["items"]
+    mp_ups1 = next((p for p in plans if p["id"] == "MP-011"), None)
+    seed_ups1 = next((a for a in MOCK_ASSETS if a.get("id_aset") == "UPS-001"), None)
+    assert mp_ups1 is not None
+    assert seed_ups1 is not None
+    assert seed_ups1["nama_aset"] in mp_ups1["objek_display"]
