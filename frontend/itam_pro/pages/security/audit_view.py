@@ -13,72 +13,53 @@ from itam_pro.components.tables import (
     table_pagination,
 )
 from itam_pro.components.ui.badge import app_badge, connector_chip
-from itam_pro.components.ui.detail_drawer import detail_drawer
+from itam_pro.components.ui.button import action_primary_button, secondary_button
+from itam_pro.components.ui.stat_card import stat_card
 from itam_pro.components.ui.tabs import TabItemConfig, app_tabs
 from itam_pro.states.audit_state import AuditState
 from itam_pro.states.auth_state import AuthState
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size, Space
+from itam_pro.styles import (
+    FONT_FAMILY,
+    Color,
+    FontSize,
+    FontWeight,
+    Radius,
+    Shadow,
+    Size,
+    Space,
+)
 
 
 def _cell_waktu_wib(row: dict[str, Any]) -> rx.Component:
-    return rx.vstack(
-        rx.text(
-            row["tanggal_wib"],
-            font_size=FontSize.SM,
-            font_weight=FontWeight.SEMIBOLD,
-            color=Color.TEXT,
-            white_space="nowrap",
-            line_height="1.25",
-        ),
-        rx.text(
-            row["jam_wib"],
-            font_size=FontSize.XS,
-            font_weight=FontWeight.REGULAR,
-            color=Color.MUTED,
-            white_space="nowrap",
-            line_height="1.2",
-        ),
-        spacing="0",
-        align="start",
+    return rx.text(
+        row["waktu_ringkas"],
+        title=row["waktu_lengkap"],
+        font_size=FontSize.SM,
+        font_weight=FontWeight.MEDIUM,
+        color=Color.TEXT,
+        white_space="nowrap",
+        style=rx.Style({"font_variant_numeric": "tabular-nums"}),
     )
 
 
 def _cell_pelaku(row: dict[str, Any]) -> rx.Component:
-    return rx.hstack(
-        rx.center(
-            rx.text(
-                row["actor_initials"],
-                font_size=FontSize.XS,
-                font_weight=FontWeight.BOLD,
-                color=Color.ACCENT,
-            ),
-            width="30px",
-            height="30px",
-            border_radius=Radius.FULL,
-            background_color=Color.INFO_BG,
-            border=f"1px solid {Color.BLUE_BORDER}",
-            flex_shrink="0",
+    return rx.vstack(
+        rx.text(
+            row["nama_pengguna"],
+            font_size=FontSize.SM,
+            font_weight=FontWeight.BOLD,
+            color=Color.TEXT,
+            line_height="1.25",
         ),
-        rx.vstack(
-            rx.text(
-                row["nama_pengguna"],
-                font_size=FontSize.SM,
-                font_weight=FontWeight.BOLD,
-                color=Color.TEXT,
-                line_height="1.25",
-            ),
-            rx.text(
-                row["role"],
-                font_size=FontSize.XS,
-                font_weight=FontWeight.REGULAR,
-                color=Color.MUTED,
-                line_height="1.2",
-            ),
-            spacing="0",
-            align="start",
+        rx.text(
+            row["actor_sub"],
+            font_size=FontSize.XS,
+            font_weight=FontWeight.REGULAR,
+            color=Color.MUTED,
+            line_height="1.2",
         ),
-        spacing="2",
-        align="center",
+        spacing="0",
+        align="start",
     )
 
 
@@ -88,19 +69,36 @@ def _cell_modul(row: dict[str, Any]) -> rx.Component:
 
 def _cell_aksi(row: dict[str, Any]) -> rx.Component:
     return rx.hstack(
-        rx.text(
-            row["aksi_label"],
-            font_size=FontSize.SM,
-            font_weight=FontWeight.MEDIUM,
-            color=Color.TEXT,
-        ),
+        app_badge(label=row["aksi_label"], variant=row["tingkat_variant"]),
         rx.cond(
             row["group_badge"] != "",
             app_badge(label=row["group_badge"], variant="neutral"),
             rx.fragment(),
         ),
-        app_badge(label=row["tingkat"], variant=row["tingkat_variant"]),
-        spacing="2",
+        spacing="1",
+        align="center",
+        wrap="wrap",
+    )
+
+
+def _cell_target(row: dict[str, Any]) -> rx.Component:
+    return rx.hstack(
+        rx.text(
+            row["target_id"],
+            font_size=FontSize.SM,
+            font_weight=FontWeight.SEMIBOLD,
+            color=Color.TEXT,
+        ),
+        rx.cond(
+            row["target_context"] != "",
+            rx.text(
+                row["target_context"],
+                font_size=FontSize.XS,
+                color=Color.MUTED,
+            ),
+            rx.fragment(),
+        ),
+        spacing="1",
         align="center",
         wrap="wrap",
     )
@@ -110,44 +108,37 @@ AUDIT_COLUMNS: list[ColumnDef] = [
     {
         "key": "waktu_wib",
         "header": "Waktu (WIB)",
-        "width": "140px",
-        "min_width": "130px",
+        "width": "130px",
+        "min_width": "120px",
         "accessor": _cell_waktu_wib,
     },
     {
         "key": "nama_pengguna",
         "header": "Pelaku",
-        "width": "200px",
-        "min_width": "175px",
+        "width": "195px",
+        "min_width": "170px",
         "accessor": _cell_pelaku,
     },
     {
         "key": "modul",
         "header": "Modul",
-        "width": "130px",
-        "min_width": "115px",
+        "width": "115px",
+        "min_width": "105px",
         "accessor": _cell_modul,
     },
     {
         "key": "aksi_label",
         "header": "Aksi",
-        "width": "280px",
-        "min_width": "230px",
+        "width": "165px",
+        "min_width": "145px",
         "accessor": _cell_aksi,
     },
     {
         "key": "target_id",
         "header": "Target",
-        "width": "135px",
-        "min_width": "115px",
-        "render_type": "chip",
-    },
-    {
-        "key": "detail",
-        "header": "Ringkasan",
-        "width": "280px",
-        "min_width": "210px",
-        "render_type": "text",
+        "width": "185px",
+        "min_width": "150px",
+        "accessor": _cell_target,
     },
 ]
 
@@ -217,7 +208,7 @@ def _extra_filter_controls() -> rx.Component:
     date_input_style = rx.Style(
         {
             "height": Size.FILTER_CONTROL_H,
-            "min_height": "44px",
+            "min_height": "40px",
             "padding": "0 10px",
             "background_color": Color.SURFACE,
             "color": Color.TEXT,
@@ -251,39 +242,42 @@ def _extra_filter_controls() -> rx.Component:
             ),
             rx.fragment(),
         ),
-        rx.el.label(
+        rx.el.button(
             rx.hstack(
-                rx.el.input(
-                    type="checkbox",
-                    checked=AuditState.hide_login_success,
-                    on_change=AuditState.toggle_hide_login_success,
-                    style=rx.Style(
-                        {
-                            "width": Size.TABLE_CHECKBOX,
-                            "height": Size.TABLE_CHECKBOX,
-                            "accent_color": Color.ACCENT,
-                            "cursor": "pointer",
-                            "margin": "0",
-                        }
-                    ),
+                rx.cond(
+                    AuditState.hide_login_success,
+                    rx.text("✓", font_weight=FontWeight.BOLD, color=Color.ACCENT),
+                    rx.fragment(),
                 ),
                 rx.text(
                     "Sembunyikan login berhasil",
                     font_size=FontSize.SM,
-                    font_weight=FontWeight.MEDIUM,
-                    color=Color.TEXT,
+                    font_weight=FontWeight.SEMIBOLD,
+                    color=rx.cond(AuditState.hide_login_success, Color.ACCENT, Color.TEXT),
                     white_space="nowrap",
                 ),
-                spacing="2",
+                spacing="1",
                 align="center",
             ),
+            type="button",
+            on_click=AuditState.toggle_hide_login_success,
             style=rx.Style(
                 {
-                    "min_height": "44px",
-                    "padding": "0 8px",
+                    "height": Size.FILTER_CONTROL_H,
+                    "padding": "0 14px",
+                    "background_color": rx.cond(
+                        AuditState.hide_login_success, Color.INFO_BG, Color.SURFACE
+                    ),
+                    "border": rx.cond(
+                        AuditState.hide_login_success,
+                        f"1px solid {Color.BLUE_BORDER}",
+                        f"1px solid {Color.INPUT_BORDER}",
+                    ),
+                    "border_radius": Radius.CONTROL,
+                    "font_family": FONT_FAMILY,
+                    "cursor": "pointer",
                     "display": "inline-flex",
                     "align_items": "center",
-                    "cursor": "pointer",
                 }
             ),
         ),
@@ -293,221 +287,124 @@ def _extra_filter_controls() -> rx.Component:
     )
 
 
-def _drawer_info_row(label: str, content: rx.Component) -> rx.Component:
+_TWO_COL_LAYOUT_STYLE = rx.Style(
+    {
+        "width": "100%",
+        "display": "grid",
+        "grid_template_columns": "minmax(0, 1fr) 360px",
+        "gap": Space.S4,
+        "align_items": "start",
+        "@media (max-width: 899px)": {
+            "grid_template_columns": "1fr",
+        },
+    }
+)
+
+
+def _audit_kpi_row() -> rx.Component:
+    """4 Kartu KPI Audit Log (kartu pertama Color.BRAND)."""
+    return rx.grid(
+        stat_card(
+            "KEJADIAN (30 HARI)",
+            AuditState.kpi_events_30d,
+            note=AuditState.kpi_events_note,
+            primary=True,
+        ),
+        stat_card(
+            "PERINGATAN",
+            AuditState.kpi_warnings_count,
+            value_tone="danger",
+            note="login gagal terdeteksi",
+        ),
+        stat_card(
+            "PERUBAHAN DATA",
+            AuditState.kpi_changes_count,
+            note="kejadian penting",
+        ),
+        stat_card(
+            "PASSWORD DIBUKA HARI INI",
+            AuditState.kpi_reveals_today,
+            note="akses Credential Manager",
+        ),
+        columns=rx.breakpoints(initial="1", sm="2", lg="4"),
+        spacing="4",
+        width="100%",
+    )
+
+
+def _detail_meta_row(label: str, value: Any, *, mono: bool = False) -> rx.Component:
     return rx.hstack(
+        rx.text(label, font_size=FontSize.SM, color=Color.MUTED),
         rx.text(
-            label,
+            value,
             font_size=FontSize.SM,
-            color=Color.MUTED,
-            style=rx.Style({"width": "34%", "flex_shrink": "0"}),
-        ),
-        rx.box(content, style=rx.Style({"width": "66%"})),
-        width="100%",
-        align="center",
-        padding_y="6px",
-    )
-
-
-def _audit_detail_drawer() -> rx.Component:
-    custom_header = rx.vstack(
-        rx.hstack(
-            rx.text(
-                AuditState.selected_kode_audit,
-                font_size=FontSize.XS,
-                font_weight=FontWeight.BOLD,
-                color=Color.ACCENT,
-                letter_spacing="0.04em",
-            ),
-            rx.el.button(
-                rx.icon(tag="x", size=18, color=Color.MUTED),
-                id="drawer-close-btn",
-                type="button",
-                aria_label="Tutup panel detail kejadian",
-                on_click=AuditState.close_detail_drawer,
-                style=rx.Style(
-                    {
-                        "min_width": "44px",
-                        "min_height": "44px",
-                        "border_radius": Radius.CONTROL,
-                        "border": f"1px solid {Color.BORDER}",
-                        "background_color": Color.SURFACE,
-                        "display": "inline-flex",
-                        "align_items": "center",
-                        "justify_content": "center",
-                        "cursor": "pointer",
-                    }
-                ),
-                _hover=rx.Style({"background_color": Color.SURFACE_HOVER}),
-            ),
-            width="100%",
-            justify="between",
-            align="center",
-        ),
-        rx.heading(
-            AuditState.selected_aksi_label,
-            font_size=FontSize.LOGO,
-            font_weight=FontWeight.EXTRABOLD,
+            font_weight=FontWeight.BOLD,
             color=Color.TEXT,
-            line_height="1.25",
+            text_align="right",
+            font_family="monospace" if mono else FONT_FAMILY,
         ),
-        rx.text(
-            AuditState.selected_waktu_lengkap,
-            font_size=FontSize.SM,
-            color=Color.MUTED,
-        ),
-        rx.hstack(
-            app_badge(
-                label=AuditState.selected_tingkat,
-                variant=AuditState.selected_tingkat_variant,
-            ),
-            app_badge(
-                label=AuditState.selected_hasil,
-                variant=AuditState.selected_hasil_variant,
-            ),
-            spacing="2",
-            align="center",
-            padding_top="4px",
-        ),
-        spacing="1",
-        align="start",
         width="100%",
-        padding="20px 24px 16px 24px",
-        style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
-    )
-
-    target_cell = rx.hstack(
-        connector_chip(AuditState.selected_target_id),
-        rx.cond(
-            AuthState.is_admin & (AuditState.selected_target_url != ""),
-            rx.link(
-                AuditState.selected_target_link_label,
-                href=AuditState.selected_target_url,
-                font_size=FontSize.SM,
-                font_weight=FontWeight.BOLD,
-                color=Color.ACCENT,
-                underline="hover",
-            ),
-            rx.fragment(),
-        ),
-        spacing="2",
+        justify="between",
         align="center",
-        wrap="wrap",
+        padding_y="8px",
+        style=rx.Style({"border_bottom": f"1px solid {Color.DIVIDER}"}),
     )
 
-    changes_table = rx.cond(
+
+def _audit_detail_panel() -> rx.Component:
+    """Panel kanan Detail Kejadian pada layout dua kolom (hanya-baca)."""
+    diff_block = rx.cond(
         AuditState.has_selected_changes,
         rx.vstack(
             rx.text(
-                "PERUBAHAN",
-                font_size=FontSize.GROUP_LABEL,
+                "Perubahan data",
+                font_size=FontSize.SM,
                 font_weight=FontWeight.BOLD,
-                color=Color.MUTED,
-                letter_spacing="0.06em",
+                color=Color.TEXT,
             ),
-            rx.box(
-                rx.el.table(
-                    rx.el.thead(
-                        rx.el.tr(
-                            rx.el.th(
-                                "FIELD",
-                                style=rx.Style(
-                                    {
-                                        "padding": "10px 12px",
-                                        "text_align": "left",
-                                        "font_size": FontSize.XS,
-                                        "color": Color.MUTED,
-                                        "background_color": Color.TABLE_HEADER_BG,
-                                        "border_bottom": f"1px solid {Color.BORDER}",
-                                    }
-                                ),
+            rx.vstack(
+                rx.foreach(
+                    AuditState.selected_changes,
+                    lambda ch: rx.vstack(
+                        rx.text(ch["field"], font_size=FontSize.XS, color=Color.MUTED),
+                        rx.hstack(
+                            rx.text(
+                                ch["before"],
+                                font_size=FontSize.SM,
+                                color=Color.DANGER_FG,
+                                style=rx.Style({"text_decoration": "line-through"}),
                             ),
-                            rx.el.th(
-                                "SEBELUM",
-                                style=rx.Style(
-                                    {
-                                        "padding": "10px 12px",
-                                        "text_align": "left",
-                                        "font_size": FontSize.XS,
-                                        "color": Color.MUTED,
-                                        "background_color": Color.TABLE_HEADER_BG,
-                                        "border_bottom": f"1px solid {Color.BORDER}",
-                                    }
-                                ),
+                            rx.text("→", font_size=FontSize.SM, color=Color.MUTED),
+                            rx.text(
+                                ch["after"],
+                                font_size=FontSize.SM,
+                                font_weight=FontWeight.BOLD,
+                                color=Color.SUCCESS_FG,
                             ),
-                            rx.el.th(
-                                "SESUDAH",
-                                style=rx.Style(
-                                    {
-                                        "padding": "10px 12px",
-                                        "text_align": "left",
-                                        "font_size": FontSize.XS,
-                                        "color": Color.MUTED,
-                                        "background_color": Color.TABLE_HEADER_BG,
-                                        "border_bottom": f"1px solid {Color.BORDER}",
-                                    }
-                                ),
-                            ),
-                        )
+                            spacing="2",
+                            align="center",
+                            wrap="wrap",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
                     ),
-                    rx.el.tbody(
-                        rx.foreach(
-                            AuditState.selected_changes,
-                            lambda ch: rx.el.tr(
-                                rx.el.td(
-                                    ch["field"],
-                                    style=rx.Style(
-                                        {
-                                            "padding": "10px 12px",
-                                            "font_size": FontSize.SM,
-                                            "font_weight": FontWeight.BOLD,
-                                            "color": Color.TEXT,
-                                            "border_bottom": f"1px solid {Color.DIVIDER}",
-                                        }
-                                    ),
-                                ),
-                                rx.el.td(
-                                    ch["before"],
-                                    style=rx.Style(
-                                        {
-                                            "padding": "10px 12px",
-                                            "font_size": FontSize.SM,
-                                            "color": Color.MUTED,
-                                            "border_bottom": f"1px solid {Color.DIVIDER}",
-                                        }
-                                    ),
-                                ),
-                                rx.el.td(
-                                    ch["after"],
-                                    style=rx.Style(
-                                        {
-                                            "padding": "10px 12px",
-                                            "font_size": FontSize.SM,
-                                            "font_weight": FontWeight.BOLD,
-                                            "color": Color.TEXT,
-                                            "border_bottom": f"1px solid {Color.DIVIDER}",
-                                        }
-                                    ),
-                                ),
-                            ),
-                        )
-                    ),
-                    style=rx.Style({"width": "100%", "border_collapse": "collapse"}),
                 ),
+                spacing="3",
+                width="100%",
+                padding="12px",
                 style=rx.Style(
                     {
-                        "width": "100%",
+                        "background_color": Color.TABLE_HEADER_BG,
                         "border": f"1px solid {Color.BORDER}",
                         "border_radius": Radius.CONTROL,
-                        "overflow": "hidden",
                     }
                 ),
             ),
             rx.text(
-                "Untuk kejadian Kredensial, nilai rahasia tidak pernah disimpan atau "
-                "ditampilkan; hanya nama field yang dicatat.",
+                "Nilai rahasia kredensial disanitasi dan tidak pernah ditampilkan.",
                 font_size=FontSize.XS,
                 color=Color.MUTED,
-                line_height="1.45",
             ),
             spacing="2",
             align="start",
@@ -516,15 +413,14 @@ def _audit_detail_drawer() -> rx.Component:
         rx.fragment(),
     )
 
-    grouped_times_block = rx.cond(
+    grouped_block = rx.cond(
         AuditState.is_selected_grouped,
         rx.vstack(
             rx.text(
-                "SEMUA WAKTU KEJADIAN DALAM GRUP (60 DETIK)",
-                font_size=FontSize.GROUP_LABEL,
+                "Waktu kejadian dalam grup (1 menit)",
+                font_size=FontSize.XS,
                 font_weight=FontWeight.BOLD,
                 color=Color.MUTED,
-                letter_spacing="0.06em",
             ),
             rx.vstack(
                 rx.foreach(
@@ -536,20 +432,11 @@ def _audit_detail_drawer() -> rx.Component:
                             font_weight=FontWeight.BOLD,
                             color=Color.ACCENT,
                         ),
-                        rx.text(
-                            ts["waktu_lengkap"],
-                            font_size=FontSize.XS,
-                            color=Color.TEXT,
-                        ),
+                        rx.text(ts["waktu_wib"], font_size=FontSize.XS, color=Color.TEXT),
                         width="100%",
                         justify="between",
-                        align="center",
                         padding="6px 10px",
-                        style=rx.Style(
-                            {
-                                "border_bottom": f"1px solid {Color.DIVIDER}",
-                            }
-                        ),
+                        style=rx.Style({"border_bottom": f"1px solid {Color.DIVIDER}"}),
                     ),
                 ),
                 spacing="0",
@@ -569,129 +456,366 @@ def _audit_detail_drawer() -> rx.Component:
         rx.fragment(),
     )
 
-    custom_body = rx.vstack(
+    selected_body = rx.vstack(
+        rx.hstack(
+            app_badge(
+                label=AuditState.selected_tingkat,
+                variant=AuditState.selected_tingkat_variant,
+            ),
+            connector_chip(AuditState.selected_modul),
+            spacing="2",
+            align="center",
+        ),
         rx.vstack(
+            rx.heading(
+                AuditState.selected_heading_title,
+                font_size=FontSize.SUBTITLE,
+                font_weight=FontWeight.EXTRABOLD,
+                color=Color.TEXT,
+                line_height="1.3",
+            ),
             rx.text(
-                "SIAPA DAN DI MANA",
-                font_size=FontSize.GROUP_LABEL,
-                font_weight=FontWeight.BOLD,
+                AuditState.selected_detail,
+                font_size=FontSize.SM,
                 color=Color.MUTED,
-                letter_spacing="0.06em",
-            ),
-            _drawer_info_row(
-                "Pelaku",
-                rx.text(
-                    AuditState.selected_actor_display,
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.TEXT,
-                ),
-            ),
-            _drawer_info_row(
-                "Peran",
-                rx.text(
-                    AuditState.selected_role,
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.SEMIBOLD,
-                    color=Color.TEXT,
-                ),
-            ),
-            _drawer_info_row(
-                "Modul",
-                rx.text(
-                    AuditState.selected_modul,
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.SEMIBOLD,
-                    color=Color.TEXT,
-                ),
-            ),
-            _drawer_info_row("Target", target_cell),
-            _drawer_info_row(
-                "Alamat IP",
-                rx.text(
-                    AuditState.selected_ip_address,
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.TEXT,
-                    font_family="monospace",
-                ),
-            ),
-            _drawer_info_row(
-                "Perangkat",
-                rx.text(
-                    AuditState.selected_perangkat,
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.SEMIBOLD,
-                    color=Color.TEXT,
-                ),
-            ),
-            _drawer_info_row(
-                "Ringkasan",
-                rx.text(
-                    AuditState.selected_detail,
-                    font_size=FontSize.SM,
-                    color=Color.TEXT,
-                    line_height="1.4",
-                ),
+                line_height="1.45",
             ),
             spacing="1",
             align="start",
             width="100%",
         ),
-        grouped_times_block,
-        changes_table,
-        spacing="5",
+        rx.vstack(
+            _detail_meta_row("Waktu", AuditState.selected_waktu_lengkap),
+            _detail_meta_row("Pelaku", AuditState.selected_actor_display),
+            _detail_meta_row("Alamat IP", AuditState.selected_ip_address, mono=True),
+            _detail_meta_row("Sesi", AuditState.selected_session_id, mono=True),
+            spacing="0",
+            width="100%",
+        ),
+        diff_block,
+        grouped_block,
+        rx.hstack(
+            rx.cond(
+                AuthState.is_admin & AuditState.has_selected_target_link,
+                rx.link(
+                    secondary_button(AuditState.selected_target_link_label),
+                    href=AuditState.selected_target_url,
+                    underline="none",
+                ),
+                rx.fragment(),
+            ),
+            secondary_button(
+                "Salin ID kejadian",
+                on_click=AuditState.copy_selected_event_id,
+            ),
+            spacing="2",
+            width="100%",
+            wrap="wrap",
+            padding_top="4px",
+        ),
+        rx.text("Log hanya-baca", font_size=FontSize.XS, color=Color.MUTED),
+        spacing="4",
         align="start",
         width="100%",
     )
 
-    custom_footer = rx.hstack(
-        rx.el.button(
-            "Salin ID kejadian",
-            type="button",
-            on_click=AuditState.copy_selected_event_id,
-            style=rx.Style(
-                {
-                    "min_height": "44px",
-                    "padding": "0 16px",
-                    "background_color": Color.SURFACE,
-                    "color": Color.TEXT,
-                    "border": f"1px solid {Color.INPUT_BORDER}",
-                    "border_radius": Radius.CONTROL,
-                    "font_family": FONT_FAMILY,
-                    "font_size": FontSize.SM,
-                    "font_weight": FontWeight.BOLD,
-                    "cursor": "pointer",
-                }
-            ),
-            _hover=rx.Style({"background_color": Color.SURFACE_HOVER}),
-        ),
+    empty_panel = rx.vstack(
         rx.text(
-            "Log hanya-baca",
-            font_size=FontSize.XS,
-            font_weight=FontWeight.MEDIUM,
+            "Klik salah satu baris kejadian di tabel untuk melihat waktu, pelaku, IP, "
+            "ID sesi, dan rincian perubahan data.",
+            font_size=FontSize.SM,
             color=Color.MUTED,
+            line_height="1.5",
         ),
+        rx.text("Log hanya-baca", font_size=FontSize.XS, color=Color.MUTED),
+        spacing="3",
+        align="start",
         width="100%",
-        justify="between",
-        align="center",
-        padding="14px 24px",
+        padding_y="12px",
+    )
+
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.heading(
+                    "Detail Kejadian",
+                    font_size=FontSize.SUBTITLE,
+                    font_weight=FontWeight.EXTRABOLD,
+                    color=Color.TEXT,
+                ),
+                rx.cond(
+                    AuditState.drawer_open,
+                    rx.hstack(
+                        rx.text(
+                            AuditState.selected_kode_audit,
+                            font_size=FontSize.XS,
+                            font_weight=FontWeight.SEMIBOLD,
+                            color=Color.MUTED,
+                        ),
+                        rx.el.button(
+                            "×",
+                            id="audit-detail-close-btn",
+                            type="button",
+                            aria_label="Tutup panel detail kejadian",
+                            on_click=AuditState.close_detail_drawer,
+                            style=rx.Style(
+                                {
+                                    "background": "transparent",
+                                    "border": "none",
+                                    "font_size": FontSize.SUBTITLE,
+                                    "color": Color.MUTED,
+                                    "cursor": "pointer",
+                                    "padding": "0 4px",
+                                }
+                            ),
+                        ),
+                        spacing="1",
+                        align="center",
+                    ),
+                    rx.fragment(),
+                ),
+                width="100%",
+                justify="between",
+                align="center",
+            ),
+            rx.cond(AuditState.drawer_open, selected_body, empty_panel),
+            rx.script(
+                "if (!window.__itamAuditEscBound) { window.__itamAuditEscBound = true; "
+                "window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { "
+                "const btn = document.getElementById('audit-detail-close-btn'); "
+                "if (btn) btn.click(); } }); }"
+            ),
+            spacing="3",
+            align="start",
+            width="100%",
+        ),
+        aria_label="Detail kejadian Audit Log",
         style=rx.Style(
             {
-                "border_top": f"1px solid {Color.BORDER}",
+                "width": "100%",
                 "background_color": Color.SURFACE,
+                "border": f"1px solid {Color.BORDER}",
+                "border_radius": Radius.CARD,
+                "padding": Space.S5,
+                "position": "sticky",
+                "top": "84px",
             }
         ),
     )
 
-    return detail_drawer(
-        is_open=AuditState.drawer_open,
-        on_close=AuditState.close_detail_drawer,
-        custom_header=custom_header,
-        custom_body=custom_body,
-        custom_footer=custom_footer,
-        show_tabs=False,
-        aria_label="Detail kejadian Audit Log",
+
+def _export_csv_modal() -> rx.Component:
+    """Modal pilihan rentang tanggal sebelum Export CSV."""
+    input_style = rx.Style(
+        {
+            "width": "100%",
+            "height": Size.FILTER_CONTROL_H,
+            "padding": "0 12px",
+            "background_color": Color.SURFACE,
+            "color": Color.TEXT,
+            "border": f"1px solid {Color.INPUT_BORDER}",
+            "border_radius": Radius.CONTROL,
+            "font_family": FONT_FAMILY,
+            "font_size": FontSize.SM,
+        }
+    )
+    return rx.cond(
+        AuditState.export_modal_open,
+        rx.box(
+            rx.box(
+                on_click=AuditState.close_export_modal,
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "inset": "0",
+                        "background_color": Color.SCRIM,
+                        "z_index": "80",
+                    }
+                ),
+            ),
+            rx.box(
+                rx.vstack(
+                    rx.heading(
+                        "Export Audit Log (CSV)",
+                        font_size=FontSize.SUBTITLE,
+                        font_weight=FontWeight.EXTRABOLD,
+                        color=Color.TEXT,
+                    ),
+                    rx.text(
+                        "Pilih rentang tanggal data yang akan diekspor. Seluruh entri mentah "
+                        "pada rentang tersebut akan disertakan dan aktivitas ekspor dicatat.",
+                        font_size=FontSize.SM,
+                        color=Color.MUTED,
+                    ),
+                    rx.el.select(
+                        rx.el.option("Sesuai filter aktif saat ini", value="active"),
+                        rx.el.option("Hari ini", value="hari_ini"),
+                        rx.el.option("7 hari terakhir", value="7_hari"),
+                        rx.el.option("30 hari terakhir", value="30_hari"),
+                        rx.el.option("Pilih rentang tanggal kustom", value="rentang"),
+                        value=AuditState.export_range_mode,
+                        on_change=AuditState.set_export_range_mode,
+                        style=input_style,
+                    ),
+                    rx.cond(
+                        AuditState.is_export_custom_range,
+                        rx.grid(
+                            rx.vstack(
+                                rx.text(
+                                    "Dari Tanggal", font_size=FontSize.XS, color=Color.MUTED
+                                ),
+                                rx.el.input(
+                                    type="date",
+                                    value=AuditState.export_date_from,
+                                    on_change=AuditState.set_export_date_from,
+                                    style=input_style,
+                                ),
+                                align="start",
+                                width="100%",
+                            ),
+                            rx.vstack(
+                                rx.text(
+                                    "Sampai Tanggal", font_size=FontSize.XS, color=Color.MUTED
+                                ),
+                                rx.el.input(
+                                    type="date",
+                                    value=AuditState.export_date_to,
+                                    on_change=AuditState.set_export_date_to,
+                                    style=input_style,
+                                ),
+                                align="start",
+                                width="100%",
+                            ),
+                            columns="2",
+                            spacing="3",
+                            width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
+                    rx.hstack(
+                        secondary_button("Batal", on_click=AuditState.close_export_modal),
+                        action_primary_button(
+                            "Unduh CSV", on_click=AuditState.confirm_export_csv
+                        ),
+                        width="100%",
+                        justify="end",
+                        spacing="2",
+                        padding_top="8px",
+                    ),
+                    spacing="3",
+                    align="start",
+                    width="100%",
+                ),
+                role="dialog",
+                aria_modal="true",
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "top": "50%",
+                        "left": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "92%",
+                        "max_width": "460px",
+                        "background_color": Color.SURFACE,
+                        "border": f"1px solid {Color.BORDER}",
+                        "border_radius": Radius.CARD,
+                        "box_shadow": Shadow.POPOVER,
+                        "padding": Space.S6,
+                        "z_index": "90",
+                    }
+                ),
+            ),
+        ),
+        rx.fragment(),
+    )
+
+
+def _integrity_modal() -> rx.Component:
+    """Modal Verifikasi Integritas (UI-only; logika hash-chain pada fase backend berikutnya)."""
+    return rx.cond(
+        AuditState.integrity_modal_open,
+        rx.box(
+            rx.box(
+                on_click=AuditState.close_integrity_modal,
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "inset": "0",
+                        "background_color": Color.SCRIM,
+                        "z_index": "80",
+                    }
+                ),
+            ),
+            rx.box(
+                rx.vstack(
+                    rx.heading(
+                        "Verifikasi Integritas Audit Log",
+                        font_size=FontSize.SUBTITLE,
+                        font_weight=FontWeight.EXTRABOLD,
+                        color=Color.TEXT,
+                    ),
+                    rx.box(
+                        rx.vstack(
+                            rx.hstack(
+                                app_badge(label="Append-only aktif", variant="success"),
+                                app_badge(
+                                    label="Hash-chain: Fase berikutnya", variant="warning"
+                                ),
+                                spacing="2",
+                            ),
+                            rx.text(
+                                "Mode pratinjau UI: seluruh catatan bersifat hanya-baca tanpa "
+                                "opsi ubah/hapus. Verifikasi rantai hash (hash-chain) "
+                                "kriptografis akan diaktifkan setelah endpoint backend tersedia.",
+                                font_size=FontSize.SM,
+                                color=Color.TEXT,
+                                line_height="1.5",
+                            ),
+                            spacing="2",
+                            align="start",
+                        ),
+                        padding="12px 14px",
+                        width="100%",
+                        style=rx.Style(
+                            {
+                                "background_color": Color.INFO_BG,
+                                "border": f"1px solid {Color.BLUE_BORDER}",
+                                "border_radius": Radius.CONTROL,
+                            }
+                        ),
+                    ),
+                    rx.hstack(
+                        action_primary_button(
+                            "Tutup", on_click=AuditState.close_integrity_modal
+                        ),
+                        width="100%",
+                        justify="end",
+                    ),
+                    spacing="3",
+                    align="start",
+                    width="100%",
+                ),
+                role="dialog",
+                aria_modal="true",
+                style=rx.Style(
+                    {
+                        "position": "fixed",
+                        "top": "50%",
+                        "left": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "92%",
+                        "max_width": "460px",
+                        "background_color": Color.SURFACE,
+                        "border": f"1px solid {Color.BORDER}",
+                        "border_radius": Radius.CARD,
+                        "box_shadow": Shadow.POPOVER,
+                        "padding": Space.S6,
+                        "z_index": "90",
+                    }
+                ),
+            ),
+        ),
+        rx.fragment(),
     )
 
 
@@ -748,35 +872,15 @@ def audit_view_page() -> rx.Component:
             spacing="1",
             align="start",
         ),
-        rx.el.button(
-            rx.hstack(
-                rx.icon(tag="download", size=15, color=Color.TEXT),
-                rx.text(
-                    "Export CSV",
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.TEXT,
-                ),
-                spacing="2",
-                align="center",
+        rx.hstack(
+            secondary_button("Export CSV", on_click=AuditState.open_export_modal),
+            action_primary_button(
+                "Verifikasi Integritas",
+                on_click=AuditState.open_integrity_modal,
             ),
-            type="button",
-            on_click=AuditState.export_csv,
-            style=rx.Style(
-                {
-                    "min_height": "44px",
-                    "padding": "0 16px",
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.INPUT_BORDER}",
-                    "border_radius": Radius.CONTROL,
-                    "font_family": FONT_FAMILY,
-                    "cursor": "pointer",
-                    "display": "inline-flex",
-                    "align_items": "center",
-                    "white_space": "nowrap",
-                }
-            ),
-            _hover=rx.Style({"background_color": Color.SURFACE_HOVER}),
+            spacing="2",
+            align="center",
+            wrap="wrap",
         ),
         style=rx.Style(
             {
@@ -790,64 +894,76 @@ def audit_view_page() -> rx.Component:
         ),
     )
 
+    table_card = rx.box(
+        app_tabs(
+            tabs=severity_tabs,
+            active_tab=AuditState.severity_tab,
+            on_change=AuditState.set_severity_tab,
+        ),
+        table_filter_bar(
+            search_value=AuditState.search_query,
+            on_search_change=AuditState.set_search_query,
+            search_placeholder="Cari pelaku, aksi, target...",
+            dropdowns=dropdowns,
+            extra_controls=_extra_filter_controls(),
+            on_reset=AuditState.reset_filters,
+            result_count_text=AuditState.result_count_label,
+        ),
+        reusable_data_table(
+            columns=AUDIT_COLUMNS,
+            rows=AuditState.logs,
+            id_key="kode_audit",
+            active_row_id=AuditState.active_row_id,
+            is_loading=AuditState.is_loading,
+            on_row_click=AuditState.open_detail_drawer,
+            danger_row_key="tingkat",
+            danger_row_value="Peringatan",
+            show_action_header=False,
+            empty_message="Tidak ada kejadian audit yang cocok",
+            on_empty_action=AuditState.reset_filters,
+        ),
+        table_pagination(
+            summary_text=AuditState.pagination_summary,
+            current_page=AuditState.page,
+            current_page_str=AuditState.current_page_str,
+            total_pages=AuditState.total_pages,
+            page_tokens=AuditState.page_tokens,
+            on_prev=AuditState.prev_page,
+            on_next=AuditState.next_page,
+            on_page_select=AuditState.select_page,
+        ),
+        rx.box(
+            rx.text(
+                "Waktu ditampilkan dalam WIB (disimpan UTC). Data mentah tetap tersimpan "
+                "satu per satu.",
+                font_size=FontSize.XS,
+                color=Color.MUTED,
+            ),
+            padding="10px 20px 14px 20px",
+            style=rx.Style({"border_top": f"1px solid {Color.DIVIDER}"}),
+        ),
+        style=rx.Style(
+            {
+                "width": "100%",
+                "background_color": Color.SURFACE,
+                "border": f"1px solid {Color.BORDER}",
+                "border_radius": Radius.CARD,
+                "overflow": "hidden",
+            }
+        ),
+    )
+
     content = rx.vstack(
         header_row,
+        _audit_kpi_row(),
         _warning_banner(),
         rx.box(
-            app_tabs(
-                tabs=severity_tabs,
-                active_tab=AuditState.severity_tab,
-                on_change=AuditState.set_severity_tab,
-            ),
-            table_filter_bar(
-                search_value=AuditState.search_query,
-                on_search_change=AuditState.set_search_query,
-                search_placeholder="Cari pelaku, aksi, target, ringkasan...",
-                dropdowns=dropdowns,
-                extra_controls=_extra_filter_controls(),
-                on_reset=AuditState.reset_filters,
-                result_count_text=AuditState.result_count_label,
-            ),
-            reusable_data_table(
-                columns=AUDIT_COLUMNS,
-                rows=AuditState.logs,
-                id_key="kode_audit",
-                active_row_id=AuditState.active_row_id,
-                is_loading=AuditState.is_loading,
-                on_row_click=AuditState.open_detail_drawer,
-                danger_row_key="tingkat",
-                danger_row_value="Peringatan",
-                show_action_header=False,
-                empty_message="Tidak ada kejadian audit yang cocok",
-                on_empty_action=AuditState.reset_filters,
-            ),
-            table_pagination(
-                summary_text=AuditState.pagination_summary,
-                current_page=AuditState.page,
-                current_page_str=AuditState.current_page_str,
-                total_pages=AuditState.total_pages,
-                page_tokens=AuditState.page_tokens,
-                on_prev=AuditState.prev_page,
-                on_next=AuditState.next_page,
-                on_page_select=AuditState.select_page,
-            ),
-            style=rx.Style(
-                {
-                    "width": "100%",
-                    "background_color": Color.SURFACE,
-                    "border": f"1px solid {Color.BORDER}",
-                    "border_radius": Radius.CARD,
-                    "overflow": "hidden",
-                }
-            ),
+            table_card,
+            _audit_detail_panel(),
+            style=_TWO_COL_LAYOUT_STYLE,
         ),
-        rx.text(
-            "Waktu ditampilkan dalam WIB (disimpan UTC). Kejadian yang sama dalam 1 menit "
-            "digabung (×N); data mentah tetap tersimpan satu per satu.",
-            font_size=FontSize.XS,
-            color=Color.MUTED,
-        ),
-        _audit_detail_drawer(),
+        _export_csv_modal(),
+        _integrity_modal(),
         spacing="4",
         width="100%",
     )

@@ -73,13 +73,13 @@ async def test_audit_drawer_and_banner_interaction():
     state.reset_filters()
     target_kode = state.logs[0]["kode_audit"]
     state.open_detail_drawer(target_kode)
-    assert state.drawer_open is True
+    assert state.drawer_open
     assert state.active_row_id == target_kode
     assert state.selected_kode_audit == target_kode
     assert state.selected_row_dom_id == f"table-row-{target_kode}"
 
     state.close_detail_drawer()
-    assert state.drawer_open is False
+    assert not state.drawer_open
     assert state.active_row_id == ""
 
 
@@ -178,3 +178,33 @@ def test_extract_client_origin_from_reflex_router():
     assert ip == "10.20.5.41"
     assert "Chrome/130" in ua
     assert "python-httpx" not in ua
+
+
+def test_audit_grouped_tab_counts_and_unauthenticated_login_attribution():
+    """Tab count harus memakai satuan gabungan yang sama & login gagal tidak atribusi ke Admin."""
+    res = query_audit_logs({"group": "true"}, page=1, page_size=50)
+    assert res["tab_counts"]["Semua"] == res["total"]
+    assert res["raw_total"] >= res["total"]
+    assert "kpi" in res
+    assert res["kpi"]["events_30d"] >= 1
+
+    state = AuditState()
+    assert state.hide_login_success is True
+
+    normalized = state._normalize_row(
+        {
+            "id": "AUD-999999",
+            "nama_pengguna": "Administrator IT",
+            "username": "admin",
+            "action": "login_gagal",
+            "target_id": "ADMIN",
+            "ip_address": "192.168.1.111",
+            "detail": "Password tidak cocok",
+            "tingkat": "Peringatan",
+            "hasil": "Ditolak",
+        }
+    )
+    assert normalized["nama_pengguna"] == "Tidak terautentikasi"
+    assert "Administrator IT" not in normalized["actor_display"]
+    assert "ADMIN" in normalized["actor_display"]
+    assert "192.168.1.111" in normalized["actor_display"]

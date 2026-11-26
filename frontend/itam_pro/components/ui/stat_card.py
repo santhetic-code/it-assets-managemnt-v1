@@ -51,15 +51,15 @@ _STAT_CARD_PRIMARY_STYLE = rx.Style(
 def stat_card(
     item_or_label: dict[str, Any] | Any,
     value: Any = None,
-    icon: str = "",
+    icon: str | rx.Var[str] | Any = "",
     *,
-    tone: str = "info",
-    value_tone: str = "default",
-    note: str = "",
-    description: str = "",
-    note_tone: str = "neutral",
-    href: str = "",
-    primary: bool = False,
+    tone: str | rx.Var[str] | Any = "info",
+    value_tone: str | rx.Var[str] | Any = "default",
+    note: str | rx.Var[str] | Any = "",
+    description: str | rx.Var[str] | Any = "",
+    note_tone: str | rx.Var[str] | Any = "neutral",
+    href: str | rx.Var[str] | Any = "",
+    primary: bool | rx.Var[bool] | Any = False,
 ) -> rx.Component:
     """Render satu kartu KPI dari objek dictionary/Var state atau argumen posisional."""
     effective_note = note if (isinstance(note, rx.Var) or bool(note)) else description

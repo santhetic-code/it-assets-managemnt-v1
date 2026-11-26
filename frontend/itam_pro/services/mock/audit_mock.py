@@ -182,6 +182,22 @@ def _now_minus(minutes: int = 0) -> str:
 
 MOCK_AUDIT_LOGS: list[dict[str, Any]] = [
     {
+        "id": "AUD-000739",
+        "timestamp": _now_minus(20),
+        "actor": "",
+        "username": "",
+        "role": "",
+        "modul": "Autentikasi",
+        "action": "login_gagal",
+        "target_id": "ADMIN",
+        "detail": "Login gagal untuk akun 'ADMIN' (password tidak cocok)",
+        "hasil": "Ditolak",
+        "ip_address": "192.168.1.111",
+        "session_id": "—",
+        "perangkat": "Chrome 130 · Windows 11",
+        "changes": [],
+    },
+    {
         "id": "AUD-000738",
         "timestamp": _now_minus(12),
         "actor": "Administrator IT",
@@ -388,7 +404,29 @@ def _enrich_row(item: dict[str, Any]) -> dict[str, Any]:
             target_link_label = "Buka kredensial"
 
     act_label = _ACTION_LABELS.get(act_key, act)
-    actor_name = row.get("actor", "System")
+    ip_addr = str(row.get("ip_address") or "tidak diketahui")
+    raw_actor = str(row.get("actor") or "").strip()
+    raw_username = str(row.get("username") or "").strip()
+    is_unauth_failed_login = act_key == "login_gagal" and row.get("is_authenticated") is not True
+
+    if is_unauth_failed_login:
+        attempted_user = target_id if target_id not in ("", "-") else (raw_username or "-")
+        actor_name = "Tidak terautentikasi"
+        username_val = attempted_user
+        role_val = "Tidak terautentikasi"
+        actor_sub = f"IP {ip_addr}"
+        actor_display = f"Tidak terautentikasi · coba '{attempted_user}' ({ip_addr})"
+        target_id = attempted_user
+        session_val = str(row.get("session_id") or "—")
+    else:
+        actor_name = raw_actor or "System"
+        username_val = raw_username or actor_name.lower().replace(" ", "_")
+        role_val = str(row.get("role") or "Administrator")
+        actor_sub = username_val
+        actor_display = f"{actor_name} ({username_val})" if username_val else actor_name
+        # TODO(backend): ganti fallback session_id mock dengan session_id asli dari backend.
+        session_val = str(row.get("session_id") or f"SES-{str(row.get('id', '000001'))[-6:]}")
+
     row.update(
         {
             "kode_audit": row.get("id", "AUD-000001"),
@@ -403,10 +441,12 @@ def _enrich_row(item: dict[str, Any]) -> dict[str, Any]:
             "aksi": act,
             "aksi_label": act_label,
             "actor_and_action": f"{actor_name} · {act_label}",
+            "actor": actor_name,
             "nama_pengguna": actor_name,
-            "username": row.get("username")
-            or str(actor_name).lower().replace(" ", "_"),
-            "role": row.get("role", "Administrator"),
+            "actor_sub": actor_sub,
+            "actor_display": actor_display,
+            "username": username_val,
+            "role": role_val,
             "modul": modul_label,
             "module_badge": mod_prefix,
             "module_variant": (
@@ -417,9 +457,11 @@ def _enrich_row(item: dict[str, Any]) -> dict[str, Any]:
             "tingkat": tingkat,
             "hasil": row.get("hasil", "Berhasil"),
             "status": row.get("hasil", "Berhasil"),
-            "ip_address": row.get("ip_address", "tidak diketahui"),
+            "ip_address": ip_addr,
+            "session_id": session_val,
             "perangkat": row.get("perangkat", "Tidak diketahui"),
             "detail": sanitize_mock_detail(str(row.get("detail", ""))),
+            "target_id": target_id,
             "target_url": target_url,
             "target_link_label": target_link_label,
             "changes": sanitize_mock_changes(row.get("changes")),
@@ -578,34 +620,70 @@ def query_audit_logs(
                 continue
         base_filtered.append(row)
 
+    grouped_base = (
+        group_mock_audit_events(base_filtered, window_seconds=60)
+        if do_group
+        else base_filtered
+    )
+
+    # Hitungan tab memakai satuan yang SAMA dengan daftar (hasil gabungan)
     tab_counts = {
-        "Semua": len(base_filtered),
-        "Peringatan": sum(1 for r in base_filtered if r["tingkat"] == "Peringatan"),
-        "Penting": sum(1 for r in base_filtered if r["tingkat"] == "Penting"),
-        "Info": sum(1 for r in base_filtered if r["tingkat"] == "Info"),
+        "Semua": len(grouped_base),
+        "Peringatan": sum(1 for r in grouped_base if r["tingkat"] == "Peringatan"),
+        "Penting": sum(1 for r in grouped_base if r["tingkat"] == "Penting"),
+        "Info": sum(1 for r in grouped_base if r["tingkat"] == "Info"),
     }
 
     if tingkat and tingkat not in ("semua", "all"):
-        filtered = [r for r in base_filtered if r["tingkat"].lower() == tingkat]
+        display_items = [r for r in grouped_base if r["tingkat"].lower() == tingkat]
+        raw_filtered_count = sum(
+            1 for r in base_filtered if r["tingkat"].lower() == tingkat
+        )
     else:
-        filtered = base_filtered
+        display_items = grouped_base
+        raw_filtered_count = len(base_filtered)
 
-    display_items = (
-        group_mock_audit_events(filtered, window_seconds=60) if do_group else filtered
+    # KPI 30 hari & akses kredensial hari ini (dihitung dari data gabungan)
+    cutoff_30d = datetime.now(UTC) - timedelta(days=30)
+    raw_30d = [r for r in enriched_all if _parse_utc(r["timestamp"]) >= cutoff_30d]
+    grouped_30d = group_mock_audit_events(raw_30d, window_seconds=60)
+    today_date_wib = now_wib.date()
+    reveals_today = sum(
+        1
+        for r in grouped_30d
+        if _normalize_action_key(r["aksi"])
+        in ("reveal", "credential_reveal", "reveal_kredensial")
+        and r["hasil"] == "Berhasil"
+        and _parse_utc(r["timestamp"]).astimezone(WIB_TZ).date() == today_date_wib
     )
+    kpi = {
+        "events_30d": len(grouped_30d),
+        "events_30d_raw": len(raw_30d),
+        "warnings_30d": sum(1 for r in grouped_30d if r["tingkat"] == "Peringatan"),
+        "changes_30d": sum(
+            1
+            for r in grouped_30d
+            if r["tingkat"] == "Penting" or bool(r.get("changes"))
+        ),
+        "reveals_today": reveals_today,
+    }
+
     total = len(display_items)
     start = max(0, (page - 1) * page_size)
     return {
         "items": display_items[start : start + page_size],
         "total": total,
-        "raw_total": len(filtered),
+        "raw_total": raw_filtered_count,
         "page": page,
         "page_size": page_size,
         "tab_counts": tab_counts,
+        "kpi": kpi,
         "warning_banner": warning_banner,
         "filter_options": {
             "modules": sorted({r["modul"] for r in enriched_all}),
-            "actors": sorted({r["username"] for r in enriched_all}),
+            "actors": sorted(
+                {r["username"] for r in enriched_all if r["actor"] != "Tidak terautentikasi"}
+            ),
         },
     }
 

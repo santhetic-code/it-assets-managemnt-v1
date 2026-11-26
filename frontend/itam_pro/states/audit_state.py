@@ -1,5 +1,6 @@
 """State Controller untuk Halaman Audit Log (/audit-log)."""
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -32,7 +33,23 @@ class AuditState(rx.State):
     period_filter: str = ""  # "" | hari_ini | 7_hari | 30_hari | rentang
     date_from: str = ""
     date_to: str = ""
-    hide_login_success: bool = False
+    hide_login_success: bool = True
+
+    # KPI 4 Kartu
+    kpi_events_30d: int = 0
+    kpi_events_30d_raw: int = 0
+    kpi_warnings_count: int = 0
+    kpi_changes_count: int = 0
+    kpi_reveals_today: int = 0
+
+    # Modal Export CSV (dengan pilihan rentang tanggal)
+    export_modal_open: bool = False
+    export_range_mode: str = "active"  # active | hari_ini | 7_hari | 30_hari | rentang
+    export_date_from: str = ""
+    export_date_to: str = ""
+
+    # Modal Verifikasi Integritas (UI-only; hash-chain fase backend berikutnya)
+    integrity_modal_open: bool = False
 
     # Metadata tab, opsi filter, & banner peringatan 24 jam
     tab_counts: dict[str, int] = {"Semua": 0, "Peringatan": 0, "Penting": 0, "Info": 0}
@@ -42,7 +59,7 @@ class AuditState(rx.State):
     warning_banner_count: int = 0
     warning_banner_summary: str = ""
 
-    # Drawer detail (state eksplisit agar 100% aman di Reflex 0.9.12)
+    # Panel detail kanan (state eksplisit agar 100% aman di Reflex 0.9.12)
     drawer_open: bool = False
     selected_row_dom_id: str = ""
     selected_log: dict[str, Any] = {}
@@ -90,16 +107,34 @@ class AuditState(rx.State):
     @rx.var(cache=True)
     def pagination_summary(self) -> str:
         if self.total_items == 0:
-            return "Menampilkan 0 dari 0 kejadian"
+            return "Menampilkan 0 dari 0 setelah filter · terbaru dulu"
         start = (self.page - 1) * self.page_size + 1
         end = min(self.total_items, self.page * self.page_size)
+        raw_suffix = (
+            f" ({self.raw_total_items} entri mentah)"
+            if self.raw_total_items > self.total_items
+            else ""
+        )
         return (
-            f"Menampilkan {start}–{end} dari {self.total_items} kejadian · terbaru dulu"
+            f"Menampilkan {start}–{end} dari {self.total_items} setelah filter"
+            f"{raw_suffix} · terbaru dulu"
         )
 
     @rx.var(cache=True)
     def result_count_label(self) -> str:
+        if self.raw_total_items > self.total_items:
+            return f"{self.total_items} kejadian · {self.raw_total_items} entri mentah"
         return f"{self.total_items} kejadian"
+
+    @rx.var(cache=True)
+    def kpi_events_note(self) -> str:
+        if self.kpi_events_30d_raw > self.kpi_events_30d:
+            return f"kejadian sama 1 menit digabung ({self.kpi_events_30d_raw} mentah)"
+        return "kejadian sama dalam 1 menit digabung"
+
+    @rx.var(cache=True)
+    def is_export_custom_range(self) -> bool:
+        return self.export_range_mode == "rentang"
 
     @rx.var(cache=True)
     def has_selected_changes(self) -> bool:
@@ -181,6 +216,22 @@ class AuditState(rx.State):
     def selected_detail(self) -> str:
         return str(self.selected_log.get("detail") or "-")
 
+    @rx.var(cache=True)
+    def selected_session_id(self) -> str:
+        return str(self.selected_log.get("session_id") or "—")
+
+    @rx.var(cache=True)
+    def selected_heading_title(self) -> str:
+        aksi = self.selected_aksi_label
+        target = self.selected_target_id
+        if target and target != "-":
+            return f"{aksi} · {target}"
+        return aksi
+
+    @rx.var(cache=True)
+    def has_selected_target_link(self) -> bool:
+        return bool(self.selected_target_url)
+
     def _build_filters_dict(self) -> dict[str, Any]:
         period_map = {
             "Hari ini": "hari_ini",
@@ -258,8 +309,39 @@ class AuditState(rx.State):
     def _normalize_row(self, raw: dict[str, Any]) -> dict[str, Any]:
         row = dict(raw)
         kode = str(row.get("kode_audit") or row.get("id") or "")
-        actor = str(row.get("nama_pengguna") or row.get("actor") or "System")
-        uname = str(row.get("username") or "")
+        act_raw = str(row.get("aksi") or row.get("action") or "")
+        act_key = re.sub(r"[^a-z0-9]+", "_", act_raw.strip().lower()).strip("_")
+        ip_addr = str(row.get("ip_address") or "tidak diketahui")
+        raw_actor = str(row.get("nama_pengguna") or row.get("actor") or "").strip()
+        uname = str(row.get("username") or "").strip()
+        target_id = str(row.get("target_id") or "-")
+
+        # Login gagal oleh akun tidak terautentikasi TIDAK BOLEH fallback ke Administrator IT
+        is_unauth_failed = (
+            act_key == "login_gagal" and row.get("is_authenticated") is not True
+        )
+        if is_unauth_failed:
+            attempted = target_id if target_id not in ("", "-") else (uname or "-")
+            actor = "Tidak terautentikasi"
+            row["role"] = "Tidak terautentikasi"
+            row["actor_sub"] = f"IP {ip_addr}"
+            row["actor_display"] = f"Tidak terautentikasi · coba '{attempted}' ({ip_addr})"
+            row["target_id"] = attempted
+            row["target_context"] = (
+                "(password tidak cocok)"
+                if "password" in str(row.get("detail", "")).lower()
+                else ""
+            )
+            row["session_id"] = str(row.get("session_id") or "—")
+        else:
+            actor = raw_actor or "System"
+            row["actor_sub"] = str(row.get("actor_sub") or uname or row.get("role") or "-")
+            row["actor_display"] = f"{actor} ({uname})" if uname else actor
+            row["target_id"] = target_id
+            row["target_context"] = ""
+            # TODO(backend): baca session_id asli dari response backend per kejadian audit.
+            row["session_id"] = str(row.get("session_id") or "—")
+
         tingkat = str(row.get("tingkat") or "Info")
         hasil = str(row.get("hasil") or row.get("status") or "Berhasil")
         cnt = int(row.get("group_count") or 1)
@@ -267,7 +349,6 @@ class AuditState(rx.State):
         row["nama_pengguna"] = actor
         row["actor"] = actor
         row["actor_initials"] = self._initials(actor)
-        row["actor_display"] = f"{actor} ({uname})" if uname else actor
         row["aksi_label"] = str(
             row.get("aksi_label") or row.get("action") or row.get("aksi") or "-"
         )
@@ -275,13 +356,18 @@ class AuditState(rx.State):
         row["tingkat_variant"] = (
             "danger"
             if tingkat == "Peringatan"
-            else ("warning" if tingkat == "Penting" else "neutral")
+            else ("info" if tingkat == "Penting" else "neutral")
         )
         row["hasil"] = hasil
         row["hasil_variant"] = "success" if hasil == "Berhasil" else "danger"
         row["group_badge"] = f"×{cnt}" if cnt > 1 else ""
         row["tanggal_wib"] = str(row.get("tanggal_wib") or row.get("tanggal") or "")
         row["jam_wib"] = str(row.get("jam_wib") or "")
+        row["waktu_ringkas"] = (
+            f"{row['tanggal_wib'].rsplit(' ', 1)[0]} · {row['jam_wib'].replace(' WIB', '')}"
+            if row["tanggal_wib"] and row["jam_wib"]
+            else str(row.get("waktu_wib") or "")
+        )
         return row
 
     def _apply_response(self, res: dict[str, Any]) -> None:
@@ -296,6 +382,13 @@ class AuditState(rx.State):
             "Penting": int(tc.get("Penting", 0)),
             "Info": int(tc.get("Info", 0)),
         }
+
+        kpi = res.get("kpi") or {}
+        self.kpi_events_30d = int(kpi.get("events_30d", self.tab_counts["Semua"]))
+        self.kpi_events_30d_raw = int(kpi.get("events_30d_raw", self.raw_total_items))
+        self.kpi_warnings_count = int(kpi.get("warnings_30d", self.tab_counts["Peringatan"]))
+        self.kpi_changes_count = int(kpi.get("changes_30d", self.tab_counts["Penting"]))
+        self.kpi_reveals_today = int(kpi.get("reveals_today", 0))
 
         banner = res.get("warning_banner") or {}
         self.warning_banner_visible = bool(banner.get("visible", False))
@@ -457,8 +550,10 @@ class AuditState(rx.State):
         return self._refresh_after_filter_change()
 
     @rx.event
-    def toggle_hide_login_success(self, checked: bool) -> Any:
-        self.hide_login_success = bool(checked)
+    def toggle_hide_login_success(self, checked: Any = None) -> Any:
+        self.hide_login_success = (
+            checked if isinstance(checked, bool) else not self.hide_login_success
+        )
         return self._refresh_after_filter_change()
 
     @rx.event
@@ -470,7 +565,7 @@ class AuditState(rx.State):
         self.period_filter = ""
         self.date_from = ""
         self.date_to = ""
-        self.hide_login_success = False
+        self.hide_login_success = True
         self.page = 1
         if USE_MOCK:
             self._sync_mock_logs()
@@ -516,8 +611,46 @@ class AuditState(rx.State):
         ]
 
     @rx.event
-    async def export_csv(self) -> Any:
-        """Export CSV mengikuti filter aktif (khusus Administrator)."""
+    def open_export_modal(self) -> None:
+        self.export_range_mode = "active"
+        self.export_date_from = self.date_from
+        self.export_date_to = self.date_to
+        self.export_modal_open = True
+
+    @rx.event
+    def close_export_modal(self) -> None:
+        self.export_modal_open = False
+
+    @rx.event
+    def set_export_range_mode(self, val: str) -> None:
+        self.export_range_mode = val
+
+    @rx.event
+    def set_export_date_from(self, val: str) -> None:
+        self.export_date_from = val
+
+    @rx.event
+    def set_export_date_to(self, val: str) -> None:
+        self.export_date_to = val
+
+    @rx.event
+    async def confirm_export_csv(self) -> Any:
+        """Export CSV berdasarkan rentang tanggal yang dipilih pada modal."""
+        self.export_modal_open = False
+        export_filters = self._build_filters_dict()
+        if self.export_range_mode in ("hari_ini", "7_hari", "30_hari"):
+            export_filters["periode"] = self.export_range_mode
+            export_filters.pop("date_from", None)
+            export_filters.pop("date_to", None)
+        elif self.export_range_mode == "rentang":
+            export_filters["periode"] = "rentang"
+            if self.export_date_from.strip():
+                export_filters["date_from"] = self.export_date_from.strip()
+            if self.export_date_to.strip():
+                export_filters["date_to"] = self.export_date_to.strip()
+        return await self._run_export_csv(export_filters)
+
+    async def _run_export_csv(self, export_filters: dict[str, Any]) -> Any:
         actor_name = "Administrator IT"
         try:
             auth = await self.get_state(AuthState)
@@ -533,12 +666,28 @@ class AuditState(rx.State):
         api_client.set_client_origin(client_ip, client_ua)
 
         csv_bytes = await api_client.export_audit_logs_csv(
-            filters=self._build_filters_dict(),
+            filters=export_filters,
             actor=actor_name,
         )
-        await self.fetch_logs()  # Refresh agar event 'audit_diekspor' langsung terlihat
+        await self.fetch_logs()
         stamp = datetime.now().strftime("%Y%m%d_%H%M")
         return rx.download(data=csv_bytes, filename=f"audit_log_{stamp}.csv")
+
+    @rx.event
+    async def export_csv(self) -> Any:
+        """Export CSV mengikuti filter aktif (khusus Administrator)."""
+        return await self._run_export_csv(self._build_filters_dict())
+
+    @rx.event
+    def open_integrity_modal(self) -> None:
+        """Buka dialog UI Verifikasi Integritas.
+        TODO(backend): panggil endpoint verifikasi hash-chain audit log pada fase berikutnya.
+        """
+        self.integrity_modal_open = True
+
+    @rx.event
+    def close_integrity_modal(self) -> None:
+        self.integrity_modal_open = False
 
     @rx.event
     def prev_page(self) -> Any:
