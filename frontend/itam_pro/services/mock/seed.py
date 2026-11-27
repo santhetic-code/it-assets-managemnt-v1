@@ -7,7 +7,7 @@ dan `parent_asset_id`.
 import csv
 import os
 from copy import deepcopy
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from itam_pro.services.category_config import (
@@ -840,6 +840,18 @@ _GROUP_CATEGORY_MAP: dict[str, tuple[str, ...]] = {
 }
 
 
+def _is_warranty_expiring(asset: dict[str, Any], days: int = 30) -> bool:
+    """True jika aset punya garansi_sampai yang berakhir dalam <= N hari."""
+    raw_due = str(asset.get("garansi_sampai") or "").strip()
+    if not raw_due or raw_due in ("-", "—"):
+        return False
+    try:
+        due = date.fromisoformat(raw_due[:10])
+    except ValueError:
+        return False
+    return 0 <= (due - date.today()).days <= days
+
+
 def query_mock_assets(
     filters: dict[str, Any],
     page: int = 1,
@@ -890,7 +902,7 @@ def query_mock_assets(
         if no_purchase == 1 and item.get("purchase_item_id"):
             continue
 
-        if warranty == "expiring" and not str(item.get("id_aset", "")).endswith(("001", "002")):
+        if warranty == "expiring" and not _is_warranty_expiring(item, days=30):
             continue
 
         if search:
@@ -969,7 +981,13 @@ def query_mock_assets(
     paginated = filtered[start : start + page_size]
 
     cat_counts = get_mock_category_counts()
-    unlinked_cnt = sum(1 for a in MOCK_ASSETS if not a.get("purchase_item_id"))
+    total_all = len(MOCK_ASSETS)
+    in_use_cnt = sum(1 for a in MOCK_ASSETS if a.get("status") == "Digunakan")
+    in_use_pct = round((in_use_cnt / total_all) * 100) if total_all > 0 else 0
+    warranty_cnt = sum(1 for a in MOCK_ASSETS if _is_warranty_expiring(a, days=30))
+    unlinked_cnt = sum(
+        1 for a in MOCK_ASSETS if not a.get("purchase_item_id") and not a.get("purchase_id")
+    )
     attention_cnt = sum(
         1
         for a in MOCK_ASSETS
@@ -991,9 +1009,11 @@ def query_mock_assets(
             "ups": cat_counts["ups"],
         },
         "summary": {
-            "total": len(MOCK_ASSETS),
+            "total": total_all,
+            "digunakan": in_use_cnt,
+            "in_use_percent": in_use_pct,
             "perlu_perhatian": attention_cnt,
-            "garansi_segera_habis": 5,
+            "garansi_segera_habis": warranty_cnt,
             "belum_terhubung_pembelian": unlinked_cnt,
         },
     }

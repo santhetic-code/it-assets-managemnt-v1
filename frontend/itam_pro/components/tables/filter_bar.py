@@ -333,4 +333,11 @@ def table_filter_bar(
     )
 
 
-__all__ = ["ColumnToggleOption", "FilterDropdownConfig", "table_filter_bar"]
+column_visibility_popover = _column_visibility_popover
+
+__all__ = [
+    "ColumnToggleOption",
+    "FilterDropdownConfig",
+    "column_visibility_popover",
+    "table_filter_bar",
+]

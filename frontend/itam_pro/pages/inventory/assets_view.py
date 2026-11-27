@@ -11,22 +11,30 @@ from itam_pro.components.feedback import confirm_delete_dialog
 from itam_pro.components.forms import asset_form_modal
 from itam_pro.components.layout import base_layout
 from itam_pro.components.tables import (
-    FilterDropdownConfig,
     reusable_data_table,
-    table_filter_bar,
     table_pagination,
 )
+from itam_pro.components.tables.filter_bar import (
+    ColumnToggleOption,
+    column_visibility_popover,
+)
 from itam_pro.components.ui import (
+    PillSelectConfig,
     action_primary_button,
     detail_drawer,
+    hero_stat_card,
+    page_header,
+    pill_filter_bar,
     secondary_button,
+    stat_card,
+    tab_bar,
 )
 from itam_pro.services.category_config import (
     build_column_toggle_options,
     build_table_columns_for_slug,
 )
 from itam_pro.states.asset_state import AssetState
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Space
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Space
 
 ALL_ASSETS_COLUMNS = build_table_columns_for_slug("")
 PC_VIEW_COLUMNS = build_table_columns_for_slug("pc")
@@ -42,41 +50,11 @@ UPS_COL_OPTIONS = build_column_toggle_options("ups")
 
 
 def _inventory_header() -> rx.Component:
-    return rx.box(
-        rx.hstack(
-            rx.center(
-                rx.icon(tag="layout-grid", size=24, color=Color.WHITE),
-                width="48px",
-                height="48px",
-                background_color=Color.ACCENT_BRIGHT,
-                border_radius=Radius.CARD,
-                flex_shrink="0",
-            ),
-            rx.vstack(
-                rx.heading(
-                    AssetState.page_title,
-                    font_size=FontSize.TITLE,
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.TEXT,
-                    line_height="1.2",
-                    letter_spacing="-0.02em",
-                ),
-                rx.text(
-                    (
-                        "Satu daftar induk untuk seluruh aset perusahaan. "
-                        "Halaman kategori hanyalah filter dari sini."
-                    ),
-                    font_size=FontSize.BASE,
-                    font_weight=FontWeight.REGULAR,
-                    color=Color.MUTED,
-                ),
-                spacing="1",
-                align="start",
-            ),
-            spacing="3",
-            align="center",
-        ),
-        rx.hstack(
+    return page_header(
+        icon="box",
+        title=AssetState.page_title,
+        subtitle=AssetState.page_subtitle,
+        actions=[
             secondary_button(
                 label="Stock Opname QR",
                 on_click=AssetState.open_opname_modal,
@@ -97,459 +75,381 @@ def _inventory_header() -> rx.Component:
                 label=AssetState.add_button_label,
                 on_click=AssetState.open_add_modal,
             ),
-            spacing="2",
-            align="center",
-            wrap="wrap",
-        ),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "display": "flex",
-                "align_items": "center",
-                "justify_content": "space-between",
-                "flex_wrap": "wrap",
-                "gap": Space.S4,
-            }
-        ),
-    )
-
-
-def _kpi_filter_card(
-    card_key: str,
-    title: str,
-    count_val: Any,
-    subtitle: str,
-    action_text: str,
-    icon_tag: str,
-    icon_color: str,
-    icon_bg: str,
-) -> rx.Component:
-    is_selected = AssetState.active_kpi_card == card_key
-    return rx.box(
-        rx.vstack(
-            rx.hstack(
-                rx.center(
-                    rx.icon(
-                        tag=icon_tag,
-                        size=16,
-                        color=rx.cond(is_selected, Color.WHITE, icon_color),
-                    ),
-                    width="30px",
-                    height="30px",
-                    border_radius="8px",
-                    background_color=rx.cond(is_selected, "rgba(255,255,255,0.18)", icon_bg),
-                ),
-                rx.text(
-                    title,
-                    font_size=FontSize.GROUP_LABEL,
-                    font_weight=FontWeight.BOLD,
-                    color=rx.cond(is_selected, "rgba(255,255,255,0.85)", Color.MUTED),
-                    letter_spacing="0.06em",
-                ),
-                spacing="2",
-                align="center",
-            ),
-            rx.text(
-                count_val,
-                font_size="30px",
-                font_weight=FontWeight.EXTRABOLD,
-                color=rx.cond(is_selected, Color.WHITE, Color.TEXT),
-                line_height="1.1",
-            ),
-            rx.text(
-                subtitle,
-                font_size=FontSize.XS,
-                color=rx.cond(is_selected, "rgba(255,255,255,0.8)", Color.MUTED),
-            ),
-            rx.text(
-                action_text,
-                font_size=FontSize.XS,
-                font_weight=FontWeight.BOLD,
-                color=rx.cond(is_selected, Color.WHITE, Color.ACCENT),
-                padding_top="4px",
-            ),
-            spacing="2",
-            align="start",
-            width="100%",
-        ),
-        on_click=AssetState.select_kpi_card(card_key),
-        style=rx.Style(
-            {
-                "padding": "18px 20px",
-                "border_radius": Radius.CARD,
-                "background_color": rx.cond(is_selected, Color.BACKUP_FG, Color.SURFACE),
-                "border": rx.cond(
-                    is_selected,
-                    f"2px solid {Color.BACKUP_FG}",
-                    f"1px solid {Color.BORDER}",
-                ),
-                "cursor": "pointer",
-                "transition": "all 0.15s ease",
-            }
-        ),
+        ],
     )
 
 
 def _four_kpi_cards_row() -> rx.Component:
-    """Empat kartu KPI yang bisa diklik sesuai Artboard 10."""
+    """Baris 4 Kartu KPI interaktif: Hero Total Aset (donut % digunakan) + 3 kartu putih."""
     return rx.box(
-        _kpi_filter_card(
-            "total",
-            "TOTAL ASET",
-            AssetState.summary_counts["total"],
-            "di semua kategori",
-            "Lihat semua →",
-            "layout-grid",
-            Color.ACCENT,
-            Color.INFO_BG,
+        hero_stat_card(
+            icon="box",
+            label="TOTAL ASET",
+            value=AssetState.summary_counts["total"],
+            subtext="di semua kategori",
+            percent=AssetState.in_use_percent,
+            percent_caption="digunakan",
+            link_text="Lihat detail →",
+            on_click=AssetState.select_kpi_card("total"),
+            is_active=AssetState.active_kpi_card == "total",
+            glow_ring=True,
         ),
-        _kpi_filter_card(
-            "attention",
-            "PERLU PERHATIAN",
-            AssetState.summary_counts["perlu_perhatian"],
-            "Rusak atau dalam perbaikan",
-            "Lihat daftar →",
-            "triangle-alert",
-            Color.DANGER_FG,
-            Color.DANGER_BG,
+        stat_card(
+            icon="circle-check",
+            tone="purple",
+            label="PERLU PERHATIAN",
+            value=AssetState.summary_counts["perlu_perhatian"],
+            subtext="rusak atau dalam perbaikan",
+            link_text="Lihat detail →",
+            is_active=AssetState.active_kpi_card == "attention",
+            on_click=AssetState.select_kpi_card("attention"),
         ),
-        _kpi_filter_card(
-            "warranty",
-            "GARANSI SEGERA HABIS",
-            AssetState.summary_counts["garansi_segera_habis"],
-            "Berakhir ≤ 30 hari",
-            "Lihat daftar →",
-            "clock",
-            Color.WARNING_FG,
-            Color.WARNING_BG,
+        stat_card(
+            icon="clock",
+            tone="success",
+            label="GARANSI SEGERA HABIS",
+            value=AssetState.summary_counts["garansi_segera_habis"],
+            subtext="berakhir ≤ 30 hari",
+            link_text="Lihat detail →",
+            is_active=AssetState.active_kpi_card == "warranty",
+            on_click=AssetState.select_kpi_card("warranty"),
         ),
-        _kpi_filter_card(
-            "no_purchase",
-            "BELUM TERHUBUNG PEMBELIAN",
-            AssetState.summary_counts["belum_terhubung_pembelian"],
-            "Belum punya invoice sumber",
-            "Lengkapi data →",
-            "receipt",
-            Color.ACCENT,
-            Color.INFO_BG,
+        stat_card(
+            icon="shield",
+            tone="warning",
+            label="BELUM TERHUBUNG PEMBELIAN",
+            value=AssetState.summary_counts["belum_terhubung_pembelian"],
+            value_tone=rx.cond(
+                AssetState.summary_counts["belum_terhubung_pembelian"] > 0,
+                "warning",
+                "default",
+            ),
+            subtext="belum punya invoice sumber",
+            link_text="Lihat detail →",
+            is_active=AssetState.active_kpi_card == "no_purchase",
+            on_click=AssetState.select_kpi_card("no_purchase"),
         ),
         style=rx.Style(
             {
                 "width": "100%",
                 "display": "grid",
-                "grid_template_columns": "repeat(auto-fit, minmax(220px, 1fr))",
+                "grid_template_columns": "1.35fr 1fr 1fr 1fr",
                 "gap": Space.S4,
+                "align_items": "stretch",
+                "@media (max-width: 1099px)": {
+                    "grid_template_columns": "repeat(2, minmax(0, 1fr))",
+                },
+                "@media (max-width: 599px)": {
+                    "grid_template_columns": "1fr",
+                },
             }
         ),
     )
 
 
-def _category_group_chip(
-    group_key: str, label: str, icon_tag: str, count_key: str
-) -> rx.Component:
+def _category_tile(group_key: str, label: str, count_key: str) -> rx.Component:
+    """Satu tile kelompok kategori ala _type_tiles_row Credential Manager."""
     is_active = AssetState.active_group == group_key
     safe_count = rx.cond(
         AssetState.sidebar_counts[count_key],
         AssetState.sidebar_counts[count_key],
         0,
     )
-    return rx.box(
-        rx.hstack(
-            rx.center(
-                rx.icon(tag=icon_tag, size=16, color=Color.ACCENT),
-                width="32px",
-                height="32px",
-                border_radius="8px",
-                background_color=Color.INFO_BG,
+    return rx.el.button(
+        rx.vstack(
+            rx.text(
+                label,
+                font_size=FontSize.SM,
+                font_weight=FontWeight.BOLD,
+                color=Color.TEXT,
+                line_height="1.2",
+                text_align="left",
             ),
-            rx.vstack(
-                rx.text(
-                    label,
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.TEXT,
-                    line_height="1.15",
-                ),
-                rx.text(
-                    f"{safe_count} aset",
-                    font_size=FontSize.XS,
-                    color=Color.MUTED,
-                ),
-                spacing="1",
-                align="start",
+            rx.text(
+                f"{safe_count} aset",
+                font_size=FontSize.XS,
+                color=Color.MUTED,
+                style=rx.Style({"font_variant_numeric": "tabular-nums"}),
             ),
-            spacing="3",
-            align="center",
+            spacing="1",
+            align="start",
+            width="100%",
         ),
+        type="button",
+        aria_pressed=is_active,
         on_click=AssetState.select_category_group(group_key),
         style=rx.Style(
             {
-                "padding": "10px 14px",
+                "padding": "12px 16px",
                 "border_radius": Radius.CARD,
                 "background_color": Color.SURFACE,
                 "border": rx.cond(
                     is_active,
-                    f"2px solid {Color.ACCENT_BRIGHT}",
+                    f"2px solid {Color.ACCENT}",
                     f"1px solid {Color.BORDER}",
                 ),
+                "box_shadow": rx.cond(is_active, Shadow.KPI_ACTIVE_RING, Shadow.TABLE_CARD),
                 "cursor": "pointer",
+                "text_align": "left",
+                "font_family": FONT_FAMILY,
+                "width": "100%",
+                "transition": "all 0.15s ease",
+                "_hover": {
+                    "border_color": Color.ACCENT,
+                    "transform": "translateY(-1px)",
+                },
             }
         ),
     )
 
 
-def _subcategory_pill(slug_val: str, label: str, count_var: Any) -> rx.Component:
-    is_active = AssetState.current_slug == slug_val
-    safe_count = (
-        rx.cond(count_var, count_var, 0)
-        if isinstance(count_var, rx.Var)
-        else count_var
-    )
+def _category_tiles_row() -> rx.Component:
+    """Baris 8 tile kategori utama ala _type_tiles_row Kredensial."""
     return rx.box(
-        rx.text(
-            f"{label} {safe_count}".strip(),
-            font_size=FontSize.XS,
-            font_weight=FontWeight.BOLD,
-            color=rx.cond(is_active, Color.ACCENT, Color.TEXT),
-        ),
-        on_click=AssetState.select_subcategory(slug_val),
+        _category_tile("all", "Semua", "all"),
+        _category_tile("perangkat-it", "Perangkat IT", "perangkat-it"),
+        _category_tile("komponen-periferal", "Komponen & Periferal", "komponen-periferal"),
+        _category_tile("jaringan", "Jaringan", "jaringan"),
+        _category_tile("kendaraan", "Kendaraan", "kendaraan"),
+        _category_tile("peralatan-kantor", "Peralatan Kantor", "peralatan-kantor"),
+        _category_tile("furnitur", "Furnitur", "furnitur"),
+        _category_tile("lainnya", "Lainnya", "lainnya"),
         style=rx.Style(
             {
-                "padding": "6px 14px",
-                "border_radius": Radius.FULL,
-                "background_color": rx.cond(is_active, Color.INFO_BG, Color.SURFACE),
-                "border": rx.cond(
-                    is_active,
-                    f"1px solid {Color.ACCENT}",
-                    f"1px solid {Color.BORDER}",
-                ),
-                "cursor": "pointer",
+                "width": "100%",
+                "display": "grid",
+                "grid_template_columns": "repeat(8, minmax(0, 1fr))",
+                "gap": "10px",
+                "@media (max-width: 1200px)": {
+                    "grid_template_columns": "repeat(4, minmax(0, 1fr))",
+                },
+                "@media (max-width: 640px)": {
+                    "grid_template_columns": "repeat(2, minmax(0, 1fr))",
+                },
             }
         ),
     )
 
 
-def _category_hierarchy_bars() -> rx.Component:
-    """Baris kategori utama dan subkategori sesuai Artboard 10."""
-    return rx.vstack(
-        rx.box(
-            _category_group_chip("all", "Semua", "layout-grid", "all"),
-            _category_group_chip("perangkat-it", "Perangkat IT", "monitor", "perangkat-it"),
-            _category_group_chip(
-                "komponen-periferal", "Komponen & Periferal", "cpu", "komponen-periferal"
-            ),
-            _category_group_chip("jaringan", "Jaringan", "network", "jaringan"),
-            _category_group_chip("kendaraan", "Kendaraan", "car", "kendaraan"),
-            _category_group_chip(
-                "peralatan-kantor", "Peralatan Kantor", "air-vent", "peralatan-kantor"
-            ),
-            _category_group_chip("furnitur", "Furnitur", "armchair", "furnitur"),
-            _category_group_chip("lainnya", "Lainnya", "box", "lainnya"),
-            style=rx.Style(
-                {
-                    "width": "100%",
-                    "display": "grid",
-                    "grid_template_columns": "repeat(auto-fit, minmax(145px, 1fr))",
-                    "gap": "10px",
-                }
-            ),
-        ),
-        rx.hstack(
-            rx.text(
-                "Perangkat IT ›",
-                font_size=FontSize.XS,
-                font_weight=FontWeight.SEMIBOLD,
-                color=Color.MUTED,
-            ),
-            _subcategory_pill("", "Semua Perangkat IT", AssetState.sidebar_counts["perangkat-it"]),
-            _subcategory_pill("pc", "PC & Laptop", AssetState.sidebar_counts["pc"]),
-            _subcategory_pill("server", "Server", AssetState.sidebar_counts["server"]),
-            _subcategory_pill("monitor", "Monitor", AssetState.sidebar_counts["monitor"]),
-            _subcategory_pill("ups", "UPS", AssetState.sidebar_counts["ups"]),
-            spacing="2",
-            align="center",
-            wrap="wrap",
-            width="100%",
-        ),
-        rx.cond(
-            AssetState.active_group == "kendaraan",
-            rx.hstack(
-                rx.text(
-                    "Kendaraan ›",
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.SEMIBOLD,
-                    color=Color.MUTED,
-                ),
-                _subcategory_pill("", "Semua Kendaraan", AssetState.sidebar_counts["kendaraan"]),
-                _subcategory_pill("mobil", "Mobil", ""),
-                _subcategory_pill("motor", "Motor", ""),
-                spacing="2",
-                align="center",
-                wrap="wrap",
-            ),
-            rx.cond(
-                AssetState.active_group == "peralatan-kantor",
-                rx.hstack(
-                    rx.text(
-                        "Peralatan Kantor ›",
-                        font_size=FontSize.XS,
-                        font_weight=FontWeight.SEMIBOLD,
-                        color=Color.MUTED,
-                    ),
-                    _subcategory_pill("ac", "AC", AssetState.sidebar_counts["peralatan-kantor"]),
-                    spacing="2",
-                    align="center",
-                ),
-                rx.cond(
-                    AssetState.active_group == "furnitur",
-                    rx.hstack(
-                        rx.text(
-                            "Furnitur ›",
-                            font_size=FontSize.XS,
-                            font_weight=FontWeight.SEMIBOLD,
-                            color=Color.MUTED,
-                        ),
-                        _subcategory_pill(
-                            "", "Semua Furnitur", AssetState.sidebar_counts["furnitur"]
-                        ),
-                        _subcategory_pill("meja", "Meja", ""),
-                        _subcategory_pill("kursi", "Kursi", ""),
-                        _subcategory_pill("lemari", "Lemari", ""),
-                        spacing="2",
-                        align="center",
-                        wrap="wrap",
-                    ),
-                    rx.fragment(),
+def _subcategory_tab_bar() -> rx.Component:
+    """Tab sub-kategori dengan badge hitungan di bagian atas kartu tabel."""
+    it_tabs = [
+        {
+            "key": "",
+            "label": "Semua Perangkat IT",
+            "count": AssetState.sidebar_counts["perangkat-it"],
+        },
+        {"key": "pc", "label": "PC & Laptop", "count": AssetState.sidebar_counts["pc"]},
+        {"key": "server", "label": "Server", "count": AssetState.sidebar_counts["server"]},
+        {"key": "monitor", "label": "Monitor", "count": AssetState.sidebar_counts["monitor"]},
+        {"key": "ups", "label": "UPS", "count": AssetState.sidebar_counts["ups"]},
+    ]
+    vehicle_tabs = [
+        {"key": "", "label": "Semua Kendaraan", "count": AssetState.sidebar_counts["kendaraan"]},
+        {"key": "mobil", "label": "Mobil"},
+        {"key": "motor", "label": "Motor"},
+    ]
+    office_tabs = [
+        {"key": "ac", "label": "AC", "count": AssetState.sidebar_counts["peralatan-kantor"]},
+    ]
+    furniture_tabs = [
+        {"key": "", "label": "Semua Furnitur", "count": AssetState.sidebar_counts["furnitur"]},
+        {"key": "meja", "label": "Meja"},
+        {"key": "kursi", "label": "Kursi"},
+        {"key": "lemari", "label": "Lemari"},
+    ]
+
+    return cast(
+        rx.Component,
+        rx.match(
+            AssetState.active_group,
+            (
+                "kendaraan",
+                tab_bar(
+                    tabs_with_count=vehicle_tabs,
+                    active=AssetState.current_slug,
+                    on_change=AssetState.select_subcategory,
                 ),
             ),
+            (
+                "peralatan-kantor",
+                tab_bar(
+                    tabs_with_count=office_tabs,
+                    active=AssetState.current_slug,
+                    on_change=AssetState.select_subcategory,
+                ),
+            ),
+            (
+                "furnitur",
+                tab_bar(
+                    tabs_with_count=furniture_tabs,
+                    active=AssetState.current_slug,
+                    on_change=AssetState.select_subcategory,
+                ),
+            ),
+            tab_bar(
+                tabs_with_count=it_tabs,
+                active=AssetState.current_slug,
+                on_change=AssetState.select_subcategory,
+            ),
         ),
-        spacing="3",
-        width="100%",
     )
 
 
 def _filter_bar_by_slug() -> rx.Component:
-    """Bangun Filter Bar dinamis dari field filterable kategori + Lokasi & Kepemilikan."""
-    all_dropdowns: list[FilterDropdownConfig] = [
+    """Bangun Pill Filter Bar dinamis per kategori + popover Atur kolom di kanan."""
+
+    def _build_bar(
+        placeholder: str,
+        selects: list[PillSelectConfig],
+        col_options: list[ColumnToggleOption],
+    ) -> rx.Component:
+        return pill_filter_bar(
+            search_placeholder=placeholder,
+            search_value=AssetState.search_query,
+            on_search_change=AssetState.set_search_query,
+            search_width="270px",
+            selects=selects,
+            on_reset=AssetState.reset_filters,
+            right_slot=rx.hstack(
+                column_visibility_popover(
+                    column_options=col_options,
+                    hidden_columns=AssetState.hidden_columns,
+                    on_toggle_column=AssetState.toggle_column_visibility,
+                    on_reset_columns=AssetState.reset_column_visibility,
+                ),
+                rx.text(
+                    AssetState.result_count_label,
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.BOLD,
+                    color=Color.MUTED,
+                    white_space="nowrap",
+                ),
+                spacing="3",
+                align="center",
+            ),
+        )
+
+    all_selects: list[PillSelectConfig] = [
         {
-            "label": "Semua kategori",
+            "placeholder": "Semua kategori",
             "value": AssetState.kategori_filter,
             "options": AssetState.master_kategori_options,
             "on_change": AssetState.set_kategori_filter,
         },
         {
-            "label": "Semua pemilik",
+            "placeholder": "Semua pemilik",
             "value": AssetState.kepemilikan_filter,
             "options": AssetState.master_kepemilikan_options,
             "on_change": AssetState.set_kepemilikan_filter,
         },
         {
-            "label": "Semua lokasi",
+            "placeholder": "Semua lokasi",
             "value": AssetState.lokasi_filter,
             "options": AssetState.master_lokasi_options,
             "on_change": AssetState.set_lokasi_filter,
         },
         {
-            "label": "Semua kondisi",
+            "placeholder": "Semua kondisi",
             "value": AssetState.kondisi_filter,
             "options": AssetState.master_kondisi_options,
             "on_change": AssetState.set_kondisi_filter,
         },
         {
-            "label": "Semua status",
+            "placeholder": "Semua status",
             "value": AssetState.status_filter,
             "options": AssetState.master_status_options,
             "on_change": AssetState.set_status_filter,
         },
     ]
 
-    pc_dropdowns: list[FilterDropdownConfig] = [
+    pc_selects: list[PillSelectConfig] = [
         {
-            "label": "Semua OS",
+            "placeholder": "Semua OS",
             "value": AssetState.filter_os_value,
             "options": AssetState.os_filter_options,
-            "on_change": lambda v: AssetState.set_attr_filter("os", v),
+            "on_change": AssetState.set_attr_filter("os"),
         },
         {
-            "label": "Semua RAM",
+            "placeholder": "Semua RAM",
             "value": AssetState.filter_ram_value,
             "options": AssetState.ram_filter_options,
-            "on_change": lambda v: AssetState.set_attr_filter("ram", v),
+            "on_change": AssetState.set_attr_filter("ram"),
         },
         {
-            "label": "Semua lokasi",
+            "placeholder": "Semua lokasi",
             "value": AssetState.lokasi_filter,
             "options": AssetState.master_lokasi_options,
             "on_change": AssetState.set_lokasi_filter,
         },
         {
-            "label": "Semua pemilik",
+            "placeholder": "Semua pemilik",
             "value": AssetState.kepemilikan_filter,
             "options": AssetState.master_kepemilikan_options,
             "on_change": AssetState.set_kepemilikan_filter,
         },
     ]
 
-    monitor_dropdowns: list[FilterDropdownConfig] = [
+    monitor_selects: list[PillSelectConfig] = [
         {
-            "label": "Semua merk",
+            "placeholder": "Semua merk",
             "value": AssetState.filter_merk_value,
             "options": AssetState.master_merk_options,
-            "on_change": lambda v: AssetState.set_attr_filter("merk", v),
+            "on_change": AssetState.set_attr_filter("merk"),
         },
         {
-            "label": "Semua ukuran",
+            "placeholder": "Semua ukuran",
             "value": AssetState.filter_ukuran_value,
             "options": AssetState.master_ukuran_options,
-            "on_change": lambda v: AssetState.set_attr_filter("ukuran_layar", v),
+            "on_change": AssetState.set_attr_filter("ukuran_layar"),
         },
         {
-            "label": "Semua resolusi",
+            "placeholder": "Semua resolusi",
             "value": AssetState.filter_resolusi_value,
             "options": AssetState.master_resolusi_options,
-            "on_change": lambda v: AssetState.set_attr_filter("resolusi_layar", v),
+            "on_change": AssetState.set_attr_filter("resolusi_layar"),
         },
         {
-            "label": "Semua konektivitas",
+            "placeholder": "Semua konektivitas",
             "value": AssetState.filter_konektivitas_value,
             "options": AssetState.master_konektivitas_options,
-            "on_change": lambda v: AssetState.set_attr_filter("konektivitas", v),
+            "on_change": AssetState.set_attr_filter("konektivitas"),
         },
         {
-            "label": "Semua lokasi",
+            "placeholder": "Semua lokasi",
             "value": AssetState.lokasi_filter,
             "options": AssetState.master_lokasi_options,
             "on_change": AssetState.set_lokasi_filter,
         },
         {
-            "label": "Semua pemilik",
+            "placeholder": "Semua pemilik",
             "value": AssetState.kepemilikan_filter,
             "options": AssetState.master_kepemilikan_options,
             "on_change": AssetState.set_kepemilikan_filter,
         },
     ]
 
-    default_cat_dropdowns: list[FilterDropdownConfig] = [
+    default_cat_selects: list[PillSelectConfig] = [
         {
-            "label": "Semua lokasi",
+            "placeholder": "Semua lokasi",
             "value": AssetState.lokasi_filter,
             "options": AssetState.master_lokasi_options,
             "on_change": AssetState.set_lokasi_filter,
         },
         {
-            "label": "Semua pemilik",
+            "placeholder": "Semua pemilik",
             "value": AssetState.kepemilikan_filter,
             "options": AssetState.master_kepemilikan_options,
             "on_change": AssetState.set_kepemilikan_filter,
         },
         {
-            "label": "Semua kondisi",
+            "placeholder": "Semua kondisi",
             "value": AssetState.kondisi_filter,
             "options": AssetState.master_kondisi_options,
             "on_change": AssetState.set_kondisi_filter,
         },
         {
-            "label": "Semua status",
+            "placeholder": "Semua status",
             "value": AssetState.status_filter,
             "options": AssetState.master_status_options,
             "on_change": AssetState.set_status_filter,
@@ -562,60 +462,48 @@ def _filter_bar_by_slug() -> rx.Component:
             AssetState.current_slug,
             (
                 "",
-                table_filter_bar(
-                    search_value=AssetState.search_query,
-                    on_search_change=AssetState.set_search_query,
-                    search_placeholder="Cari ID aset, nama aset, SN/PID, pemakai...",
-                    dropdowns=all_dropdowns,
-                    on_reset=AssetState.reset_filters,
-                    result_count_text=AssetState.result_count_label,
-                    column_options=ALL_ASSETS_COL_OPTIONS,
-                    hidden_columns=AssetState.hidden_columns,
-                    on_toggle_column=AssetState.toggle_column_visibility,
-                    on_reset_columns=AssetState.reset_column_visibility,
+                _build_bar(
+                    "Cari ID aset, nama aset, SN/PID, pemakai...",
+                    all_selects,
+                    ALL_ASSETS_COL_OPTIONS,
                 ),
             ),
             (
                 "pc",
-                table_filter_bar(
-                    search_value=AssetState.search_query,
-                    on_search_change=AssetState.set_search_query,
-                    search_placeholder="Cari hostname PC, user, CPU, OS...",
-                    dropdowns=pc_dropdowns,
-                    on_reset=AssetState.reset_filters,
-                    result_count_text=AssetState.result_count_label,
-                    column_options=PC_COL_OPTIONS,
-                    hidden_columns=AssetState.hidden_columns,
-                    on_toggle_column=AssetState.toggle_column_visibility,
-                    on_reset_columns=AssetState.reset_column_visibility,
+                _build_bar(
+                    "Cari hostname PC, user, CPU, OS...",
+                    pc_selects,
+                    PC_COL_OPTIONS,
+                ),
+            ),
+            (
+                "server",
+                _build_bar(
+                    "Cari ID server, nama server, CPU, OS...",
+                    pc_selects,
+                    SERVER_COL_OPTIONS,
                 ),
             ),
             (
                 "monitor",
-                table_filter_bar(
-                    search_value=AssetState.search_query,
-                    on_search_change=AssetState.set_search_query,
-                    search_placeholder="Cari ID aset, merk, tipe monitor...",
-                    dropdowns=monitor_dropdowns,
-                    on_reset=AssetState.reset_filters,
-                    result_count_text=AssetState.result_count_label,
-                    column_options=MONITOR_COL_OPTIONS,
-                    hidden_columns=AssetState.hidden_columns,
-                    on_toggle_column=AssetState.toggle_column_visibility,
-                    on_reset_columns=AssetState.reset_column_visibility,
+                _build_bar(
+                    "Cari ID aset, merk, tipe monitor...",
+                    monitor_selects,
+                    MONITOR_COL_OPTIONS,
                 ),
             ),
-            table_filter_bar(
-                search_value=AssetState.search_query,
-                on_search_change=AssetState.set_search_query,
-                search_placeholder="Cari ID aset, nama unit, SN/PID...",
-                dropdowns=default_cat_dropdowns,
-                on_reset=AssetState.reset_filters,
-                result_count_text=AssetState.result_count_label,
-                column_options=ALL_ASSETS_COL_OPTIONS,
-                hidden_columns=AssetState.hidden_columns,
-                on_toggle_column=AssetState.toggle_column_visibility,
-                on_reset_columns=AssetState.reset_column_visibility,
+            (
+                "ups",
+                _build_bar(
+                    "Cari ID UPS, merek, kapasitas, beban...",
+                    default_cat_selects,
+                    UPS_COL_OPTIONS,
+                ),
+            ),
+            _build_bar(
+                "Cari ID aset, nama unit, SN/PID...",
+                default_cat_selects,
+                ALL_ASSETS_COL_OPTIONS,
             ),
         ),
     )
@@ -668,8 +556,9 @@ def assets_view_page() -> rx.Component:
     content = rx.vstack(
         _inventory_header(),
         _four_kpi_cards_row(),
-        _category_hierarchy_bars(),
+        _category_tiles_row(),
         rx.box(
+            _subcategory_tab_bar(),
             _filter_bar_by_slug(),
             _table_by_slug(),
             table_pagination(
@@ -687,7 +576,8 @@ def assets_view_page() -> rx.Component:
                     "width": "100%",
                     "background_color": Color.SURFACE,
                     "border": f"1px solid {Color.BORDER}",
-                    "border_radius": Radius.CARD,
+                    "border_radius": Radius.KPI_CARD,
+                    "box_shadow": Shadow.TABLE_CARD,
                     "overflow": "hidden",
                 }
             ),

@@ -709,7 +709,7 @@ def build_table_columns_for_slug(slug: str) -> list[ColumnDef]:
             "header": "ASET ID",
             "width": "105px",
             "min_width": "95px",
-            "render_type": "bold_blue",
+            "render_type": "mono_blue",
             "sticky_left": True,
             "sortable": True,
             "sort_key": "id_aset",

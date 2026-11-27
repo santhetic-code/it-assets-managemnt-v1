@@ -24,6 +24,7 @@ RenderType = Literal[
     "text",
     "bold",
     "bold_blue",
+    "mono_blue",
     "currency",
     "currency_bold",
     "number",
@@ -240,6 +241,16 @@ def _render_cell_content(row: dict[str, Any], col: ColumnDef | dict[str, Any]) -
             font_weight=FontWeight.BOLD,
             color=Color.ACCENT,
             style=_TWO_LINE_CLAMP_STYLE,
+        )
+
+    if rtype == "mono_blue":
+        return rx.text(
+            row[key],
+            title=row[key],
+            font_size=FontSize.SM,
+            font_weight=FontWeight.BOLD,
+            color=Color.ACCENT,
+            style=_MONO_NOWRAP_STYLE,
         )
 
     if rtype == "bold":

@@ -13,6 +13,7 @@ from typing import Any
 
 import reflex as rx
 
+from itam_pro.config import USE_MOCK
 from itam_pro.services.api_client import api_client
 from itam_pro.services.category_config import (
     CATEGORY_CONFIGS,
@@ -91,9 +92,11 @@ class AssetState(rx.State):
     }
     summary_counts: dict[str, int] = {
         "total": 77,
-        "perlu_perhatian": 7,
-        "garansi_segera_habis": 5,
-        "belum_terhubung_pembelian": 41,
+        "digunakan": 63,
+        "in_use_percent": 82,
+        "perlu_perhatian": 0,
+        "garansi_segera_habis": 0,
+        "belum_terhubung_pembelian": 77,
     }
 
     # Filter Inti
@@ -316,7 +319,19 @@ class AssetState(rx.State):
         cfg = get_config_by_slug(self.current_slug)
         if cfg and cfg.get("subtitle"):
             return cfg["subtitle"]
-        return "Kelola seluruh unit fisik perangkat keras IT dalam satu basis data terpadu."
+        return (
+            "Satu daftar induk untuk seluruh aset perusahaan. "
+            "Halaman kategori hanyalah filter dari sini."
+        )
+
+    @rx.var(cache=True)
+    def in_use_percent(self) -> int:
+        pct = int(self.summary_counts.get("in_use_percent", 0) or 0)
+        if pct > 0:
+            return min(100, pct)
+        tot = int(self.summary_counts.get("total", 0) or 0)
+        used = int(self.summary_counts.get("digunakan", 0) or 0)
+        return round((used / tot) * 100) if tot > 0 else 0
 
     @rx.var(cache=True)
     def add_button_label(self) -> str:
@@ -768,7 +783,30 @@ class AssetState(rx.State):
                     **res["category_counts"],
                 }
             if "summary" in res and isinstance(res["summary"], dict):
-                self.summary_counts = {**self.summary_counts, **res["summary"]}
+                merged_summary = {**self.summary_counts, **res["summary"]}
+                tot_all = int(merged_summary.get("total", 0) or 0)
+                if "in_use_percent" in res["summary"]:
+                    merged_summary["in_use_percent"] = int(res["summary"]["in_use_percent"] or 0)
+                elif "digunakan" in res["summary"] or "in_use_assets" in res["summary"]:
+                    used_cnt = int(
+                        res["summary"].get("digunakan", res["summary"].get("in_use_assets", 0))
+                        or 0
+                    )
+                    merged_summary["digunakan"] = used_cnt
+                    merged_summary["in_use_percent"] = (
+                        round((used_cnt / tot_all) * 100) if tot_all > 0 else 0
+                    )
+                elif not USE_MOCK and tot_all > 0:
+                    try:
+                        used_res = await api_client.get_assets(
+                            filters={"status": "Digunakan"}, page=1, page_size=1
+                        )
+                        used_cnt = int(used_res.get("total", 0) or 0)
+                        merged_summary["digunakan"] = used_cnt
+                        merged_summary["in_use_percent"] = round((used_cnt / tot_all) * 100)
+                    except Exception:
+                        pass
+                self.summary_counts = merged_summary
         finally:
             self.is_loading = False
 
