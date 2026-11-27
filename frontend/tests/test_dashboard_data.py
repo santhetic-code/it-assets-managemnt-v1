@@ -179,3 +179,35 @@ def test_dashboard_consistency_ups_and_important_activities() -> None:
     assert mp_ups1 is not None
     assert seed_ups1 is not None
     assert seed_ups1["nama_aset"] in mp_ups1["objek_display"]
+
+
+def test_dashboard_activity_failed_login_attribution() -> None:
+    """8. Uji normalisasi Aktivitas Penting: login gagal & login sukses."""
+    from itam_pro.states.dashboard_state import _normalize_dashboard_activity
+
+    failed = _normalize_dashboard_activity(
+        {
+            "aksi": "login_gagal",
+            "aksi_label": "Login gagal",
+            "nama_pengguna": "Administrator IT",
+            "target_id": "ADMIN",
+            "tanggal_wib": "25 Nov 2026",
+            "jam_wib": "13:10 WIB",
+            "tingkat": "Peringatan",
+            "hasil": "Ditolak",
+        }
+    )
+    assert failed is not None
+    assert failed["actor"] == "Tidak terautentikasi"
+    assert "ADMIN" in failed["title"]
+    assert failed["is_warning"] is True
+
+    success = _normalize_dashboard_activity(
+        {
+            "aksi": "user.login",
+            "aksi_label": "Login berhasil",
+            "nama_pengguna": "Administrator IT",
+            "hasil": "Berhasil",
+        }
+    )
+    assert success is None

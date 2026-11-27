@@ -11,7 +11,9 @@ from itam_pro.components.ui import (
     action_primary_button,
     app_badge,
     app_card,
+    hero_stat_card,
     metric_progress_bar,
+    page_header,
     secondary_button,
     stat_card,
 )
@@ -25,28 +27,17 @@ from itam_pro.states.dashboard_state import (
 )
 from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size, Space
 
-_HEADER_WRAP_STYLE = rx.Style(
-    {
-        "width": "100%",
-        "display": "flex",
-        "align_items": "center",
-        "justify_content": "space-between",
-        "flex_wrap": "wrap",
-        "gap": Space.S4,
-    }
-)
-
-
 _KPI_GRID_STYLE = rx.Style(
     {
         "width": "100%",
         "display": "grid",
-        "grid_template_columns": "repeat(5, minmax(0, 1fr))",
+        "grid_template_columns": "1.35fr 1fr 1fr 1fr 1fr",
         "gap": Space.S4,
-        "@media (max-width: 899px)": {
+        "align_items": "stretch",
+        "@media (max-width: 1150px)": {
             "grid_template_columns": "repeat(2, minmax(0, 1fr))",
         },
-        "@media (max-width: 559px)": {
+        "@media (max-width: 599px)": {
             "grid_template_columns": "1fr",
         },
     }
@@ -72,6 +63,7 @@ _BOTTOM_GRID_STYLE = rx.Style(
         "display": "grid",
         "grid_template_columns": "repeat(3, minmax(0, 1fr))",
         "gap": Space.S4,
+        "align_items": "stretch",
         "@media (max-width: 899px)": {
             "grid_template_columns": "1fr",
         },
@@ -115,28 +107,15 @@ _CATEGORY_WRAPPER_STYLE = rx.Style(
 
 
 def _dashboard_header() -> rx.Component:
-    """1) Header: Judul, waktu pembaruan WIB di kiri; Export Laporan & + Tambah Aset di kanan."""
-    return rx.box(
-        rx.vstack(
-            rx.heading(
-                "Dashboard",
-                font_size=FontSize.TITLE,
-                font_weight=FontWeight.EXTRABOLD,
-                color=Color.TEXT,
-                line_height="1.2",
-                letter_spacing="-0.02em",
-            ),
-            rx.text(
-                "Ringkasan aset IT, jadwal, dan keamanan — "
-                f"diperbarui {DashboardState.last_updated_wib}",
-                font_size=FontSize.BASE,
-                font_weight=FontWeight.REGULAR,
-                color=Color.MUTED,
-            ),
-            spacing="1",
-            align="start",
+    """1) Header: ikon kotak gradien biru 52px + judul + waktu WIB; Export & + Tambah Aset."""
+    return page_header(
+        icon="box",
+        title="Dashboard",
+        subtitle=(
+            "Ringkasan aset IT, jadwal, dan keamanan — "
+            f"diperbarui {DashboardState.last_updated_wib}"
         ),
-        rx.hstack(
+        actions=[
             secondary_button(
                 label="Export Laporan",
                 on_click=DashboardState.export_dashboard_report,
@@ -145,10 +124,7 @@ def _dashboard_header() -> rx.Component:
                 label="+ Tambah Aset",
                 on_click=rx.redirect("/assets"),
             ),
-            spacing="3",
-            align="center",
-        ),
-        style=_HEADER_WRAP_STYLE,
+        ],
     )
 
 
@@ -200,9 +176,57 @@ def _alert_banner() -> rx.Component:
 
 
 def _kpi_row() -> rx.Component:
-    """2) Baris KPI: 5 kolom, gap 16px (2 kolom di <900px, 1 kolom di <560px)."""
+    """2) Baris KPI: Kartu 1 Hero (donut % dipakai) + 4 kartu KPI putih (5 -> 2 -> 1 kolom)."""
     return rx.box(
-        rx.foreach(DashboardState.kpi_cards, stat_card),
+        hero_stat_card(
+            icon="box",
+            label="TOTAL ASET",
+            value=DashboardState.kpi_total_assets,
+            subtext=DashboardState.kpi_category_breakdown,
+            percent=DashboardState.kpi_in_use_pct,
+            percent_caption="dipakai",
+            link_text="Lihat detail →",
+            href="/assets",
+            glow_ring=True,
+        ),
+        stat_card(
+            icon="circle-check",
+            tone="purple",
+            label="SEDANG DIPAKAI",
+            value=DashboardState.kpi_in_use,
+            subtext=DashboardState.kpi_in_use_note,
+            link_text="Lihat detail →",
+            href="/assets?status=Digunakan",
+        ),
+        stat_card(
+            icon="clock",
+            tone="success",
+            label="JADWAL TERLAMBAT",
+            value=DashboardState.kpi_overdue_maint_display,
+            value_tone=rx.cond(DashboardState.kpi_overdue_maint > 0, "danger", "default"),
+            subtext=DashboardState.kpi_overdue_note,
+            link_text="Lihat detail →",
+            href="/operations/maintenance",
+        ),
+        stat_card(
+            icon="shield",
+            tone="warning",
+            label="GARANSI ≤ 30 HARI",
+            value=DashboardState.kpi_warranty_display,
+            value_tone=rx.cond(DashboardState.kpi_warranty_30d > 0, "warning", "default"),
+            subtext=DashboardState.kpi_warranty_note,
+            link_text="Lihat detail →",
+            href="/assets?warranty=expiring",
+        ),
+        stat_card(
+            icon="zap",
+            tone="info",
+            label="DAYA SERVER (TDP)",
+            value=DashboardState.kpi_power_kw_display,
+            subtext=DashboardState.kpi_power_kwh_note,
+            link_text="Lihat detail →",
+            href="/watt-server",
+        ),
         style=_KPI_GRID_STYLE,
     )
 
@@ -468,10 +492,10 @@ def _attention_card() -> rx.Component:
             ),
             title="Perlu Perhatian",
             action_label="Lihat semua",
-            on_action_click=rx.redirect("/maintenance"),
+            on_action_click=rx.redirect("/operations/maintenance"),
         ),
         id="dashboard-attention-section",
-        width="100%",
+        style=rx.Style({"width": "100%", "height": "100%"}),
     )
 
 
@@ -581,7 +605,7 @@ def dashboard_page() -> rx.Component:
         _charts_row(),
         _bottom_three_columns_row(),
         spacing="0",
-        style=rx.Style({"gap": Space.S4}),
+        style=rx.Style({"gap": Space.S4, "padding_bottom": Space.S8}),
         align="start",
         width="100%",
     )

@@ -7,7 +7,7 @@ from typing import Any
 
 import reflex as rx
 
-from itam_pro.styles import Color, FontSize, FontWeight, Radius, Space
+from itam_pro.styles import Color, FontSize, FontWeight, Radius, Shadow, Space
 
 
 def app_card(
@@ -79,12 +79,15 @@ def app_card(
             {
                 "width": "100%",
                 "height": "100%",
+                "min_height": "0",
                 "background_color": Color.SURFACE,
                 "border": f"1px solid {Color.BORDER}",
-                "border_radius": Radius.CARD,
+                "border_radius": Radius.KPI_CARD,
+                "box_shadow": Shadow.TABLE_CARD,
                 "padding": padding,
                 "display": "flex",
                 "flex_direction": "column",
+                "overflow": "visible",
             }
         ),
     )
