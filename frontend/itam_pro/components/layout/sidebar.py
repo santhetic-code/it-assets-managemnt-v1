@@ -10,7 +10,7 @@ import reflex as rx
 from itam_pro.services.category_config import get_pinned_categories
 from itam_pro.states.asset_state import AssetState
 from itam_pro.states.nav_state import NavState
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Size
 
 
 def _nav_link_item(
@@ -81,21 +81,26 @@ def _nav_link_item(
                 "padding": "8px 12px 8px 28px" if indented else "10px 12px",
                 "border_radius": Radius.CONTROL,
                 "text_decoration": "none",
-                "background_color": rx.cond(
+                "background": rx.cond(
                     is_active,
-                    Color.SIDEBAR_HOVER if indented else Color.ACCENT_BRIGHT,
+                    Color.SIDEBAR_HOVER if indented else Color.GRADIENT_PRIMARY,
                     "transparent",
+                ),
+                "box_shadow": rx.cond(
+                    is_active,
+                    "none" if indented else Shadow.SIDEBAR_ACTIVE,
+                    "none",
                 ),
                 "display": "block",
                 "font_family": FONT_FAMILY,
-                "transition": "background-color 0.12s ease",
+                "transition": "all 0.15s ease",
             }
         ),
         _hover=rx.Style(
             {
-                "background_color": rx.cond(
+                "background": rx.cond(
                     is_active,
-                    Color.SIDEBAR_HOVER if indented else Color.ACCENT_BRIGHT,
+                    Color.SIDEBAR_HOVER if indented else Color.GRADIENT_PRIMARY,
                     Color.SIDEBAR_HOVER,
                 ),
             }

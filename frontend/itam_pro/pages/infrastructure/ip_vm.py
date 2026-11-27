@@ -12,7 +12,17 @@ from itam_pro.components.tables import (
     reusable_data_table,
     table_pagination,
 )
-from itam_pro.components.ui import TabItemConfig, app_tabs, detail_drawer
+from itam_pro.components.ui import (
+    TabItemConfig,
+    detail_drawer,
+    hero_stat_card,
+    page_header,
+    pill_filter_bar,
+    pill_select,
+    stat_card,
+    tab_bar,
+    view_toggle,
+)
 from itam_pro.states.ip_state import IPState
 from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Space
 
@@ -83,43 +93,12 @@ IP_TABLE_COLUMNS: list[ColumnDef] = [
 
 
 def _ip_header() -> rx.Component:
-    return rx.box(
-        rx.hstack(
-            rx.center(
-                rx.icon(tag="server", size=26, color=Color.WHITE, stroke_width=2),
-                width="52px",
-                height="52px",
-                border_radius="15px",
-                flex_shrink="0",
-                style=rx.Style(
-                    {
-                        "background": Color.GRADIENT_BLUE,
-                        "box_shadow": "0 6px 16px rgba(37, 99, 235, 0.24)",
-                    }
-                ),
-            ),
-            rx.vstack(
-                rx.heading(
-                    "IP & Server (VM)",
-                    font_size="28px",
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.TEXT,
-                    line_height="1.15",
-                    letter_spacing="-0.02em",
-                ),
-                rx.text(
-                    "Pemetaan IPv4, server fisik, dan VM.",
-                    font_size=FontSize.BASE,
-                    font_weight=FontWeight.REGULAR,
-                    color=Color.MUTED,
-                ),
-                spacing="1",
-                align="start",
-            ),
-            spacing="4",
-            align="center",
-        ),
-        rx.hstack(
+    return page_header(
+        icon="server",
+        icon_size=26,
+        title="IP & Server (VM)",
+        subtitle="Pemetaan IPv4, server fisik, dan VM.",
+        actions=[
             rx.el.button(
                 rx.hstack(
                     rx.icon(tag="upload", size=16, color=Color.TEXT, stroke_width=2),
@@ -140,7 +119,7 @@ def _ip_header() -> rx.Component:
                         "padding": "0 16px",
                         "background_color": Color.SURFACE,
                         "border": f"1px solid {Color.BORDER}",
-                        "border_radius": "11px",
+                        "border_radius": Radius.BTN,
                         "font_family": FONT_FAMILY,
                         "cursor": "pointer",
                         "transition": "all 0.15s ease",
@@ -169,7 +148,7 @@ def _ip_header() -> rx.Component:
                                 "padding": "0 16px",
                                 "background_color": Color.SURFACE,
                                 "border": f"1px solid {Color.BORDER}",
-                                "border_radius": "11px",
+                                "border_radius": Radius.BTN,
                                 "font_family": FONT_FAMILY,
                                 "cursor": "pointer",
                                 "transition": "all 0.15s ease",
@@ -221,179 +200,35 @@ def _ip_header() -> rx.Component:
                         "background": Color.GRADIENT_PRIMARY,
                         "color": Color.WHITE,
                         "border": "none",
-                        "border_radius": "11px",
+                        "border_radius": Radius.BTN,
                         "font_family": FONT_FAMILY,
                         "font_size": FontSize.SM,
                         "font_weight": FontWeight.BOLD,
                         "cursor": "pointer",
-                        "box_shadow": "0 6px 16px rgba(29, 78, 216, 0.28)",
+                        "box_shadow": Shadow.PRIMARY_BTN,
                         "transition": "all 0.15s ease",
                     }
                 ),
             ),
-            spacing="3",
-            align="center",
-            wrap="wrap",
-        ),
-        style=rx.Style(
-            {
-                "width": "100%",
-                "display": "flex",
-                "align_items": "center",
-                "justify_content": "space-between",
-                "flex_wrap": "wrap",
-                "gap": Space.S4,
-            }
-        ),
-    )
-
-
-def _interactive_stat_card(
-    card_key: str,
-    title: str,
-    icon_tag: str,
-    icon_bg: str,
-    icon_color: str,
-    value_var: Any,
-    subtitle_var: Any,
-    percent_var: Any,
-    bar_color: str,
-    action_label: str,
-) -> rx.Component:
-    is_active = IPState.active_stat_card == card_key
-    return rx.el.button(
-        rx.vstack(
-            rx.hstack(
-                rx.hstack(
-                    rx.center(
-                        rx.icon(tag=icon_tag, size=17, color=icon_color, stroke_width=2),
-                        width="34px",
-                        height="34px",
-                        background_color=icon_bg,
-                        border_radius="10px",
-                        flex_shrink="0",
-                    ),
-                    rx.text(
-                        title,
-                        font_size=FontSize.XS,
-                        font_weight=FontWeight.BOLD,
-                        color=Color.MUTED,
-                        letter_spacing="0.06em",
-                    ),
-                    spacing="2",
-                    align="center",
-                ),
-                rx.cond(
-                    is_active,
-                    rx.box(
-                        rx.text(
-                            "Ditampilkan",
-                            font_size="10px",
-                            font_weight=FontWeight.BOLD,
-                            color=Color.ACCENT,
-                        ),
-                        padding="2px 8px",
-                        border_radius=Radius.FULL,
-                        background_color=Color.BLUE_100,
-                    ),
-                    rx.fragment(),
-                ),
-                width="100%",
-                justify="between",
-                align="center",
-            ),
-            rx.text(
-                value_var,
-                class_name="itam-kpi-countup",
-                font_size="32px",
-                font_weight=FontWeight.EXTRABOLD,
-                color=Color.TEXT,
-                line_height="1.1",
-                margin_top="4px",
-                style=rx.Style({"font_variant_numeric": "tabular-nums"}),
-            ),
-            rx.text(
-                subtitle_var,
-                font_size=FontSize.FOOTER,
-                font_weight=FontWeight.MEDIUM,
-                color=Color.MUTED,
-                text_align="left",
-            ),
-            rx.box(
-                rx.box(
-                    style=rx.Style(
-                        {
-                            "width": f"{percent_var}%",
-                            "height": "100%",
-                            "background_color": bar_color,
-                            "border_radius": Radius.FULL,
-                            "transition": "width 0.3s ease",
-                        }
-                    )
-                ),
-                style=rx.Style(
-                    {
-                        "width": "100%",
-                        "height": "5px",
-                        "background_color": Color.SLATE_200,
-                        "border_radius": Radius.FULL,
-                        "overflow": "hidden",
-                        "margin_top": "4px",
-                    }
-                ),
-            ),
-            rx.text(
-                action_label,
-                font_size="11.5px",
-                font_weight=FontWeight.BOLD,
-                color=Color.ACCENT,
-                margin_top="2px",
-            ),
-            spacing="2",
-            align="start",
-            width="100%",
-        ),
-        type="button",
-        aria_pressed=is_active,
-        on_click=IPState.click_stat_card(card_key),
-        style=rx.Style(
-            {
-                "background_color": Color.SURFACE,
-                "border": rx.cond(
-                    is_active,
-                    f"2px solid {Color.ACCENT}",
-                    f"1px solid {Color.BORDER}",
-                ),
-                "box_shadow": rx.cond(
-                    is_active,
-                    "0 0 0 3px rgba(37, 99, 235, 0.14)",
-                    "none",
-                ),
-                "border_radius": "16px",
-                "padding": "16px 18px",
-                "width": "100%",
-                "text_align": "left",
-                "cursor": "pointer",
-                "font_family": FONT_FAMILY,
-                "transition": "all 150ms ease",
-                "_hover": {
-                    "transform": "translateY(-2px)",
-                    "box_shadow": "0 8px 20px rgba(15, 23, 42, 0.07)",
-                    "border_color": Color.ACCENT,
-                },
-                "_focus_visible": {
-                    "outline": "none",
-                    "box_shadow": f"0 0 0 3px {Color.ACCENT}",
-                },
-            }
-        ),
+        ],
     )
 
 
 def _ip_kpi_row() -> rx.Component:
     is_total_active = IPState.active_stat_card == "total"
+    is_fisik_active = IPState.active_stat_card == "fisik"
+    is_vm_active = IPState.active_stat_card == "vm"
     is_bentrok_active = IPState.active_stat_card == "bentrok"
+    is_kosong_active = IPState.active_stat_card == "kosong"
     has_conflict = IPState.kpi_bentrok > 0
+
+    donut_grad = (
+        f"conic-gradient({Color.BLUE_500} 0% {IPState.fisik_percent}%, "
+        f"{Color.PURPLE_500} {IPState.fisik_percent}% "
+        f"{IPState.fisik_percent + IPState.vm_percent}%, "
+        f"{Color.WHITE_ALPHA_20} "
+        f"{IPState.fisik_percent + IPState.vm_percent}% 100%)"
+    )
 
     return rx.box(
         rx.el.style(
@@ -409,305 +244,78 @@ def _ip_kpi_row() -> rx.Component:
             }
             """
         ),
-        # 1. Kartu Hero Total IP dengan Cincin Donut Komposisi (B5)
-        rx.el.button(
-            rx.hstack(
-                rx.vstack(
-                    rx.hstack(
-                        rx.center(
-                            rx.icon(tag="globe", size=17, color=Color.WHITE, stroke_width=2),
-                            width="34px",
-                            height="34px",
-                            border_radius="10px",
-                            style=rx.Style({"background_color": "rgba(255, 255, 255, 0.16)"}),
-                        ),
-                        rx.text(
-                            "TOTAL IP",
-                            font_size=FontSize.XS,
-                            font_weight=FontWeight.BOLD,
-                            color="rgba(255, 255, 255, 0.85)",
-                            letter_spacing="0.06em",
-                        ),
-                        rx.cond(
-                            is_total_active,
-                            rx.box(
-                                rx.text(
-                                    "Ditampilkan",
-                                    font_size="10px",
-                                    font_weight=FontWeight.BOLD,
-                                    color=Color.WHITE,
-                                ),
-                                padding="2px 8px",
-                                border_radius=Radius.FULL,
-                                style=rx.Style({"background_color": "rgba(255,255,255,0.22)"}),
-                            ),
-                            rx.fragment(),
-                        ),
-                        spacing="2",
-                        align="center",
-                    ),
-                    rx.text(
-                        IPState.kpi_total_ip,
-                        class_name="itam-kpi-countup",
-                        font_size="34px",
-                        font_weight=FontWeight.EXTRABOLD,
-                        color=Color.WHITE,
-                        line_height="1.1",
-                        margin_top="4px",
-                        style=rx.Style({"font_variant_numeric": "tabular-nums"}),
-                    ),
-                    rx.text(
-                        "Semua entri terdaftar",
-                        font_size=FontSize.FOOTER,
-                        font_weight=FontWeight.MEDIUM,
-                        color="rgba(255, 255, 255, 0.82)",
-                    ),
-                    rx.text(
-                        "Lihat semua IP ->",
-                        font_size="11.5px",
-                        font_weight=FontWeight.BOLD,
-                        color="rgba(255, 255, 255, 0.95)",
-                        margin_top="2px",
-                    ),
-                    spacing="2",
-                    align="start",
-                ),
-                # Cincin Donut Komposisi Fisik / VM / Kosong + Persentase Terpakai di tengah
-                rx.center(
-                    rx.center(
-                        rx.text(
-                            f"{IPState.used_subnet_percent}%",
-                            font_size="12px",
-                            font_weight=FontWeight.EXTRABOLD,
-                            color=Color.WHITE,
-                            style=rx.Style({"font_variant_numeric": "tabular-nums"}),
-                        ),
-                        width="48px",
-                        height="48px",
-                        border_radius="50%",
-                        style=rx.Style({"background_color": Color.NAVY_DONUT_INNER}),
-                    ),
-                    width="64px",
-                    height="64px",
-                    border_radius="50%",
-                    flex_shrink="0",
-                    style=rx.Style(
-                        {
-                            "background": (
-                                f"conic-gradient({Color.BLUE_500} 0% {IPState.fisik_percent}%, "
-                                f"{Color.PURPLE_500} {IPState.fisik_percent}% "
-                                f"{IPState.fisik_percent + IPState.vm_percent}%, "
-                                f"rgba(255,255,255,0.2) "
-                                f"{IPState.fisik_percent + IPState.vm_percent}% 100%)"
-                            )
-                        }
-                    ),
-                ),
-                width="100%",
-                justify="between",
-                align="center",
-            ),
-            type="button",
-            aria_pressed=is_total_active,
+        hero_stat_card(
+            icon="globe",
+            label="TOTAL IP",
+            value=IPState.kpi_total_ip,
+            subtext="Semua entri terdaftar",
+            percent=IPState.used_subnet_percent,
+            donut_gradient=donut_grad,
+            link_text="Lihat semua IP ->",
+            pill=rx.cond(is_total_active, "Ditampilkan", ""),
             on_click=IPState.click_stat_card("total"),
-            style=rx.Style(
-                {
-                    "background": Color.GRADIENT_NAVY,
-                    "border": rx.cond(
-                        is_total_active,
-                        f"2px solid {Color.CHART_MONITOR}",
-                        "1px solid transparent",
-                    ),
-                    "border_radius": "16px",
-                    "padding": "16px 20px",
-                    "width": "100%",
-                    "text_align": "left",
-                    "cursor": "pointer",
-                    "font_family": FONT_FAMILY,
-                    "box_shadow": rx.cond(
-                        is_total_active,
-                        "0 0 0 3px rgba(59, 130, 246, 0.35), 0 8px 20px rgba(15, 23, 42, 0.18)",
-                        "0 8px 20px rgba(15, 23, 42, 0.14)",
-                    ),
-                    "transition": "all 150ms ease",
-                    "_hover": {
-                        "transform": "translateY(-2px)",
-                        "box_shadow": "0 12px 24px rgba(29, 78, 216, 0.28)",
-                    },
-                    "_focus_visible": {
-                        "outline": "none",
-                        "box_shadow": f"0 0 0 3px {Color.ACCENT}",
-                    },
-                }
+            is_active=is_total_active,
+            value_class_name="itam-kpi-countup",
+            glow_ring=False,
+        ),
+        stat_card(
+            icon="monitor",
+            tone="info",
+            label="SERVER FISIK",
+            value=IPState.kpi_fisik,
+            subtext=f"PC & server fisik · {IPState.fisik_percent}%",
+            progress=IPState.fisik_percent,
+            link_text="Lihat IP Fisik ->",
+            pill=rx.cond(is_fisik_active, "Ditampilkan", ""),
+            is_active=is_fisik_active,
+            on_click=IPState.click_stat_card("fisik"),
+            value_class_name="itam-kpi-countup",
+        ),
+        stat_card(
+            icon="layers",
+            tone="purple",
+            label="VM",
+            value=IPState.kpi_vm,
+            subtext=f"Mesin virtual · {IPState.vm_percent}%",
+            progress=IPState.vm_percent,
+            link_text="Lihat IP VM ->",
+            pill=rx.cond(is_vm_active, "Ditampilkan", ""),
+            is_active=is_vm_active,
+            on_click=IPState.click_stat_card("vm"),
+            value_class_name="itam-kpi-countup",
+        ),
+        stat_card(
+            icon=rx.cond(has_conflict, "triangle-alert", "shield-check"),
+            tone=rx.cond(has_conflict, "danger", "success"),
+            label="IP BENTROK",
+            value=IPState.kpi_bentrok,
+            value_tone=rx.cond(has_conflict, "danger", "success"),
+            status_badge=rx.cond(has_conflict, "Bentrok", "Aman"),
+            status_badge_variant=rx.cond(has_conflict, "danger", "success"),
+            subtext=rx.cond(has_conflict, "Memakai IPv4 yang sama", "Tidak ada konflik IP"),
+            link_text=rx.cond(has_conflict, "Lihat konflik ->", "Status jaringan aman"),
+            link_tone=rx.cond(has_conflict, "danger", "success"),
+            pill=rx.cond(is_bentrok_active, "Ditampilkan", ""),
+            is_active=is_bentrok_active,
+            disabled=IPState.kpi_bentrok <= 0,
+            on_click=IPState.click_stat_card("bentrok"),
+            tooltip_text=rx.cond(
+                has_conflict, "Filter IP yang mengalami bentrok", "Tidak ada konflik"
             ),
+            value_class_name="itam-kpi-countup",
         ),
-        # 2. Kartu Server Fisik
-        _interactive_stat_card(
-            "fisik",
-            "SERVER FISIK",
-            "monitor",
-            Color.BLUE_100,
-            Color.BLUE_600,
-            IPState.kpi_fisik,
-            f"PC & server fisik · {IPState.fisik_percent}%",
-            IPState.fisik_percent,
-            Color.BLUE_600,
-            "Lihat IP Fisik ->",
-        ),
-        # 3. Kartu VM
-        _interactive_stat_card(
-            "vm",
-            "VM",
-            "layers",
-            Color.PURPLE_BG,
-            Color.PURPLE_600,
-            IPState.kpi_vm,
-            f"Mesin virtual · {IPState.vm_percent}%",
-            IPState.vm_percent,
-            Color.PURPLE_600,
-            "Lihat IP VM ->",
-        ),
-        # 4. Kartu IP Bentrok (B3 & B5: hijau jika 0 + tooltip "Tidak ada konflik", merah jika > 0)
-        rx.tooltip(
-            rx.el.button(
-                rx.vstack(
-                    rx.hstack(
-                        rx.hstack(
-                            rx.center(
-                                rx.icon(
-                                    tag=rx.cond(has_conflict, "triangle-alert", "shield-check"),
-                                    size=17,
-                                    color=rx.cond(has_conflict, Color.RED_600, Color.GREEN_700),
-                                    stroke_width=2,
-                                ),
-                                width="34px",
-                                height="34px",
-                                background_color=rx.cond(
-                                    has_conflict, Color.RED_100, Color.GREEN_100
-                                ),
-                                border_radius="10px",
-                            ),
-                            rx.text(
-                                "IP BENTROK",
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                                color=Color.MUTED,
-                                letter_spacing="0.06em",
-                            ),
-                            spacing="2",
-                            align="center",
-                        ),
-                        rx.cond(
-                            is_bentrok_active,
-                            rx.box(
-                                rx.text(
-                                    "Ditampilkan",
-                                    font_size="10px",
-                                    font_weight=FontWeight.BOLD,
-                                    color=Color.RED_700,
-                                ),
-                                padding="2px 8px",
-                                border_radius=Radius.FULL,
-                                background_color=Color.RED_100,
-                            ),
-                            rx.fragment(),
-                        ),
-                        width="100%",
-                        justify="between",
-                        align="center",
-                    ),
-                    rx.hstack(
-                        rx.text(
-                            IPState.kpi_bentrok,
-                            class_name="itam-kpi-countup",
-                            font_size="32px",
-                            font_weight=FontWeight.EXTRABOLD,
-                            color=rx.cond(has_conflict, Color.RED_700, Color.GREEN_700),
-                            line_height="1.1",
-                            style=rx.Style({"font_variant_numeric": "tabular-nums"}),
-                        ),
-                        rx.box(
-                            rx.text(
-                                rx.cond(has_conflict, "Bentrok", "Aman"),
-                                font_size=FontSize.XS,
-                                font_weight=FontWeight.BOLD,
-                                color=rx.cond(has_conflict, Color.RED_700, Color.GREEN_700),
-                            ),
-                            style=rx.Style(
-                                {
-                                    "padding": "3px 10px",
-                                    "border_radius": Radius.FULL,
-                                    "background_color": rx.cond(
-                                        has_conflict, Color.RED_100, Color.GREEN_100
-                                    ),
-                                }
-                            ),
-                        ),
-                        spacing="3",
-                        align="center",
-                        margin_top="4px",
-                    ),
-                    rx.text(
-                        rx.cond(has_conflict, "Memakai IPv4 yang sama", "Tidak ada konflik IP"),
-                        font_size=FontSize.FOOTER,
-                        font_weight=FontWeight.MEDIUM,
-                        color=Color.MUTED,
-                    ),
-                    rx.text(
-                        rx.cond(has_conflict, "Lihat konflik ->", "Status jaringan aman"),
-                        font_size="11.5px",
-                        font_weight=FontWeight.BOLD,
-                        color=rx.cond(has_conflict, Color.RED_600, Color.GREEN_700),
-                        margin_top="6px",
-                    ),
-                    spacing="2",
-                    align="start",
-                    width="100%",
-                ),
-                type="button",
-                disabled=IPState.kpi_bentrok <= 0,
-                aria_pressed=is_bentrok_active,
-                on_click=IPState.click_stat_card("bentrok"),
-                style=rx.Style(
-                    {
-                        "background_color": Color.SURFACE,
-                        "border": rx.cond(
-                            is_bentrok_active,
-                            f"2px solid {Color.RED_600}",
-                            f"1px solid {Color.BORDER}",
-                        ),
-                        "border_radius": "16px",
-                        "padding": "16px 18px",
-                        "width": "100%",
-                        "text_align": "left",
-                        "font_family": FONT_FAMILY,
-                        "cursor": rx.cond(has_conflict, "pointer", "default"),
-                        "transition": "all 150ms ease",
-                        "_hover": {
-                            "transform": rx.cond(has_conflict, "translateY(-2px)", "none"),
-                            "border_color": rx.cond(has_conflict, Color.RED_300, Color.GREEN_400),
-                        },
-                        "_focus_visible": {
-                            "outline": "none",
-                            "box_shadow": f"0 0 0 3px {Color.ACCENT}",
-                        },
-                    }
-                ),
-            ),
-            content=rx.cond(has_conflict, "Filter IP yang mengalami bentrok", "Tidak ada konflik"),
-        ),
-        # 5. Kartu IP Kosong -> Buka Peta IP
-        _interactive_stat_card(
-            "kosong",
-            "IP KOSONG",
-            "database",
-            Color.GREEN_100,
-            Color.GREEN_700,
-            IPState.kpi_kosong_count,
-            f"Tersedia · {IPState.kosong_percent}% dari 254",
-            IPState.kosong_percent,
-            Color.GREEN_400,
-            "Buka Peta IP ->",
+        stat_card(
+            icon="database",
+            tone="success",
+            label="IP KOSONG",
+            value=IPState.kpi_kosong_count,
+            subtext=f"Tersedia · {IPState.kosong_percent}% dari 254",
+            progress=IPState.kosong_percent,
+            link_text="Buka Peta IP ->",
+            pill=rx.cond(is_kosong_active, "Ditampilkan", ""),
+            is_active=is_kosong_active,
+            on_click=IPState.click_stat_card("kosong"),
+            value_class_name="itam-kpi-countup",
         ),
         style=rx.Style(
             {
@@ -726,253 +334,55 @@ def _ip_kpi_row() -> rx.Component:
 
 def _futuristic_filter_bar() -> rx.Component:
     """Filter bar dengan debounce 300ms (C2) & dropdown Host cerdas (A3)."""
-
-    def _pill_select(
-        opts: Any,
-        val: Any,
-        on_change: Any,
-        placeholder: str,
-        disabled: Any = False,
-    ) -> rx.Component:
-        return rx.box(
-            rx.el.select(
-                rx.el.option(placeholder, value=""),
-                rx.foreach(opts, lambda o: rx.el.option(o, value=o)),
-                value=val,
-                disabled=disabled,
-                on_change=on_change,
-                style=rx.Style(
-                    {
-                        "height": "36px",
-                        "padding": "0 30px 0 14px",
-                        "background_color": "transparent",
-                        "border": "none",
-                        "color": Color.TEXT,
-                        "font_family": FONT_FAMILY,
-                        "font_size": FontSize.SM,
-                        "font_weight": FontWeight.MEDIUM,
-                        "cursor": rx.cond(disabled, "not-allowed", "pointer"),
-                        "opacity": rx.cond(disabled, "0.55", "1"),
-                        "appearance": "none",
-                        "outline": "none",
-                    }
-                ),
-            ),
-            rx.icon(
-                tag="chevron-down",
-                size=14,
-                color=Color.MUTED,
-                style=rx.Style(
-                    {
-                        "position": "absolute",
-                        "right": "10px",
-                        "top": "50%",
-                        "transform": "translateY(-50%)",
-                        "pointer_events": "none",
-                    }
-                ),
-            ),
-            style=rx.Style(
-                {
-                    "position": "relative",
-                    "background_color": Color.SLATE_50,
-                    "border_radius": "20px",
-                    "border": f"1px solid {Color.BORDER}",
-                    "transition": "all 0.2s",
-                    "&:focus-within": {
-                        "border_color": Color.ACCENT,
-                        "box_shadow": Color.FOCUS_RING,
-                    },
-                }
-            ),
-        )
-
-    return rx.hstack(
-        rx.hstack(
-            rx.icon(tag="search", size=16, color=Color.MUTED),
-            rx.debounce_input(
-                rx.el.input(
-                    placeholder="Cari IP, pengguna, os...",
-                    value=IPState.search_query,
-                    on_change=IPState.set_search_query,
-                    style=rx.Style(
-                        {
-                            "width": "220px",
-                            "height": "36px",
-                            "border": "none",
-                            "background": "transparent",
-                            "color": Color.TEXT,
-                            "font_family": FONT_FAMILY,
-                            "font_size": FontSize.SM,
-                            "outline": "none",
-                        }
-                    ),
-                ),
-                debounce_timeout=300,
-            ),
-            style=rx.Style(
-                {
-                    "padding": "0 12px",
-                    "background_color": Color.SLATE_50,
-                    "border_radius": "20px",
-                    "border": f"1px solid {Color.BORDER}",
-                    "display": "flex",
-                    "align_items": "center",
-                    "transition": "all 0.2s",
-                    "&:focus-within": {
-                        "border_color": Color.ACCENT,
-                        "box_shadow": Color.FOCUS_RING,
-                    },
-                }
-            ),
+    host_control = rx.cond(
+        IPState.has_connected_vm_hosts,
+        pill_select(
+            IPState.clean_host_options,
+            IPState.host_filter,
+            IPState.set_host_filter,
+            "Semua host",
         ),
-        _pill_select(
-            ["Fisik", "VM"], IPState.jenis_filter, IPState.set_jenis_filter, "Semua jenis"
+        pill_select(
+            IPState.clean_host_options,
+            IPState.host_filter,
+            IPState.set_host_filter,
+            "Semua host",
+            disabled=True,
+            tooltip="Belum ada VM",
         ),
-        # A3: Nonaktifkan dan beri tooltip "Belum ada VM" jika belum ada host VM terhubung
-        rx.cond(
-            IPState.has_connected_vm_hosts,
-            _pill_select(
-                IPState.clean_host_options,
-                IPState.host_filter,
-                IPState.set_host_filter,
-                "Semua host",
-            ),
-            rx.tooltip(
-                _pill_select(
-                    IPState.clean_host_options,
-                    IPState.host_filter,
-                    IPState.set_host_filter,
-                    "Semua host",
-                    disabled=True,
-                ),
-                content="Belum ada VM",
-            ),
-        ),
-        _pill_select(
-            ["IP Operasional", "IP Server", "IP VM"],
-            IPState.kategori_filter,
-            IPState.set_kategori_filter,
-            "Semua kategori",
-        ),
-        rx.el.button(
-            rx.icon(tag="rotate-ccw", size=14),
-            type="button",
-            on_click=IPState.reset_filters,
-            aria_label="Reset",
-            style=rx.Style(
-                {
-                    "width": "36px",
-                    "height": "36px",
-                    "border_radius": "50%",
-                    "background_color": Color.SLATE_100,
-                    "color": Color.TEXT,
-                    "border": "none",
-                    "display": "inline-flex",
-                    "align_items": "center",
-                    "justify_content": "center",
-                    "cursor": "pointer",
-                    "&:hover": {"background_color": Color.SLATE_200},
-                }
-            ),
-        ),
-        width="100%",
-        spacing="3",
-        align="center",
-        padding="12px",
-        wrap="wrap",
-        style=rx.Style(
+    )
+    return pill_filter_bar(
+        search_placeholder="Cari IP, pengguna, os...",
+        search_value=IPState.search_query,
+        on_search_change=IPState.set_search_query,
+        selects=[
             {
-                "background_color": "rgba(255,255,255,0.75)",
-                "backdrop_filter": "blur(16px)",
-                "border_bottom": f"1px solid {Color.BORDER}",
-            }
-        ),
+                "options": ["Fisik", "VM"],
+                "value": IPState.jenis_filter,
+                "on_change": IPState.set_jenis_filter,
+                "placeholder": "Semua jenis",
+            },
+            host_control,
+            {
+                "options": ["IP Operasional", "IP Server", "IP VM"],
+                "value": IPState.kategori_filter,
+                "on_change": IPState.set_kategori_filter,
+                "placeholder": "Semua kategori",
+            },
+        ],
+        on_reset=IPState.reset_filters,
     )
 
 
 def _view_mode_toggle() -> rx.Component:
-    """A4: Beri white-space: nowrap dan lebar minimal agar 'Peta IP' tidak pecah 2 baris."""
-    return rx.hstack(
-        rx.el.button(
-            rx.hstack(
-                rx.icon(tag="table", size=14, flex_shrink="0"),
-                rx.text(
-                    "Tabel",
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.BOLD,
-                    style=rx.Style({"white_space": "nowrap"}),
-                ),
-                spacing="2",
-                align="center",
-            ),
-            type="button",
-            on_click=IPState.set_view_mode("table"),
-            style=rx.Style(
-                {
-                    "height": "32px",
-                    "min_width": "84px",
-                    "padding": "0 12px",
-                    "border_radius": "8px",
-                    "border": "none",
-                    "white_space": "nowrap",
-                    "display": "inline-flex",
-                    "align_items": "center",
-                    "justify_content": "center",
-                    "background_color": rx.cond(IPState.is_map_view, "transparent", Color.WHITE),
-                    "color": rx.cond(IPState.is_map_view, Color.MUTED, Color.TEXT),
-                    "box_shadow": rx.cond(
-                        IPState.is_map_view, "none", "0 1px 3px rgba(0,0,0,0.08)"
-                    ),
-                    "cursor": "pointer",
-                    "font_family": FONT_FAMILY,
-                    "transition": "all 0.15s ease",
-                }
-            ),
-        ),
-        rx.el.button(
-            rx.hstack(
-                rx.icon(tag="network", size=14, flex_shrink="0"),
-                rx.text(
-                    "Peta IP",
-                    font_size=FontSize.SM,
-                    font_weight=FontWeight.BOLD,
-                    style=rx.Style({"white_space": "nowrap"}),
-                ),
-                spacing="2",
-                align="center",
-            ),
-            type="button",
-            on_click=IPState.set_view_mode("map"),
-            style=rx.Style(
-                {
-                    "height": "32px",
-                    "min_width": "92px",
-                    "padding": "0 12px",
-                    "border_radius": "8px",
-                    "border": "none",
-                    "white_space": "nowrap",
-                    "display": "inline-flex",
-                    "align_items": "center",
-                    "justify_content": "center",
-                    "background_color": rx.cond(IPState.is_map_view, Color.WHITE, "transparent"),
-                    "color": rx.cond(IPState.is_map_view, Color.TEXT, Color.MUTED),
-                    "box_shadow": rx.cond(
-                        IPState.is_map_view, "0 1px 3px rgba(0,0,0,0.08)", "none"
-                    ),
-                    "cursor": "pointer",
-                    "font_family": FONT_FAMILY,
-                    "transition": "all 0.15s ease",
-                }
-            ),
-        ),
-        spacing="1",
-        align="center",
-        padding="3px",
-        flex_shrink="0",
-        background_color=Color.SLATE_100,
-        border_radius="10px",
-        border=f"1px solid {Color.BORDER}",
+    """A4: Segmented control Tabel | Peta IP."""
+    return view_toggle(
+        options=[
+            {"value": "table", "label": "Tabel", "icon": "table", "min_width": "84px"},
+            {"value": "map", "label": "Peta IP", "icon": "network", "min_width": "92px"},
+        ],
+        active=rx.cond(IPState.is_map_view, "map", "table"),
+        on_change=IPState.set_view_mode,
     )
 
 
@@ -1562,18 +972,11 @@ def _ip_table_card() -> rx.Component:
         {"key": "VM", "label": "VM", "count": IPState.kpi_vm},
     ]
     return rx.box(
-        rx.hstack(
-            app_tabs(
-                tabs=tabs_config,
-                active_tab=IPState.active_jenis_tab,
-                on_change=IPState.set_jenis_tab,
-            ),
-            _view_mode_toggle(),
-            width="100%",
-            justify="between",
-            align="center",
-            padding_right="16px",
-            style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
+        tab_bar(
+            tabs_with_count=tabs_config,
+            active=IPState.active_jenis_tab,
+            on_change=IPState.set_jenis_tab,
+            right_slot=_view_mode_toggle(),
         ),
         rx.cond(
             IPState.is_map_view,
@@ -1620,9 +1023,9 @@ def _ip_table_card() -> rx.Component:
                 "width": "100%",
                 "background_color": Color.SURFACE,
                 "border": f"1px solid {Color.BORDER}",
-                "border_radius": "16px",
+                "border_radius": Radius.KPI_CARD,
                 "overflow": "hidden",
-                "box_shadow": "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                "box_shadow": Shadow.TABLE_CARD,
             }
         ),
     )

@@ -63,6 +63,10 @@ class Radius:
     LOGO_BOX = "12px"
     CARD = "14px"
     LG = "14px"
+    BTN = "11px"
+    ICON_HEADER = "15px"
+    KPI_CARD = "16px"
+    PILL = "20px"
     LOGIN_CARD = "24px"
     FULL = "9999px"
 
@@ -75,3 +79,15 @@ class Shadow:
     AVATAR = "0 2px 6px rgba(29, 78, 216, 0.25)"
     MODAL = "0 20px 25px -5px rgba(0, 0, 0, 0.1)"
     CARD_HOVER = "0 2px 8px rgba(0, 0, 0, 0.05)"
+    HEADER_ICON = "0 6px 16px rgba(37, 99, 235, 0.24)"
+    PRIMARY_BTN = "0 6px 16px rgba(29, 78, 216, 0.28)"
+    SIDEBAR_ACTIVE = "0 6px 16px rgba(29, 78, 216, 0.32)"
+    HERO_CARD = "0 8px 20px rgba(15, 23, 42, 0.14)"
+    HERO_CARD_ACTIVE = (
+        "0 0 0 3px rgba(59, 130, 246, 0.35), 0 8px 20px rgba(15, 23, 42, 0.18)"
+    )
+    HERO_CARD_HOVER = "0 12px 24px rgba(29, 78, 216, 0.28)"
+    KPI_ACTIVE_RING = "0 0 0 3px rgba(37, 99, 235, 0.14)"
+    KPI_HOVER = "0 8px 20px rgba(15, 23, 42, 0.07)"
+    SEGMENT_ACTIVE = "0 1px 3px rgba(0, 0, 0, 0.08)"
+    TABLE_CARD = "0 4px 6px -1px rgba(0, 0, 0, 0.05)"

@@ -162,5 +162,12 @@ class Color:
     STICKY_COL_SHADOW = "1px 0 0 0 rgba(226, 232, 240, 1)"
     STICKY_ESTIMASI_SHADOW = "1px 0 0 0 rgba(191, 219, 254, 1)"
 
+    # Shared Components (Hero Glow, Pill Filter Bar, & Translucent Text)
+    WHITE_ALPHA_22 = "rgba(255, 255, 255, 0.22)"
+    WHITE_ALPHA_82 = "rgba(255, 255, 255, 0.82)"
+    WHITE_ALPHA_85 = "rgba(255, 255, 255, 0.85)"
+    WHITE_ALPHA_95 = "rgba(255, 255, 255, 0.95)"
+    FILTER_BAR_BG = "rgba(255, 255, 255, 0.75)"
+
 
 __all__ = ["Color"]

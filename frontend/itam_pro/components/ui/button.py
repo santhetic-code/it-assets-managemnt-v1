@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 import reflex as rx
 
-from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Size
+from itam_pro.styles import FONT_FAMILY, Color, FontSize, FontWeight, Radius, Shadow, Size
 
 
 def primary_button(
@@ -119,37 +119,47 @@ def secondary_button(
 def action_primary_button(
     label: str | rx.Var[str],
     on_click: Any | None = None,
+    icon_tag: str | None = None,
 ) -> rx.Component:
-    """Tombol utama di header halaman (tinggi 42px, warna Color.ACCENT, contoh: '+ Tambah Aset')."""
+    """Tombol aksi utama di header halaman (gradien biru + bayangan, radius 11px)."""
     return rx.el.button(
-        rx.text(
-            label,
-            font_size=FontSize.SM,
-            font_weight=FontWeight.BOLD,
-            color=Color.WHITE,
+        rx.hstack(
+            rx.icon(tag=icon_tag, size=Size.ICON_SM, color=Color.WHITE)
+            if icon_tag
+            else rx.fragment(),
+            rx.text(
+                label,
+                font_size=FontSize.SM,
+                font_weight=FontWeight.BOLD,
+                color=Color.WHITE,
+            ),
+            spacing="2",
+            align="center",
         ),
         type="button",
         on_click=on_click,
         style=rx.Style(
             {
                 "height": Size.BUTTON_MD_H,
-                "padding": "0 18px",
-                "background_color": Color.ACCENT,
+                "padding": "0 20px",
+                "background": Color.GRADIENT_PRIMARY,
                 "color": Color.WHITE,
                 "border": "none",
-                "border_radius": Radius.CONTROL,
+                "border_radius": Radius.BTN,
                 "font_family": FONT_FAMILY,
                 "display": "inline-flex",
                 "align_items": "center",
                 "justify_content": "center",
                 "cursor": "pointer",
                 "white_space": "nowrap",
-                "transition": "background-color 0.15s ease",
+                "box_shadow": Shadow.PRIMARY_BTN,
+                "transition": "all 0.15s ease",
             }
         ),
         _hover=rx.Style(
             {
-                "background_color": Color.ACCENT_BRIGHT,
+                "filter": "brightness(1.05)",
+                "transform": "translateY(-1px)",
             }
         ),
     )

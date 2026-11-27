@@ -10,51 +10,24 @@ import reflex as rx
 from itam_pro.components.layout.base_layout import base_layout
 from itam_pro.components.tables.data_table import reusable_data_table
 from itam_pro.components.tables.pagination import table_pagination
+from itam_pro.components.ui import hero_stat_card, page_header, stat_card
 from itam_pro.states.credential_state import CredentialState
-from itam_pro.styles import Color, FontSize, FontWeight, Radius
+from itam_pro.styles import Color, FontSize, FontWeight, Radius, Shadow
 
 
 def _credential_header() -> rx.Component:
     """E: Header Artboard 7 dengan ikon gembok, chip Akses Anda, & tombol aksi."""
-    return rx.hstack(
-        rx.hstack(
-            rx.center(
-                rx.icon(tag="lock", size=24, color=Color.WHITE, stroke_width=2),
-                width="52px",
-                height="52px",
-                border_radius="15px",
-                flex_shrink="0",
-                style=rx.Style(
-                    {
-                        "background": Color.GRADIENT_BLUE,
-                        "box_shadow": "0 6px 16px rgba(37, 99, 235, 0.24)",
-                    }
-                ),
-            ),
-            rx.vstack(
-                rx.heading(
-                    "Credential Manager",
-                    font_size="28px",
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.TEXT,
-                    line_height="1.15",
-                ),
-                rx.text(
-                    (
-                        "Brankas kredensial terenkripsi. Akses dibatasi menurut "
-                        "jenis, tingkat posisi, dan divisi."
-                    ),
-                    font_size=FontSize.SM,
-                    color=Color.MUTED,
-                ),
-                spacing="1",
-                align="start",
-            ),
-            spacing="4",
-            align="center",
+    return page_header(
+        icon="lock",
+        icon_size=24,
+        title="Credential Manager",
+        subtitle=(
+            "Brankas kredensial terenkripsi. Akses dibatasi menurut "
+            "jenis, tingkat posisi, dan divisi."
         ),
-        rx.hstack(
-            # Chip Akses Anda: <peran> · N dari 8 jenis
+        subtitle_size=FontSize.SM,
+        margin_bottom="18px",
+        actions=[
             rx.hstack(
                 rx.icon(tag="shield", size=15, color=Color.BLUE_700),
                 rx.text(
@@ -80,7 +53,7 @@ def _credential_header() -> rx.Component:
                         "padding": "0 18px",
                         "background_color": Color.SURFACE,
                         "border": f"1px solid {Color.BORDER}",
-                        "border_radius": "11px",
+                        "border_radius": Radius.BTN,
                         "font_size": FontSize.SM,
                         "font_weight": FontWeight.BOLD,
                         "color": Color.TEXT,
@@ -99,23 +72,15 @@ def _credential_header() -> rx.Component:
                         "background": Color.GRADIENT_PRIMARY,
                         "color": Color.WHITE,
                         "border": "none",
-                        "border_radius": "11px",
+                        "border_radius": Radius.BTN,
                         "font_size": FontSize.SM,
                         "font_weight": FontWeight.BOLD,
                         "cursor": "pointer",
-                        "box_shadow": "0 6px 16px rgba(29, 78, 216, 0.25)",
+                        "box_shadow": Shadow.PRIMARY_BTN,
                     }
                 ),
             ),
-            spacing="3",
-            align="center",
-            wrap="wrap",
-        ),
-        width="100%",
-        justify="between",
-        align="center",
-        wrap="wrap",
-        margin_bottom="18px",
+        ],
     )
 
 
@@ -125,171 +90,46 @@ def _kpi_cards() -> rx.Component:
     is_exp = CredentialState.active_kpi_card == "expiring"
     is_old = CredentialState.active_kpi_card == "old_password"
 
-    def _white_card(
-        key: str,
-        title: str,
-        icon_tag: str,
-        icon_bg: str,
-        icon_fg: str,
-        val_var: Any,
-        sub_text: str,
-        action_text: str,
-        active_cond: Any,
-    ) -> rx.Component:
-        return rx.el.button(
-            rx.vstack(
-                rx.hstack(
-                    rx.center(
-                        rx.icon(tag=icon_tag, size=16, color=icon_fg),
-                        width="32px",
-                        height="32px",
-                        border_radius="9px",
-                        background_color=icon_bg,
-                    ),
-                    rx.text(
-                        title,
-                        font_size="11px",
-                        font_weight=FontWeight.BOLD,
-                        color=Color.MUTED,
-                        letter_spacing="0.06em",
-                    ),
-                    spacing="2",
-                    align="center",
-                ),
-                rx.text(
-                    val_var,
-                    font_size="32px",
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.TEXT,
-                    line_height="1.1",
-                    margin_top="4px",
-                ),
-                rx.text(sub_text, font_size=FontSize.XS, color=Color.MUTED),
-                rx.text(
-                    action_text,
-                    font_size="12px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.ACCENT,
-                    margin_top="4px",
-                ),
-                spacing="2",
-                align="start",
-                width="100%",
-            ),
-            type="button",
-            on_click=CredentialState.click_kpi_card(key),
-            style=rx.Style(
-                {
-                    "background_color": Color.SURFACE,
-                    "border": rx.cond(
-                        active_cond,
-                        f"2px solid {Color.ACCENT}",
-                        f"1px solid {Color.BORDER}",
-                    ),
-                    "border_radius": "16px",
-                    "padding": "18px 20px",
-                    "text_align": "left",
-                    "cursor": "pointer",
-                    "width": "100%",
-                    "transition": "all 0.15s ease",
-                }
-            ),
-        )
-
     return rx.box(
-        # 1. Kartu Hero Navy: BISA ANDA AKSES
-        rx.el.button(
-            rx.vstack(
-                rx.hstack(
-                    rx.center(
-                        rx.icon(tag="key-round", size=16, color=Color.WHITE),
-                        width="32px",
-                        height="32px",
-                        border_radius="9px",
-                        style=rx.Style({"background_color": "rgba(255,255,255,0.16)"}),
-                    ),
-                    rx.text(
-                        "BISA ANDA AKSES",
-                        font_size="11px",
-                        font_weight=FontWeight.BOLD,
-                        color="rgba(255,255,255,0.85)",
-                        letter_spacing="0.06em",
-                    ),
-                    spacing="2",
-                    align="center",
-                ),
-                rx.text(
-                    CredentialState.kpi_bisa_diakses,
-                    font_size="34px",
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.WHITE,
-                    line_height="1.1",
-                    margin_top="4px",
-                ),
-                rx.text(
-                    f"dari {CredentialState.kpi_unlocked_types} jenis kredensial",
-                    font_size=FontSize.XS,
-                    color="rgba(255,255,255,0.8)",
-                ),
-                rx.text(
-                    "Lihat semua ->",
-                    font_size="12px",
-                    font_weight=FontWeight.BOLD,
-                    color=Color.WHITE,
-                    margin_top="4px",
-                ),
-                spacing="2",
-                align="start",
-                width="100%",
-            ),
-            type="button",
+        hero_stat_card(
+            icon="key-round",
+            label="BISA ANDA AKSES",
+            value=CredentialState.kpi_bisa_diakses,
+            subtext=f"dari {CredentialState.kpi_unlocked_types} jenis kredensial",
+            link_text="Lihat semua ->",
             on_click=CredentialState.click_kpi_card("all"),
-            style=rx.Style(
-                {
-                    "background": Color.GRADIENT_NAVY,
-                    "border": rx.cond(
-                        is_all, f"2px solid {Color.CHART_MONITOR}", "1px solid transparent"
-                    ),
-                    "border_radius": "16px",
-                    "padding": "18px 20px",
-                    "text_align": "left",
-                    "cursor": "pointer",
-                    "width": "100%",
-                }
-            ),
+            is_active=is_all,
+            glow_ring=False,
         ),
-        _white_card(
-            "expiring",
-            "SEGERA KEDALUWARSA",
-            "clock",
-            Color.AMBER_100,
-            Color.AMBER_600,
-            CredentialState.kpi_segera_kedaluwarsa,
-            "Domain/hosting <= 30 hari",
-            "Lihat daftar ->",
-            is_exp,
+        stat_card(
+            icon="clock",
+            tone="warning",
+            label="SEGERA KEDALUWARSA",
+            value=CredentialState.kpi_segera_kedaluwarsa,
+            subtext="Domain/hosting <= 30 hari",
+            link_text="Lihat daftar ->",
+            is_active=is_exp,
+            on_click=CredentialState.click_kpi_card("expiring"),
         ),
-        _white_card(
-            "old_password",
-            "PASSWORD LAMA",
-            "key",
-            Color.RED_100,
-            Color.RED_600,
-            CredentialState.kpi_password_lama,
-            "Belum diganti > 90 hari",
-            "Lihat daftar ->",
-            is_old,
+        stat_card(
+            icon="key",
+            tone="danger",
+            label="PASSWORD LAMA",
+            value=CredentialState.kpi_password_lama,
+            subtext="Belum diganti > 90 hari",
+            link_text="Lihat daftar ->",
+            is_active=is_old,
+            on_click=CredentialState.click_kpi_card("old_password"),
         ),
-        _white_card(
-            "revealed_today",
-            "DIBUKA HARI INI",
-            "eye",
-            Color.SKY_100,
-            Color.SKY_600,
-            CredentialState.kpi_dibuka_hari_ini,
-            "kali password ditampilkan",
-            "Buka Audit Log ->",
-            False,
+        stat_card(
+            icon="eye",
+            tone="sky",
+            label="DIBUKA HARI INI",
+            value=CredentialState.kpi_dibuka_hari_ini,
+            subtext="kali password ditampilkan",
+            link_text="Buka Audit Log ->",
+            is_active=False,
+            on_click=CredentialState.click_kpi_card("revealed_today"),
         ),
         style=rx.Style(
             {
@@ -1210,7 +1050,11 @@ def _dynamic_form_modal() -> rx.Component:
                                                     rx.el.input(
                                                         type=rx.cond(
                                                             f["rahasia"]
-                                                            & (~CredentialState.form_show_password),
+                                                            & (
+                                                                ~rx.Var.create(
+                                                                    CredentialState.form_show_password
+                                                                )
+                                                            ),
                                                             "password",
                                                             rx.cond(
                                                                 f["tipe"] == "date",
@@ -1220,10 +1064,8 @@ def _dynamic_form_modal() -> rx.Component:
                                                         ),
                                                         auto_complete="new-password",
                                                         value=f["value"],
-                                                        on_change=lambda v: (
-                                                            CredentialState.set_form_field_value(
-                                                                f["key"].to(str), v
-                                                            )
+                                                        on_change=CredentialState.set_form_field_value(
+                                                            f["key"].to(str)
                                                         ),
                                                         style=field_input_style,
                                                     ),
