@@ -136,3 +136,33 @@ def test_dashboard_maintenance_alerts() -> None:
     assert any(a["badge_variant"] in ("warning", "danger") for a in alerts)
     # Harus ada alert status Terlambat
     assert any(a["badge_variant"] == "danger" for a in alerts)
+
+
+def test_maintenance_view_and_overdue_percent() -> None:
+    """7. Uji kompilasi halaman Jadwal Maintenance, donut % terlambat, & format tanggal ID."""
+    from itam_pro.pages.operations.maintenance_view import maintenance_view_page
+    from itam_pro.states.maintenance_state import MaintenanceState, _normalize_plan_item
+
+    comp = maintenance_view_page()
+    assert comp is not None
+    rendered = str(comp.render())
+    assert "Jadwal Maintenance" in rendered
+    assert "TERLAMBAT" in rendered
+
+    state = MaintenanceState()
+    state.summary = {"terlambat": 3, "segera": 0, "aktif": 3, "tindak_lanjut": 0}
+    assert state.overdue_percent == 100
+
+    state.summary = {"terlambat": 2, "segera": 1, "aktif": 10, "tindak_lanjut": 0}
+    assert state.overdue_percent == 20
+
+    norm = _normalize_plan_item(
+        {
+            "id": "MP-TEST",
+            "objek_asset_id": "UPS-001",
+            "objek_teks": "UPS APC 650VA",
+            "jadwal_berikutnya": "2026-04-15",
+        }
+    )
+    assert norm["jadwal_display"] == "15 Apr 2026"
+    assert norm["kategori_chip"] == "UPS"

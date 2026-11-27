@@ -10,8 +10,15 @@ import reflex as rx
 
 from itam_pro.components.layout.base_layout import base_layout
 from itam_pro.components.tables.data_table import reusable_data_table
-from itam_pro.components.tables.filter_bar import table_filter_bar
-from itam_pro.components.ui.tabs import app_tabs
+from itam_pro.components.ui import (
+    action_primary_button,
+    hero_stat_card,
+    page_header,
+    pill_filter_bar,
+    secondary_button,
+    stat_card,
+    tab_bar,
+)
 from itam_pro.states.maintenance_state import MaintenanceState
 from itam_pro.styles import (
     FONT_FAMILY,
@@ -43,264 +50,137 @@ def _modal_input_style() -> rx.Style:
     )
 
 
-def _mnt_kpi_card(
-    card_key: str,
-    title: str,
-    count_val: Any,
-    subtitle: str,
-    footer_link: str,
-    icon_tag: str,
-    icon_color: str,
-    icon_bg: str,
-    *,
-    is_hero: bool = False,
-    show_aman_when_zero: bool = False,
-) -> rx.Component:
-    is_filterable = card_key != "jadwal_aktif"
-    is_active = (
-        (MaintenanceState.active_kpi_card == card_key)
-        if is_filterable
-        else rx.Var.create(False)
-    )
-
-    bg_color = (
-        Color.NAVY_800
-        if is_hero
-        else rx.cond(is_active, Color.INFO_BG, Color.SURFACE)
-    )
-    border_style = (
-        rx.cond(is_active, f"2px solid {Color.BLUE_300}", f"2px solid {Color.NAVY_800}")
-        if is_hero
-        else rx.cond(
-            is_active,
-            f"2px solid {Color.ACCENT_BRIGHT}",
-            f"1px solid {Color.BORDER}",
-        )
-    )
-    ring_shadow = (
-        rx.cond(
-            is_active,
-            f"0 0 0 2px {Color.WHITE}, 0 0 0 4px {Color.ACCENT_BRIGHT}",
-            "none",
-        )
-        if is_hero
-        else rx.cond(
-            is_active,
-            "0 0 0 2px rgba(37, 99, 235, 0.18)",
-            "none",
-        )
-    )
-
-    box_props: dict[str, Any] = {}
-    if is_filterable:
-        box_props["aria_pressed"] = rx.cond(is_active, "true", "false")
-
-    return rx.box(
-        rx.vstack(
-            rx.hstack(
-                rx.hstack(
-                    rx.center(
-                        rx.icon(
-                            tag=icon_tag,
-                            size=16,
-                            color=Color.WHITE if is_hero else icon_color,
-                        ),
-                        width="30px",
-                        height="30px",
-                        border_radius="8px",
-                        background_color=(
-                            "rgba(255,255,255,0.18)" if is_hero else icon_bg
-                        ),
-                    ),
-                    rx.text(
-                        title,
-                        font_size=FontSize.GROUP_LABEL,
-                        font_weight=FontWeight.BOLD,
-                        color=(
-                            "rgba(255,255,255,0.85)" if is_hero else Color.MUTED
-                        ),
-                        letter_spacing="0.06em",
-                    ),
-                    spacing="2",
-                    align="center",
-                ),
-                rx.spacer(),
-                rx.cond(
-                    is_active,
-                    rx.box(
-                        rx.text(
-                            "Filter aktif",
-                            font_size="10px",
-                            font_weight=FontWeight.BOLD,
-                            color=Color.WHITE if is_hero else Color.ACCENT_BRIGHT,
-                        ),
-                        padding="2px 8px",
-                        border_radius=Radius.FULL,
-                        background_color=(
-                            "rgba(255,255,255,0.22)"
-                            if is_hero
-                            else "rgba(37, 99, 235, 0.12)"
-                        ),
-                        border=(
-                            "1px solid rgba(255,255,255,0.4)"
-                            if is_hero
-                            else f"1px solid {Color.ACCENT_BRIGHT}"
-                        ),
-                    ),
-                    rx.fragment(),
-                ),
-                width="100%",
-                align="center",
+def _maintenance_header() -> rx.Component:
+    """Header halaman Jadwal Maintenance dengan kotak ikon gradien biru 52px."""
+    return page_header(
+        icon="pencil",
+        title="Jadwal Maintenance",
+        subtitle="Rencana, kalender, dan riwayat pemeliharaan perangkat.",
+        actions=[
+            secondary_button(
+                label="Import CSV",
+                on_click=MaintenanceState.open_import_ac_modal,
             ),
-            rx.hstack(
-                rx.text(
-                    count_val,
-                    font_size="30px",
-                    font_weight=FontWeight.EXTRABOLD,
-                    color=Color.WHITE if is_hero else Color.TEXT,
-                    line_height="1.1",
-                ),
-                rx.cond(
-                    show_aman_when_zero & (count_val == 0),
-                    rx.box(
-                        rx.text(
-                            "Aman",
-                            font_size=FontSize.XS,
-                            font_weight=FontWeight.BOLD,
-                            color=Color.WHITE if is_hero else Color.SUCCESS_FG,
-                        ),
-                        padding="2px 8px",
-                        border_radius=Radius.FULL,
-                        background_color=(
-                            "rgba(255,255,255,0.2)"
-                            if is_hero
-                            else Color.SUCCESS_BG
-                        ),
-                    ),
-                    rx.fragment(),
-                ),
-                spacing="2",
-                align="center",
+            action_primary_button(
+                label="+ Buat Rencana",
+                on_click=MaintenanceState.open_massal,
             ),
-            rx.text(
-                subtitle,
-                font_size=FontSize.XS,
-                color="rgba(255,255,255,0.8)" if is_hero else Color.MUTED,
-            ),
-            rx.cond(
-                footer_link != "",
-                rx.text(
-                    footer_link,
-                    font_size=FontSize.XS,
-                    font_weight=FontWeight.BOLD,
-                    color=Color.WHITE if is_hero else Color.ACCENT,
-                    padding_top="2px",
-                ),
-                rx.fragment(),
-            ),
-            spacing="2",
-            align="start",
-            width="100%",
-        ),
-        role="button",
-        tab_index=0,
-        on_click=MaintenanceState.select_kpi_card(card_key),
-        style=rx.Style(
-            {
-                "padding": "18px 20px",
-                "border_radius": Radius.CARD,
-                "background_color": bg_color,
-                "border": border_style,
-                "box_shadow": ring_shadow,
-                "cursor": "pointer",
-                "transition": "all 0.15s ease",
-            }
-        ),
-        **box_props,
+        ],
     )
 
 
 def _kpi_cards() -> rx.Component:
-    """4 Kartu KPI sesuai Artboard 13: kartu pertama selalu Hero Navy, klik mengatur filter."""
-    return rx.grid(
-        _mnt_kpi_card(
-            "terlambat",
-            "TERLAMBAT",
-            MaintenanceState.summary["terlambat"],
-            "perlu segera ditangani",
-            "Lihat yang terlambat →",
-            "triangle-alert",
-            Color.DANGER_FG,
-            Color.DANGER_BG,
-            is_hero=True,
-            show_aman_when_zero=True,
+    """4 Kartu KPI: Hero Terlambat (biru gradien + donut %) + 3 kartu putih interaktif."""
+    is_terlambat_active = MaintenanceState.active_kpi_card == "terlambat"
+    is_segera_active = MaintenanceState.active_kpi_card == "segera"
+    is_tindak_active = MaintenanceState.active_kpi_card == "tindak_lanjut"
+
+    return rx.box(
+        hero_stat_card(
+            icon="box",
+            label="TERLAMBAT",
+            value=MaintenanceState.summary["terlambat"],
+            subtext=rx.cond(
+                MaintenanceState.summary["terlambat"] > 0,
+                "perlu segera ditangani",
+                "tidak ada jadwal terlambat",
+            ),
+            percent=MaintenanceState.overdue_percent,
+            percent_caption="terlambat",
+            link_text="Lihat detail →",
+            pill=rx.cond(is_terlambat_active, "Filter aktif", ""),
+            on_click=MaintenanceState.select_kpi_card("terlambat"),
+            is_active=is_terlambat_active,
+            glow_ring=True,
         ),
-        _mnt_kpi_card(
-            "segera",
-            "JATUH TEMPO ≤ 7 HARI",
-            MaintenanceState.summary["segera"],
-            "belum ada yang mendesak",
-            "",
-            "clock",
-            Color.WARNING_FG,
-            Color.WARNING_BG,
-            is_hero=False,
-            show_aman_when_zero=True,
+        stat_card(
+            icon="circle-check",
+            tone="purple",
+            label="JATUH TEMPO ≤ 7 HARI",
+            value=MaintenanceState.summary["segera"],
+            subtext=rx.cond(
+                MaintenanceState.summary["segera"] > 0,
+                "perlu disiapkan segera",
+                "belum ada yang mendesak",
+            ),
+            link_text="Lihat detail →",
+            pill=rx.cond(is_segera_active, "Filter aktif", ""),
+            is_active=is_segera_active,
+            on_click=MaintenanceState.select_kpi_card("segera"),
         ),
-        _mnt_kpi_card(
-            "jadwal_aktif",
-            "JADWAL AKTIF",
-            MaintenanceState.summary["aktif"],
-            "rencana berjalan",
-            "Lihat kalender →",
-            "calendar",
-            Color.ACCENT,
-            Color.INFO_BG,
-            is_hero=False,
+        stat_card(
+            icon="clock",
+            tone="success",
+            label="JADWAL AKTIF",
+            value=MaintenanceState.summary["aktif"],
+            subtext="rencana berjalan",
+            link_text="Lihat detail →",
+            is_active=False,
+            on_click=MaintenanceState.select_kpi_card("jadwal_aktif"),
         ),
-        _mnt_kpi_card(
-            "tindak_lanjut",
-            "PERLU TINDAK LANJUT",
-            MaintenanceState.summary["tindak_lanjut"],
-            "temuan dari hasil maintenance",
-            "Lihat temuan →",
-            "wrench",
-            Color.WARNING_FG,
-            Color.WARNING_BG,
-            is_hero=False,
+        stat_card(
+            icon="shield",
+            tone="warning",
+            label="PERLU TINDAK LANJUT",
+            value=MaintenanceState.summary["tindak_lanjut"],
+            subtext="temuan dari hasil maintenance",
+            link_text="Lihat detail →",
+            pill=rx.cond(is_tindak_active, "Filter aktif", ""),
+            is_active=is_tindak_active,
+            on_click=MaintenanceState.select_kpi_card("tindak_lanjut"),
         ),
-        columns="4",
-        spacing="4",
-        width="100%",
+        style=rx.Style(
+            {
+                "width": "100%",
+                "display": "grid",
+                "grid_template_columns": "1.35fr 1fr 1fr 1fr",
+                "gap": Space.S4,
+                "align_items": "stretch",
+                "@media (max-width: 1099px)": {
+                    "grid_template_columns": "repeat(2, minmax(0, 1fr))",
+                },
+                "@media (max-width: 599px)": {
+                    "grid_template_columns": "1fr",
+                },
+            }
+        ),
     )
 
 
 def _category_chip_pill(name: str) -> rx.Component:
+    """Chip pill kategori objek (aktif biru gradien teks putih, nonaktif putih berborder)."""
     is_active = MaintenanceState.active_category_chip == name
     cnt = rx.cond(
         MaintenanceState.chip_counts[name],
         MaintenanceState.chip_counts[name],
         0,
     )
-    return rx.box(
+    return rx.el.button(
         rx.text(
             f"{name} {cnt}",
             font_size=FontSize.XS,
             font_weight=FontWeight.BOLD,
-            color=rx.cond(is_active, Color.ACCENT_BRIGHT, Color.TEXT),
+            color=rx.cond(is_active, Color.WHITE, Color.MUTED),
+            style=rx.Style({"font_variant_numeric": "tabular-nums"}),
         ),
+        type="button",
+        aria_pressed=is_active,
         on_click=MaintenanceState.select_category_chip(name),
         style=rx.Style(
             {
-                "padding": "6px 14px",
+                "padding": "7px 14px",
                 "border_radius": Radius.FULL,
-                "background_color": rx.cond(is_active, Color.INFO_BG, Color.SURFACE),
+                "background": rx.cond(is_active, Color.GRADIENT_PRIMARY, Color.SURFACE),
                 "border": rx.cond(
                     is_active,
-                    f"1px solid {Color.ACCENT_BRIGHT}",
+                    "1px solid transparent",
                     f"1px solid {Color.BORDER}",
                 ),
+                "box_shadow": rx.cond(is_active, Shadow.PRIMARY_BTN, Shadow.NONE),
+                "font_family": FONT_FAMILY,
                 "cursor": "pointer",
+                "white_space": "nowrap",
+                "transition": "all 0.15s ease",
             }
         ),
     )
@@ -409,16 +289,19 @@ def _schedule_row_item(plan: Any, is_overdue_row: bool = False) -> rx.Component:
                 on_click=MaintenanceState.open_tandai_selesai(plan),
                 style=rx.Style(
                     {
-                        "padding": "6px 14px",
+                        "padding": "7px 16px",
                         "border_radius": Radius.CONTROL,
+                        "font_family": FONT_FAMILY,
                         "font_size": FontSize.XS,
                         "font_weight": FontWeight.BOLD,
-                        "background_color": (
-                            Color.ACCENT_BRIGHT if is_overdue_row else Color.SURFACE
+                        "background": (
+                            Color.GRADIENT_PRIMARY if is_overdue_row else Color.SURFACE
                         ),
                         "color": Color.WHITE if is_overdue_row else Color.TEXT,
                         "border": "none" if is_overdue_row else f"1px solid {Color.BORDER}",
+                        "box_shadow": Shadow.PRIMARY_BTN if is_overdue_row else Shadow.NONE,
                         "cursor": "pointer",
+                        "white_space": "nowrap",
                     }
                 ),
             )
@@ -429,7 +312,7 @@ def _schedule_row_item(plan: Any, is_overdue_row: bool = False) -> rx.Component:
 def _daftar_tab() -> rx.Component:
     return rx.vstack(
         _kpi_cards(),
-        # Baris Chip Jenis Objek (Artboard 13)
+        # Baris Chip Kategori Pill (Artboard 3)
         rx.hstack(
             _category_chip_pill("Semua"),
             _category_chip_pill("PC & Server"),
@@ -443,185 +326,154 @@ def _daftar_tab() -> rx.Component:
             wrap="wrap",
             width="100%",
         ),
-        # Kartu Filter + Tabel Terkelompok (TERLAMBAT & MENDATANG)
+        # Kartu Filter Pill + Tabel Terkelompok (TERLAMBAT & MENDATANG)
         rx.box(
-            rx.hstack(
-                rx.el.input(
-                    placeholder="Cari objek atau kegiatan...",
-                    value=MaintenanceState.search_query,
-                    on_change=MaintenanceState.set_search_query,
-                    style=rx.Style(
-                        {
-                            "width": "240px",
-                            "height": "38px",
-                            "padding": "0 12px",
-                            "border": f"1px solid {Color.INPUT_BORDER}",
-                            "border_radius": Radius.CONTROL,
-                            "font_size": FontSize.SM,
-                        }
-                    ),
-                ),
-                rx.el.select(
-                    rx.el.option("Semua status", value="Semua status"),
-                    rx.el.option("Terlambat", value="Terlambat"),
-                    rx.el.option("Segera", value="Segera"),
-                    rx.el.option("Terjadwal", value="Terjadwal"),
-                    value=MaintenanceState.status_filter,
-                    on_change=MaintenanceState.set_status_filter,
-                    style=rx.Style(
-                        {
-                            "height": "38px",
-                            "padding": "0 12px",
-                            "border": f"1px solid {Color.INPUT_BORDER}",
-                            "border_radius": Radius.CONTROL,
-                            "font_size": FontSize.SM,
-                        }
-                    ),
-                ),
-                rx.el.select(
-                    rx.el.option("Semua jenis", value="Semua jenis"),
-                    rx.el.option("Preventif", value="Preventif"),
-                    rx.el.option("Inspeksi", value="Inspeksi"),
-                    rx.el.option("Korektif", value="Korektif"),
-                    value=MaintenanceState.jenis_filter,
-                    on_change=MaintenanceState.set_jenis_filter,
-                    style=rx.Style(
-                        {
-                            "height": "38px",
-                            "padding": "0 12px",
-                            "border": f"1px solid {Color.INPUT_BORDER}",
-                            "border_radius": Radius.CONTROL,
-                            "font_size": FontSize.SM,
-                        }
-                    ),
-                ),
-                rx.el.select(
-                    rx.el.option("Semua pelaksana", value="Semua pelaksana"),
-                    rx.el.option("Vendor", value="Vendor"),
-                    rx.el.option("Internal", value="Internal"),
-                    value=MaintenanceState.pelaksana_filter,
-                    on_change=MaintenanceState.set_pelaksana_filter,
-                    style=rx.Style(
-                        {
-                            "height": "38px",
-                            "padding": "0 12px",
-                            "border": f"1px solid {Color.INPUT_BORDER}",
-                            "border_radius": Radius.CONTROL,
-                            "font_size": FontSize.SM,
-                        }
-                    ),
-                ),
-                rx.el.select(
-                    rx.el.option("Semua PIC", value="Semua PIC"),
-                    rx.el.option("Teknisi AC", value="Teknisi AC"),
-                    rx.el.option("Ridho", value="Ridho"),
-                    rx.el.option("Surya", value="Surya"),
-                    value=MaintenanceState.pic_filter,
-                    on_change=MaintenanceState.set_pic_filter,
-                    style=rx.Style(
-                        {
-                            "height": "38px",
-                            "padding": "0 12px",
-                            "border": f"1px solid {Color.INPUT_BORDER}",
-                            "border_radius": Radius.CONTROL,
-                            "font_size": FontSize.SM,
-                        }
-                    ),
-                ),
-                rx.el.button(
-                    "Reset filter",
-                    type="button",
-                    on_click=MaintenanceState.reset_filters,
-                    style=rx.Style(
-                        {
-                            "background": "transparent",
-                            "border": "none",
-                            "color": Color.ACCENT_BRIGHT,
-                            "font_weight": FontWeight.BOLD,
-                            "font_size": FontSize.XS,
-                            "cursor": "pointer",
-                        }
-                    ),
-                ),
-                rx.spacer(),
-                rx.text(
+            pill_filter_bar(
+                search_placeholder="Cari objek atau kegiatan...",
+                search_value=MaintenanceState.search_query,
+                on_search_change=MaintenanceState.set_search_query,
+                search_width="230px",
+                selects=[
+                    {
+                        "placeholder": "Semua status",
+                        "options": ["Terlambat", "Segera", "Terjadwal"],
+                        "value": MaintenanceState.status_filter,
+                        "on_change": MaintenanceState.set_status_filter,
+                    },
+                    {
+                        "placeholder": "Semua jenis",
+                        "options": MaintenanceState.jenis_options,
+                        "value": MaintenanceState.jenis_filter,
+                        "on_change": MaintenanceState.set_jenis_filter,
+                    },
+                    {
+                        "placeholder": "Semua pelaksana",
+                        "options": ["Vendor", "Internal"],
+                        "value": MaintenanceState.pelaksana_filter,
+                        "on_change": MaintenanceState.set_pelaksana_filter,
+                    },
+                    {
+                        "placeholder": "Semua PIC",
+                        "options": MaintenanceState.pic_options,
+                        "value": MaintenanceState.pic_filter,
+                        "on_change": MaintenanceState.set_pic_filter,
+                    },
+                ],
+                on_reset=MaintenanceState.reset_filters,
+                right_slot=rx.text(
                     MaintenanceState.total_filtered_label,
-                    font_size=FontSize.XS,
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.BOLD,
                     color=Color.MUTED,
+                    white_space="nowrap",
                 ),
-                spacing="2",
-                align="center",
-                wrap="wrap",
-                padding="14px 18px",
-                width="100%",
-                style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
             ),
-            rx.table.root(
-                rx.table.header(
-                    rx.table.row(
-                        rx.table.column_header_cell("OBJEK"),
-                        rx.table.column_header_cell("KEGIATAN"),
-                        rx.table.column_header_cell("JENIS"),
-                        rx.table.column_header_cell("FREKUENSI"),
-                        rx.table.column_header_cell("TERAKHIR · HASIL"),
-                        rx.table.column_header_cell("JADWAL BERIKUTNYA"),
-                        rx.table.column_header_cell("PELAKSANA"),
-                        rx.table.column_header_cell("STATUS"),
-                        rx.table.column_header_cell("AKSI"),
-                    )
-                ),
-                rx.table.body(
-                    rx.table.row(
-                        rx.table.cell(
-                            rx.text(
-                                f"TERLAMBAT · {MaintenanceState.overdue_count_filtered}",
-                                font_size="11px",
-                                font_weight=FontWeight.EXTRABOLD,
-                                color=Color.DANGER_FG,
-                                letter_spacing="0.06em",
-                            ),
-                            col_span=9,
-                            style=rx.Style(
-                                {"background_color": Color.RED_50, "padding": "8px 16px"}
-                            ),
+            rx.box(
+                rx.table.root(
+                    rx.table.header(
+                        rx.table.row(
+                            rx.table.column_header_cell("OBJEK"),
+                            rx.table.column_header_cell("KEGIATAN"),
+                            rx.table.column_header_cell("JENIS"),
+                            rx.table.column_header_cell("FREKUENSI"),
+                            rx.table.column_header_cell("TERAKHIR · HASIL"),
+                            rx.table.column_header_cell("JADWAL BERIKUTNYA"),
+                            rx.table.column_header_cell("PELAKSANA"),
+                            rx.table.column_header_cell("STATUS"),
+                            rx.table.column_header_cell("AKSI"),
                         )
                     ),
-                    rx.foreach(
-                        MaintenanceState.overdue_plans,
-                        lambda p: _schedule_row_item(p, is_overdue_row=True),
-                    ),
-                    rx.table.row(
-                        rx.table.cell(
-                            rx.text(
-                                f"MENDATANG · {MaintenanceState.upcoming_count_filtered}",
-                                font_size="11px",
-                                font_weight=FontWeight.EXTRABOLD,
-                                color=Color.MUTED,
-                                letter_spacing="0.06em",
+                    rx.table.body(
+                        rx.cond(
+                            MaintenanceState.overdue_count_filtered > 0,
+                            rx.fragment(
+                                rx.table.row(
+                                    rx.table.cell(
+                                        rx.text(
+                                            "TERLAMBAT · "
+                                            f"{MaintenanceState.overdue_count_filtered}",
+                                            font_size="11px",
+                                            font_weight=FontWeight.EXTRABOLD,
+                                            color=Color.DANGER_FG,
+                                            letter_spacing="0.06em",
+                                        ),
+                                        col_span=9,
+                                        style=rx.Style(
+                                            {
+                                                "background_color": Color.RED_50,
+                                                "padding": "8px 16px",
+                                            }
+                                        ),
+                                    )
+                                ),
+                                rx.foreach(
+                                    MaintenanceState.overdue_plans,
+                                    lambda p: _schedule_row_item(p, is_overdue_row=True),
+                                ),
                             ),
-                            col_span=9,
-                            style=rx.Style(
-                                {
-                                    "background_color": Color.TABLE_HEADER_BG,
-                                    "padding": "8px 16px",
-                                }
+                            rx.fragment(),
+                        ),
+                        rx.cond(
+                            MaintenanceState.upcoming_count_filtered > 0,
+                            rx.fragment(
+                                rx.table.row(
+                                    rx.table.cell(
+                                        rx.text(
+                                            "MENDATANG · "
+                                            f"{MaintenanceState.upcoming_count_filtered}",
+                                            font_size="11px",
+                                            font_weight=FontWeight.EXTRABOLD,
+                                            color=Color.MUTED,
+                                            letter_spacing="0.06em",
+                                        ),
+                                        col_span=9,
+                                        style=rx.Style(
+                                            {
+                                                "background_color": Color.TABLE_HEADER_BG,
+                                                "padding": "8px 16px",
+                                            }
+                                        ),
+                                    )
+                                ),
+                                rx.foreach(
+                                    MaintenanceState.upcoming_plans,
+                                    lambda p: _schedule_row_item(p, is_overdue_row=False),
+                                ),
                             ),
-                        )
+                            rx.fragment(),
+                        ),
+                        rx.cond(
+                            ~rx.Var.create(MaintenanceState.has_filtered_plans),
+                            rx.table.row(
+                                rx.table.cell(
+                                    rx.center(
+                                        rx.text(
+                                            "Tidak ada jadwal maintenance "
+                                            "yang cocok dengan filter.",
+                                            font_size=FontSize.SM,
+                                            color=Color.MUTED,
+                                        ),
+                                        padding="32px 16px",
+                                    ),
+                                    col_span=9,
+                                )
+                            ),
+                            rx.fragment(),
+                        ),
                     ),
-                    rx.foreach(
-                        MaintenanceState.upcoming_plans,
-                        lambda p: _schedule_row_item(p, is_overdue_row=False),
-                    ),
+                    variant="surface",
+                    width="100%",
                 ),
-                variant="surface",
                 width="100%",
+                overflow_x="auto",
             ),
             width="100%",
             style=rx.Style(
                 {
                     "background_color": Color.SURFACE,
                     "border": f"1px solid {Color.BORDER}",
-                    "border_radius": Radius.CARD,
+                    "border_radius": Radius.KPI_CARD,
+                    "box_shadow": Shadow.TABLE_CARD,
                     "overflow": "hidden",
                 }
             ),
@@ -1797,7 +1649,7 @@ def _kalender_tab() -> rx.Component:
                                     ),
                                     rx.vstack(
                                         rx.text(
-                                            plan["jadwal_berikutnya"],
+                                            plan["jadwal_display"],
                                             font_size=FontSize.XS,
                                             font_weight=FontWeight.BOLD,
                                             color=Color.MUTED,
@@ -1852,7 +1704,8 @@ def _kalender_tab() -> rx.Component:
             {
                 "background_color": Color.SURFACE,
                 "border": f"1px solid {Color.BORDER}",
-                "border_radius": Radius.CARD,
+                "border_radius": Radius.KPI_CARD,
+                "box_shadow": Shadow.TABLE_CARD,
                 "overflow": "hidden",
             }
         ),
@@ -1861,25 +1714,42 @@ def _kalender_tab() -> rx.Component:
 
 def _riwayat_tab() -> rx.Component:
     return rx.box(
-        table_filter_bar(
+        pill_filter_bar(
+            search_placeholder="Cari log riwayat...",
             search_value=MaintenanceState.history_search_query,
             on_search_change=MaintenanceState.set_history_search,
-            search_placeholder="Cari log riwayat...",
+            search_width="260px",
+            right_slot=rx.text(
+                f"Total biaya: {MaintenanceState.total_biaya_riwayat_display}",
+                font_size=FontSize.SM,
+                font_weight=FontWeight.BOLD,
+                color=Color.MUTED,
+            ),
         ),
         reusable_data_table(
             items=MaintenanceState.logs,
             id_key="id",
             columns=[
                 {
+                    "key": "tanggal_selesai_display",
                     "header": "TANGGAL SELESAI",
-                    "accessor": "tanggal_selesai",
+                    "accessor": "tanggal_selesai_display",
                     "render_type": "date",
                 },
-                {"header": "OBJEK", "accessor": "objek_display", "render_type": "bold"},
-                {"header": "KEGIATAN", "accessor": "kegiatan"},
-                {"header": "HASIL", "accessor": "hasil"},
-                {"header": "DIKERJAKAN OLEH", "accessor": "dikerjakan_oleh"},
-                {"header": "CATATAN", "accessor": "catatan"},
+                {
+                    "key": "objek_display",
+                    "header": "OBJEK",
+                    "accessor": "objek_display",
+                    "render_type": "bold",
+                },
+                {"key": "kegiatan", "header": "KEGIATAN", "accessor": "kegiatan"},
+                {"key": "hasil", "header": "HASIL", "accessor": "hasil"},
+                {
+                    "key": "dikerjakan_oleh",
+                    "header": "DIKERJAKAN OLEH",
+                    "accessor": "dikerjakan_oleh",
+                },
+                {"key": "catatan", "header": "CATATAN", "accessor": "catatan"},
             ],
         ),
         width="100%",
@@ -1887,7 +1757,8 @@ def _riwayat_tab() -> rx.Component:
             {
                 "background_color": Color.SURFACE,
                 "border": f"1px solid {Color.BORDER}",
-                "border_radius": Radius.CARD,
+                "border_radius": Radius.KPI_CARD,
+                "box_shadow": Shadow.TABLE_CARD,
                 "overflow": "hidden",
             }
         ),
@@ -1898,69 +1769,17 @@ def maintenance_view_page() -> rx.Component:
     """Komponen Page Utama Modul Jadwal Maintenance (/operations/maintenance)."""
     return base_layout(
         rx.vstack(
-            rx.hstack(
-                app_tabs(
-                    items=[
-                        {"label": "Daftar", "value": "daftar"},
-                        {"label": "Kalender", "value": "kalender"},
-                        {"label": "Riwayat", "value": "riwayat"},
-                        {"label": "Rencana", "value": "rencana"},
-                    ],
-                    active_value=MaintenanceState.active_tab,
-                    on_change=MaintenanceState.set_tab,
-                ),
-                rx.hstack(
-                    rx.el.button(
-                        "Import CSV",
-                        type="button",
-                        on_click=MaintenanceState.open_import_ac_modal,
-                        style=rx.Style(
-                            {
-                                "height": Size.FILTER_CONTROL_H,
-                                "padding": "0 16px",
-                                "background_color": Color.SURFACE,
-                                "border": f"1px solid {Color.INPUT_BORDER}",
-                                "border_radius": Radius.CONTROL,
-                                "color": Color.TEXT,
-                                "font_family": FONT_FAMILY,
-                                "font_size": FontSize.SM,
-                                "font_weight": FontWeight.BOLD,
-                                "cursor": "pointer",
-                            }
-                        ),
-                    ),
-                    rx.el.button(
-                        "+ Buat Rencana",
-                        type="button",
-                        on_click=MaintenanceState.open_massal,
-                        style=rx.Style(
-                            {
-                                "height": Size.FILTER_CONTROL_H,
-                                "padding": "0 18px",
-                                "background_color": Color.ACCENT_BRIGHT,
-                                "border": "none",
-                                "border_radius": Radius.CONTROL,
-                                "color": Color.WHITE,
-                                "font_family": FONT_FAMILY,
-                                "font_size": FontSize.SM,
-                                "font_weight": FontWeight.BOLD,
-                                "cursor": "pointer",
-                            }
-                        ),
-                    ),
-                    spacing="3",
-                    align="center",
-                    padding_right=Space.S5,
-                ),
-                justify="between",
-                align="center",
-                width="100%",
-                style=rx.Style(
-                    {
-                        "background_color": Color.SURFACE,
-                        "border_bottom": f"1px solid {Color.BORDER}",
-                    }
-                ),
+            _maintenance_header(),
+            tab_bar(
+                tabs_with_count=[
+                    {"key": "daftar", "label": "Daftar"},
+                    {"key": "kalender", "label": "Kalender"},
+                    {"key": "riwayat", "label": "Riwayat"},
+                    {"key": "rencana", "label": "Rencana"},
+                ],
+                active=MaintenanceState.active_tab,
+                on_change=MaintenanceState.set_tab,
+                card_container=True,
             ),
             rx.match(
                 MaintenanceState.active_tab,
@@ -1973,7 +1792,7 @@ def maintenance_view_page() -> rx.Component:
             _tandai_selesai_dialog(),
             _buat_jadwal_massal_dialog(),
             _import_ac_csv_dialog(),
-            spacing="5",
+            spacing="4",
             width="100%",
         ),
         breadcrumb=("Operations", "Jadwal Maintenance"),

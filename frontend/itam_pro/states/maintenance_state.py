@@ -19,6 +19,7 @@ from itam_pro.services.mock.maintenance_mock import (
 )
 from itam_pro.services.recurrence import add_interval_clamped, parse_date_flexible
 from itam_pro.services.router_utils import get_current_params
+from itam_pro.services.validators import format_tanggal
 
 VALID_TABS = ("daftar", "kalender", "riwayat", "rencana")
 
@@ -69,11 +70,18 @@ def _normalize_plan_item(raw: dict[str, Any]) -> dict[str, Any]:
         else:
             row["sub_label"] = str(row.get("deskripsi") or row.get("catatan") or "")
 
+    if not str(row.get("objek_display") or "").strip():
+        teks_raw = str(row.get("objek_teks") or row.get("nama_aset") or "").strip()
+        if aid and teks_raw and aid not in teks_raw.upper():
+            row["objek_display"] = f"{aid} · {teks_raw}"
+        else:
+            row["objek_display"] = teks_raw or aid or "—"
+
     jadwal_iso = str(
         row.get("jadwal_berikutnya") or row.get("tanggal_jadwal") or ""
     ).strip()
     row["jadwal_berikutnya"] = jadwal_iso
-    row["jadwal_display"] = row.get("jadwal_display") or format_date_short_id(jadwal_iso)
+    row["jadwal_display"] = format_tanggal(jadwal_iso)
 
     # Hitung status & selisih hari secara dinamis
     d_due = parse_date_flexible(jadwal_iso)
@@ -99,11 +107,11 @@ def _normalize_plan_item(raw: dict[str, Any]) -> dict[str, Any]:
         th = str(row.get("terakhir_hasil") or row.get("tindakan") or "").strip()
         td = str(row.get("terakhir_dilakukan") or "").strip()
         if td and th and th not in ("-", "—"):
-            row["terakhir_hasil_display"] = f"{format_date_short_id(td)} · {th}"
+            row["terakhir_hasil_display"] = f"{format_tanggal(td)} · {th}"
         elif th and th not in ("-", "—"):
             row["terakhir_hasil_display"] = th
         elif td:
-            row["terakhir_hasil_display"] = format_date_short_id(td)
+            row["terakhir_hasil_display"] = format_tanggal(td)
         else:
             row["terakhir_hasil_display"] = "—"
 
@@ -132,7 +140,7 @@ class MaintenanceState(rx.State):
     logs: list[dict[str, Any]] = []
     _skip_next_load_fetch: bool = False
 
-    summary: dict[str, Any] = {
+    summary: dict[str, int] = {
         "terlambat": 4,
         "segera": 0,
         "aktif": 10,
@@ -151,10 +159,10 @@ class MaintenanceState(rx.State):
 
     # Filter Bar
     search_query: str = ""
-    status_filter: str = "Semua status"
-    jenis_filter: str = "Semua jenis"
-    pelaksana_filter: str = "Semua pelaksana"
-    pic_filter: str = "Semua PIC"
+    status_filter: str = ""
+    jenis_filter: str = ""
+    pelaksana_filter: str = ""
+    pic_filter: str = ""
     history_search_query: str = ""
     history_vendor_filter: str = "Semua pelaksana"
 
@@ -221,6 +229,47 @@ class MaintenanceState(rx.State):
     # --- COMPUTED VARS ---
 
     @rx.var(cache=True)
+    def overdue_percent(self) -> int:
+        """Persentase jadwal terlambat terhadap total jadwal aktif untuk donut hero."""
+        aktif = self.summary.get("aktif", 0) or 0
+        terlambat = self.summary.get("terlambat", 0) or 0
+        if aktif <= 0:
+            return 0
+        return min(100, round((terlambat / aktif) * 100))
+
+    @rx.var(cache=True)
+    def jenis_options(self) -> list[str]:
+        base = ["Preventif", "Inspeksi", "Korektif"]
+        extras = sorted(
+            {
+                str(p.get("jenis") or "").strip()
+                for p in self.plans
+                if str(p.get("jenis") or "").strip()
+            }
+        )
+        merged = list(base)
+        for item in extras:
+            if item not in merged:
+                merged.append(item)
+        return merged
+
+    @rx.var(cache=True)
+    def pic_options(self) -> list[str]:
+        base = ["Ridho", "Surya", "Teknisi AC"]
+        extras = sorted(
+            {
+                str(p.get("pic") or "").strip()
+                for p in self.plans
+                if str(p.get("pic") or "").strip()
+            }
+        )
+        merged = list(base)
+        for item in extras:
+            if item not in merged:
+                merged.append(item)
+        return merged
+
+    @rx.var(cache=True)
     def filtered_plans(self) -> list[dict[str, Any]]:
         rows = list(self.plans)
         if self.active_kpi_card == "terlambat":
@@ -246,6 +295,10 @@ class MaintenanceState(rx.State):
             rows = [r for r in rows if r.get("pic") == self.pic_filter]
 
         return rows
+
+    @rx.var(cache=True)
+    def has_filtered_plans(self) -> bool:
+        return len(self.filtered_plans) > 0
 
     @rx.var(cache=True)
     def overdue_plans(self) -> list[dict[str, Any]]:
@@ -371,7 +424,14 @@ class MaintenanceState(rx.State):
             log_res = await api_client.get_maintenance_logs(
                 {"search": self.history_search_query}, page_size=50
             )
-            self.logs = log_res.get("items", [])
+            raw_logs = log_res.get("items", [])
+            self.logs = [
+                {
+                    **dict(entry),
+                    "tanggal_selesai_display": format_tanggal(entry.get("tanggal_selesai", "")),
+                }
+                for entry in raw_logs
+            ]
 
     @rx.event
     async def set_tab(self, tab: str) -> rx.event.EventSpec:
@@ -400,29 +460,29 @@ class MaintenanceState(rx.State):
 
     @rx.event
     def set_status_filter(self, val: str) -> None:
-        self.status_filter = val
+        self.status_filter = "" if val in ("", "Semua status") else val
 
     @rx.event
     def set_jenis_filter(self, val: str) -> None:
-        self.jenis_filter = val
+        self.jenis_filter = "" if val in ("", "Semua jenis") else val
 
     @rx.event
     def set_pelaksana_filter(self, val: str) -> None:
-        self.pelaksana_filter = val
+        self.pelaksana_filter = "" if val in ("", "Semua pelaksana") else val
 
     @rx.event
     def set_pic_filter(self, val: str) -> None:
-        self.pic_filter = val
+        self.pic_filter = "" if val in ("", "Semua PIC") else val
 
     @rx.event
     async def reset_filters(self) -> None:
         self.search_query = ""
         self.active_kpi_card = "all"
         self.active_category_chip = "Semua"
-        self.status_filter = "Semua status"
-        self.jenis_filter = "Semua jenis"
-        self.pelaksana_filter = "Semua pelaksana"
-        self.pic_filter = "Semua PIC"
+        self.status_filter = ""
+        self.jenis_filter = ""
+        self.pelaksana_filter = ""
+        self.pic_filter = ""
         await self._fetch_current_tab()
 
     @rx.event
