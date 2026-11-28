@@ -15,6 +15,9 @@ from itam_pro.components.ui import (
     action_primary_button,
     app_badge,
     detail_drawer,
+    hero_stat_card,
+    page_header,
+    pill_filter_bar,
     secondary_button,
     stat_card,
 )
@@ -64,80 +67,81 @@ _KPI_GRID_STYLE = rx.Style(
     {
         "width": "100%",
         "display": "grid",
-        "grid_template_columns": "repeat(5, minmax(0, 1fr))",
+        "grid_template_columns": "1.35fr 1fr 1fr 1fr 1fr",
         "gap": Space.S4,
-        "@media (max-width: 1099px)": {"grid_template_columns": "repeat(3, minmax(0, 1fr))"},
-        "@media (max-width: 699px)": {"grid_template_columns": "repeat(2, minmax(0, 1fr))"},
-        "@media (max-width: 479px)": {"grid_template_columns": "1fr"},
+        "align_items": "stretch",
+        "@media (max-width: 1150px)": {"grid_template_columns": "repeat(2, minmax(0, 1fr))"},
+        "@media (max-width: 599px)": {"grid_template_columns": "1fr"},
     }
 )
 
 
 def _watt_header() -> rx.Component:
-    """Header halaman Rekap Watt Server dengan tombol Export, Cetak A4, dan + Tambah Server."""
-    return rx.hstack(
-        rx.vstack(
-            rx.heading(
-                "Rekap Watt Server",
-                font_size=FontSize.TITLE,
-                font_weight=FontWeight.EXTRABOLD,
-                color=Color.TEXT,
-                line_height="1.2",
-                letter_spacing="-0.02em",
-            ),
-            rx.text(
-                "Kebutuhan daya per server: TDP, PSU minimum, PSU rekomendasi, "
-                "dan beban UPS penyuplai.",
-                font_size=FontSize.BASE,
-                color=Color.MUTED,
-            ),
-            spacing="1",
-            align="start",
+    """Header halaman Rekap Watt Server dengan kotak ikon petir gradien biru 52px."""
+    return page_header(
+        icon="zap",
+        title="Rekap Watt Server",
+        subtitle=(
+            "Kebutuhan daya per server: TDP, PSU minimum, PSU rekomendasi, "
+            "dan beban UPS penyuplai."
         ),
-        rx.hstack(
+        actions=[
             secondary_button("Export", on_click=PowerState.export_watt_excel),
             secondary_button("Cetak A4", on_click=rx.call_script("window.print()")),
             action_primary_button("+ Tambah Server", on_click=PowerState.open_add_modal),
-            spacing="2",
-            align="center",
-            wrap="wrap",
-        ),
-        width="100%",
-        justify="between",
-        align="center",
-        wrap="wrap",
-        spacing="3",
+        ],
     )
 
 
 def _watt_kpi_row() -> rx.Component:
-    """5 Kartu KPI Rekap Watt Server (kartu pertama biru Color.BRAND)."""
+    """5 Kartu KPI: Hero Total TDP (donut % TDP/PSU) + 4 kartu putih interaktif."""
     return rx.box(
-        stat_card(
-            "TOTAL TDP",
-            PowerState.kpi_total_tdp_display,
-            note=PowerState.kpi_total_tdp_note,
-            primary=True,
+        hero_stat_card(
+            icon="box",
+            label="TOTAL TDP",
+            value=PowerState.kpi_total_tdp_display,
+            subtext=PowerState.kpi_total_tdp_note,
+            percent=PowerState.kpi_tdp_psu_pct,
+            percent_caption="TDP/PSU",
+            link_text="Lihat detail →",
+            on_click=PowerState.reset_filters,
+            glow_ring=True,
         ),
         stat_card(
-            "PSU MINIMUM",
-            PowerState.kpi_psu_min_display,
-            note=PowerState.kpi_psu_min_note,
+            icon="circle-check",
+            tone="purple",
+            label="PSU MINIMUM",
+            value=PowerState.kpi_psu_min_display,
+            subtext=PowerState.kpi_psu_min_note,
+            link_text="Lihat detail →",
+            on_click=PowerState.toggle_sort("psu_min_w"),
         ),
         stat_card(
-            "PSU REKOMENDASI",
-            PowerState.kpi_psu_rek_display,
-            note="acuan pembelian PSU",
+            icon="clock",
+            tone="success",
+            label="PSU REKOMENDASI",
+            value=PowerState.kpi_psu_rek_display,
+            subtext="acuan pembelian PSU",
+            link_text="Lihat detail →",
+            on_click=PowerState.toggle_sort("psu_rekomendasi_w"),
         ),
         stat_card(
-            "EST. ENERGI / BULAN",
-            PowerState.kpi_est_kwh_display,
-            note="batas atas (TDP × 24 jam × 30 hari)",
+            icon="shield",
+            tone="warning",
+            label="EST. ENERGI / BULAN",
+            value=PowerState.kpi_est_kwh_display,
+            subtext="batas atas (TDP × 24 jam × 30 hari)",
+            link_text="Lihat detail →",
+            on_click=PowerState.toggle_sort("tdp_total_w"),
         ),
         stat_card(
-            "TDP TERTINGGI",
-            PowerState.kpi_max_tdp_display,
-            note=PowerState.kpi_max_tdp_server,
+            icon="zap",
+            tone="info",
+            label="TDP TERTINGGI",
+            value=PowerState.kpi_max_tdp_display,
+            subtext=PowerState.kpi_max_tdp_server,
+            link_text="Lihat detail →",
+            on_click=PowerState.open_highest_tdp_drawer,
         ),
         style=_KPI_GRID_STYLE,
     )
@@ -534,109 +538,30 @@ def _column_chooser_popover() -> rx.Component:
     )
 
 
-def _filter_select_style() -> rx.Style:
-    return rx.Style(
-        {
-            "height": Size.FILTER_CONTROL_H,
-            "padding": "0 12px",
-            "background_color": Color.SURFACE,
-            "color": Color.TEXT,
-            "border": f"1px solid {Color.INPUT_BORDER}",
-            "border_radius": Radius.CONTROL,
-            "font_family": FONT_FAMILY,
-            "font_size": FontSize.SM,
-            "font_weight": FontWeight.MEDIUM,
-            "cursor": "pointer",
-        }
-    )
-
-
 def _watt_table_card() -> rx.Component:
-    """Kartu Tabel Rekap Watt Server dengan filter Status, UPS, Atur kolom, & ESTIMASI sticky."""
+    """Kartu Tabel Rekap Watt Server dengan Pill Filter Bar, Atur kolom, & ESTIMASI sticky."""
     return rx.box(
-        rx.hstack(
-            rx.hstack(
-                rx.box(
-                    rx.icon(
-                        tag="search",
-                        size=15,
-                        color=Color.MUTED,
-                        style=rx.Style(
-                            {
-                                "position": "absolute",
-                                "left": "12px",
-                                "top": "50%",
-                                "transform": "translateY(-50%)",
-                                "pointer_events": "none",
-                            }
-                        ),
-                    ),
-                    rx.el.input(
-                        type="text",
-                        placeholder="Cari ID server, CPU, GPU, RAM...",
-                        value=PowerState.search_query,
-                        on_change=PowerState.set_search_query,
-                        style=rx.Style(
-                            {
-                                "width": "280px",
-                                "max_width": "100%",
-                                "height": Size.FILTER_CONTROL_H,
-                                "padding": "0 12px 0 36px",
-                                "background_color": Color.SURFACE,
-                                "color": Color.TEXT,
-                                "border": f"1px solid {Color.INPUT_BORDER}",
-                                "border_radius": Radius.CONTROL,
-                                "font_family": FONT_FAMILY,
-                                "font_size": FontSize.SM,
-                                "outline": "none",
-                            }
-                        ),
-                    ),
-                    style=rx.Style({"position": "relative"}),
-                ),
-                rx.el.select(
-                    rx.el.option("Semua status", value=""),
-                    rx.foreach(
-                        PowerState.status_options, lambda opt: rx.el.option(opt, value=opt)
-                    ),
-                    value=PowerState.status_filter,
-                    on_change=PowerState.set_status_filter,
-                    style=_filter_select_style(),
-                ),
-                rx.el.select(
-                    rx.el.option("Semua UPS", value=""),
-                    rx.foreach(PowerState.ups_options, lambda opt: rx.el.option(opt, value=opt)),
-                    value=PowerState.ups_filter,
-                    on_change=PowerState.set_ups_filter,
-                    style=_filter_select_style(),
-                ),
-                rx.cond(
-                    PowerState.has_search,
-                    rx.el.button(
-                        "Reset",
-                        type="button",
-                        on_click=PowerState.reset_filters,
-                        style=rx.Style(
-                            {
-                                "height": Size.FILTER_CONTROL_H,
-                                "padding": "0 10px",
-                                "background": "transparent",
-                                "border": "none",
-                                "color": Color.ACCENT,
-                                "font_family": FONT_FAMILY,
-                                "font_size": FontSize.XS,
-                                "font_weight": FontWeight.BOLD,
-                                "cursor": "pointer",
-                            }
-                        ),
-                    ),
-                    rx.fragment(),
-                ),
-                spacing="2",
-                align="center",
-                wrap="wrap",
-            ),
-            rx.hstack(
+        pill_filter_bar(
+            search_placeholder="Cari ID server, CPU, GPU, RAM...",
+            search_value=PowerState.search_query,
+            on_search_change=PowerState.set_search_query,
+            search_width="260px",
+            selects=[
+                {
+                    "placeholder": "Semua status",
+                    "options": PowerState.status_options,
+                    "value": PowerState.status_filter,
+                    "on_change": PowerState.set_status_filter,
+                },
+                {
+                    "placeholder": "Semua UPS",
+                    "options": PowerState.ups_options,
+                    "value": PowerState.ups_filter,
+                    "on_change": PowerState.set_ups_filter,
+                },
+            ],
+            on_reset=PowerState.reset_filters,
+            right_slot=rx.hstack(
                 _column_chooser_popover(),
                 rx.text(
                     PowerState.result_count_label,
@@ -648,13 +573,6 @@ def _watt_table_card() -> rx.Component:
                 spacing="3",
                 align="center",
             ),
-            width="100%",
-            justify="between",
-            align="center",
-            wrap="wrap",
-            spacing="3",
-            padding="14px 18px",
-            style=rx.Style({"border_bottom": f"1px solid {Color.BORDER}"}),
         ),
         rx.box(
             rx.el.table(
@@ -714,7 +632,8 @@ def _watt_table_card() -> rx.Component:
                 "width": "100%",
                 "background_color": Color.SURFACE,
                 "border": f"1px solid {Color.BORDER}",
-                "border_radius": Radius.CARD,
+                "border_radius": Radius.KPI_CARD,
+                "box_shadow": Shadow.TABLE_CARD,
                 "overflow": "hidden",
             }
         ),

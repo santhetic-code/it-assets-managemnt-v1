@@ -222,3 +222,61 @@ def test_ups_load_ratio_and_tdp_psu_status_thresholds() -> None:
 
     res_unlinked = query_server_power(filters={"ups_id": "Belum ditautkan"})
     assert all(item["ups_chip_label"] == "Belum ditautkan" for item in res_unlinked["items"])
+
+
+def test_power_state_normalizes_backend_payload_and_ups_fallback() -> None:
+    """9. Uji normalisasi payload backend: bar TDP/PSU terisi, UPS tertaut, TDP max akurat."""
+    from itam_pro.states.power_state import _build_ups_fallback_lookup, _normalize_power_row
+
+    raw_servers = [
+        {
+            "id_aset": "SRV-002",
+            "nama_aset": "SERVER OTO RETAIL",
+            "cpu": "Intel Core i7-12700 2,10 GHz Desktop",
+            "vga": "Intel UHD Graphics 620 Desktop",
+            "ram": "4x DDR4",
+            "hdd_ssd": "3x SSD SATA, 1x SSD M.2",
+            "tdp_total_w": 162,
+            "psu_min_w": 250,
+            "psu_rekomendasi_w": 350,
+            "ups_id_aset": "",
+            "ups_utilisasi_pct": 0.0,
+        },
+        {
+            "id_aset": "SRV-004",
+            "nama_aset": "SERVER OTO SDP",
+            "cpu": "Intel Core i5-10600K",
+            "vga": "NVIDIA GeForce GT 1030 2GB",
+            "ram": "2x DDR4",
+            "hdd_ssd": "3x SSD SATA",
+            "tdp_total_w": 211,
+            "psu_min_w": 300,
+            "psu_rekomendasi_w": 400,
+            "ups_id_aset": "UPS-006",
+            "ups_utilisasi_pct": 54.1,
+        },
+    ]
+    ups_items = [
+        {
+            "id_aset": "UPS-002",
+            "kapasitas_va": 650,
+            "kapasitas_watt": 390,
+            "beban_perangkat": "OTOMAX RETAIL",
+            "linked_server_ids": [],
+            "linked_servers": [],
+            "utilisasi_pct": 0.0,
+        }
+    ]
+    fallback = _build_ups_fallback_lookup(raw_servers, ups_items)
+    row_retail = _normalize_power_row(raw_servers[0], 1, fallback)
+    row_sdp = _normalize_power_row(raw_servers[1], 2, fallback)
+
+    assert row_retail["tdp_psu_ratio_pct"] == 65
+    assert row_retail["tdp_psu_bar_width"] == "65%"
+    assert row_retail["has_ups"] is True
+    assert row_retail["ups_chip_label"] == "UPS-002 · 42%"
+
+    assert row_sdp["power_status"] == "Waspada"
+    assert row_sdp["power_status_label"] == "Waspada 70%"
+    assert row_sdp["tdp_psu_bar_width"] == "70%"
+    assert row_sdp["ups_chip_label"] == "UPS-006 · 54%"

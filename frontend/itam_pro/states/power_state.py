@@ -3,17 +3,190 @@ State Management untuk Halaman Laporan -> Rekap Watt Server (/watt-server).
 Mode Tabel Rekap Manual sesuai spreadsheet docs/data/rekap_watt_server.csv.
 """
 
+import re
 from typing import Any
 
 import reflex as rx
 
+from itam_pro.config import USE_MOCK
 from itam_pro.services.api_client import api_client
 from itam_pro.services.mock.audit_mock import query_audit_logs
+from itam_pro.services.power_service import (
+    _compact_cpu,
+    _compact_gpu,
+    _compact_ram_storage,
+    calculate_ups_load_pct,
+    classify_tdp_psu_status,
+)
 
 
 def _fmt_ribuan(val: int | float) -> str:
     """Format angka ribuan menggunakan titik (contoh: 3104 -> '3.104')."""
     return f"{round(val):,}".replace(",", ".")
+
+
+def _norm_server_token(text: str) -> str:
+    """Normalisasi nama server untuk pencocokan relasi UPS yang toleran variasi label."""
+    cleaned = re.sub(r"[^A-Z0-9]+", " ", (text or "").upper()).strip()
+    cleaned = cleaned.replace("OTOMAX", "OTO")
+    cleaned = re.sub(r"^MENYUPLAI\s+", "", cleaned)
+    cleaned = re.sub(r"^SERVER\s+", "", cleaned)
+    return cleaned.strip()
+
+
+def _build_ups_fallback_lookup(
+    raw_items: list[dict[str, Any]],
+    ups_items: list[dict[str, Any]],
+    power_factor: float = 0.6,
+) -> dict[str, dict[str, Any]]:
+    """Bangun peta id_aset server -> info UPS dari ups_items sebagai fallback live backend."""
+    lookup: dict[str, dict[str, Any]] = {}
+    if not ups_items:
+        return lookup
+
+    srv_by_id = {
+        str(s.get("id_aset", "")).strip().upper(): s
+        for s in raw_items
+        if str(s.get("id_aset", "")).strip()
+    }
+    srv_tokens = [
+        (
+            str(s.get("id_aset", "")).strip().upper(),
+            _norm_server_token(str(s.get("nama_aset", ""))),
+            int(s.get("tdp_total_w") or s.get("watt") or 0),
+        )
+        for s in raw_items
+        if str(s.get("id_aset", "")).strip()
+    ]
+    ignore_targets = {
+        "",
+        "BACKUP",
+        "RAK JARINGAN",
+        "SYNOLOGY",
+        "PC OWNER",
+        "PC SUPERVISOR OPERASIONAL",
+    }
+
+    for u in ups_items:
+        u_id = str(u.get("id_aset", "")).strip().upper()
+        if not u_id:
+            continue
+        cap_w = int(u.get("kapasitas_watt") or 0)
+        if cap_w <= 0:
+            va = int(u.get("kapasitas_va") or 650)
+            cap_w = max(1, round(va * power_factor))
+
+        matched_ids: list[str] = []
+        for sid in list(u.get("linked_server_ids") or []):
+            sid_u = str(sid).strip().upper()
+            if sid_u in srv_by_id and sid_u not in matched_ids:
+                matched_ids.append(sid_u)
+
+        if not matched_ids:
+            for sname in list(u.get("linked_servers") or []):
+                tok = _norm_server_token(str(sname))
+                for sid_u, srv_tok, _ in srv_tokens:
+                    if (
+                        tok
+                        and srv_tok
+                        and (tok == srv_tok or srv_tok in tok)
+                        and sid_u not in matched_ids
+                    ):
+                        matched_ids.append(sid_u)
+
+        if not matched_ids:
+            raw_target = _norm_server_token(
+                str(u.get("beban_perangkat") or u.get("digunakan_oleh") or "")
+            )
+            if raw_target and raw_target not in ignore_targets:
+                for sid_u, srv_tok, _ in srv_tokens:
+                    if sid_u in raw_target or (srv_tok and srv_tok in raw_target):
+                        if sid_u not in matched_ids:
+                            matched_ids.append(sid_u)
+
+        if not matched_ids:
+            continue
+
+        pct = float(u.get("utilisasi_pct") or 0.0)
+        if pct <= 0:
+            total_load = sum(
+                int(srv_by_id[sid].get("tdp_total_w") or srv_by_id[sid].get("watt") or 0)
+                for sid in matched_ids
+                if sid in srv_by_id
+            )
+            pct = calculate_ups_load_pct(total_load, cap_w)
+
+        info = {
+            "ups_id_aset": u_id,
+            "ups_utilisasi_pct": pct,
+            "ups_nama": str(u.get("nama_aset") or u.get("merek_va") or u_id),
+        }
+        for sid in matched_ids:
+            lookup.setdefault(sid, info)
+
+    return lookup
+
+
+def _normalize_power_row(
+    raw: dict[str, Any],
+    idx: int,
+    ups_fallback: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Normalisasi satu baris server agar field UI lengkap untuk mode Mock maupun Backend."""
+    row = dict(raw)
+    id_aset = str(row.get("id_aset") or row.get("id") or "").strip()
+    row["id"] = id_aset or str(row.get("id") or idx)
+    row["id_aset"] = id_aset
+    row["no"] = str(idx)
+
+    tdp_val = int(row.get("tdp_total_w") or row.get("watt") or 0)
+    min_val = int(row.get("psu_min_w") or 0)
+    rek_val = int(row.get("psu_rekomendasi_w") or 0)
+    row["tdp_total_w"] = tdp_val
+    row["psu_min_w"] = min_val
+    row["psu_rekomendasi_w"] = rek_val
+    row["tdp_num_display"] = _fmt_ribuan(tdp_val)
+    row["psu_min_num_display"] = _fmt_ribuan(min_val)
+    row["psu_rek_num_display"] = _fmt_ribuan(rek_val)
+
+    cpu_full = str(row.get("cpu") or row.get("processor") or "—").strip() or "—"
+    vga_full = str(row.get("vga") or row.get("gpu") or "—").strip() or "—"
+    ram_full = str(row.get("ram") or "—").strip() or "—"
+    hdd_full = str(row.get("hdd_ssd") or row.get("storage") or "—").strip() or "—"
+    row["cpu"] = cpu_full
+    row["vga"] = vga_full
+    row["ram"] = ram_full
+    row["hdd_ssd"] = hdd_full
+    row["cpu_short"] = _compact_cpu(cpu_full)
+    row["vga_short"] = _compact_gpu(vga_full)
+    row["ram_storage_short"] = _compact_ram_storage(ram_full, hdd_full)
+
+    # Hitung ulang rasio TDP / PSU Min secara deterministik (perbaiki bar kosong di live backend)
+    ratio_info = classify_tdp_psu_status(tdp_val, min_val)
+    row["tdp_psu_ratio_pct"] = ratio_info["ratio_pct"]
+    row["tdp_psu_bar_width"] = ratio_info["bar_width"]
+    row["power_status"] = ratio_info["status"]
+    row["power_status_label"] = ratio_info["label"]
+    row["power_status_variant"] = ratio_info["variant"]
+
+    # Relasi UPS Penyuplai (prioritas field row, fallback ke ups_items backend)
+    u_id = str(row.get("ups_id_aset") or "").strip().upper()
+    u_pct = float(row.get("ups_utilisasi_pct") or 0.0)
+    if not u_id and id_aset.upper() in ups_fallback:
+        fb = ups_fallback[id_aset.upper()]
+        u_id = str(fb.get("ups_id_aset") or "")
+        u_pct = float(fb.get("ups_utilisasi_pct") or 0.0)
+
+    row["ups_id_aset"] = u_id
+    row["ups_utilisasi_pct"] = u_pct
+    row["has_ups"] = bool(u_id)
+    row["ups_chip_label"] = f"{u_id} · {round(u_pct)}%" if u_id else "Belum ditautkan"
+
+    if not row.get("kwh_display"):
+        kwh_val = round((tdp_val * 24 * 30) / 1000.0, 1)
+        row["kwh_display"] = f"{str(kwh_val).replace('.', ',')} kWh"
+
+    return row
 
 
 class PowerState(rx.State):
@@ -49,12 +222,14 @@ class PowerState(rx.State):
     # 5 Kartu KPI
     kpi_total_tdp_display: str = "3.104 W"
     kpi_total_tdp_note: str = "dari 16 server"
+    kpi_tdp_psu_pct: int = 67
     kpi_psu_min_display: str = "4.600 W"
     kpi_psu_min_note: str = "total seluruh server"
     kpi_psu_rek_display: str = "6.150 W"
     kpi_est_kwh_display: str = "2.235 kWh"
     kpi_max_tdp_display: str = "211 W"
     kpi_max_tdp_server: str = "—"
+    kpi_max_tdp_id: str = ""
 
     # Detail Drawer Server
     drawer_open: bool = False
@@ -196,91 +371,81 @@ class PowerState(rx.State):
             filters = {
                 "scope": "server",
                 "search": self.search_query.strip(),
-                "power_status": self.status_filter,
-                "ups_id": self.ups_filter,
-                "sort_by": self.sort_by,
+                "sort_by": (
+                    "" if self.sort_by == "tdp_psu_ratio_pct" else self.sort_by
+                ),
                 "sort_dir": self.sort_dir,
             }
             res = await api_client.get_server_power(
                 filters=filters,
-                page=self.page,
-                page_size=self.page_size,
+                page=1,
+                page_size=max(self.page_size, 100),
             )
-            raw_items = res.get("items", [])
-            enriched_items: list[dict[str, Any]] = []
-            for idx, it in enumerate(raw_items, start=1):
-                row = dict(it)
-                tdp_val = int(row.get("tdp_total_w") or row.get("watt") or 0)
-                min_val = int(row.get("psu_min_w") or 0)
-                rek_val = int(row.get("psu_rekomendasi_w") or 0)
-                row["no"] = str(idx)
-                row["tdp_total_w"] = tdp_val
-                row["psu_min_w"] = min_val
-                row["psu_rekomendasi_w"] = rek_val
-                row["tdp_num_display"] = _fmt_ribuan(tdp_val)
-                row["psu_min_num_display"] = _fmt_ribuan(min_val)
-                row["psu_rek_num_display"] = _fmt_ribuan(rek_val)
-                row["cpu_short"] = str(row.get("cpu_short") or row.get("cpu") or "—")
-                row["vga_short"] = str(row.get("vga_short") or row.get("vga") or "—")
-                row["ram_storage_short"] = str(
-                    row.get("ram_storage_short")
-                    or f"{row.get('ram', '—')} · {row.get('hdd_ssd', '—')}"
-                )
-                row["tdp_psu_ratio_pct"] = int(row.get("tdp_psu_ratio_pct") or 0)
-                row["tdp_psu_bar_width"] = str(row.get("tdp_psu_bar_width") or "0%")
-                row["power_status"] = str(row.get("power_status") or "Aman")
-                row["power_status_label"] = str(row.get("power_status_label") or "Aman")
-                row["power_status_variant"] = str(row.get("power_status_variant") or "success")
-                row["has_ups"] = bool(row.get("ups_id_aset"))
-                row["ups_chip_label"] = str(row.get("ups_chip_label") or "Belum ditautkan")
-                enriched_items.append(row)
+            raw_items = list(res.get("items") or [])
+            ups_items = list(res.get("ups_items") or [])
+            asmp = res.get("assumptions") or {}
+            pf = float(asmp.get("faktor_daya_ups") or 0.6)
 
-            self.items = enriched_items
-            self.total_items = int(res.get("total", len(enriched_items)))
+            ups_fallback = _build_ups_fallback_lookup(raw_items, ups_items, power_factor=pf)
+            normalized_all = [
+                _normalize_power_row(it, idx, ups_fallback)
+                for idx, it in enumerate(raw_items, start=1)
+            ]
 
-            if not self.has_search:
-                self.all_servers_cache = list(enriched_items)
+            if not self.search_query.strip():
+                self.all_servers_cache = list(normalized_all)
                 linked_ups = sorted(
                     {
                         str(x["ups_id_aset"])
-                        for x in enriched_items
+                        for x in normalized_all
                         if str(x.get("ups_id_aset") or "").strip()
                     }
                 )
                 self.ups_options = ["Belum ditautkan", *linked_ups]
 
-            summary = res.get("summary", {})
-            tdp_sum = int(
-                summary.get("total_tdp_w")
-                if summary.get("total_tdp_w") is not None
-                else sum(x["tdp_total_w"] for x in enriched_items)
-            )
-            min_sum = int(
-                summary.get("total_psu_min_w")
-                if summary.get("total_psu_min_w") is not None
-                else sum(x["psu_min_w"] for x in enriched_items)
-            )
-            rek_sum = int(
-                summary.get("total_psu_rek_w")
-                if summary.get("total_psu_rek_w") is not None
-                else sum(x["psu_rekomendasi_w"] for x in enriched_items)
-            )
-            est_kwh = float(
-                summary.get("est_kwh_month")
-                if summary.get("est_kwh_month") is not None
-                else round((tdp_sum * 24 * 30) / 1000.0, 1)
-            )
-            max_tdp = int(summary.get("max_tdp_w") or 0)
-            max_srv = str(summary.get("max_tdp_server") or "—")
+            # Terapkan filter Status & UPS di sisi state (bekerja identik di mock & live backend)
+            filtered = normalized_all
+            if self.status_filter and self.status_filter not in ("Semua", "Semua status"):
+                st_low = self.status_filter.lower()
+                filtered = [x for x in filtered if str(x.get("power_status", "")).lower() == st_low]
+            if self.ups_filter and self.ups_filter not in ("Semua", "Semua UPS"):
+                if self.ups_filter.lower() == "belum ditautkan":
+                    filtered = [x for x in filtered if not x.get("has_ups")]
+                else:
+                    u_target = self.ups_filter.upper()
+                    filtered = [
+                        x for x in filtered if str(x.get("ups_id_aset", "")).upper() == u_target
+                    ]
 
-            ov_cnt = int(
-                summary.get("overall_total_servers")
-                or len(self.all_servers_cache)
-                or self.total_items
-            )
-            ov_tdp = int(summary.get("overall_total_tdp_w") or tdp_sum)
-            ov_min = int(summary.get("overall_total_psu_min_w") or min_sum)
-            ov_rek = int(summary.get("overall_total_psu_rek_w") or rek_sum)
+            if self.sort_by == "tdp_psu_ratio_pct":
+                filtered = sorted(
+                    filtered,
+                    key=lambda x: int(x.get("tdp_psu_ratio_pct") or 0),
+                    reverse=(self.sort_dir == "desc"),
+                )
+
+            for idx, row in enumerate(filtered, start=1):
+                row["no"] = str(idx)
+
+            self.items = filtered
+            self.total_items = len(filtered)
+
+            # Hitung agregasi KPI & ESTIMASI langsung dari kolom TDP/PSU baris tampil
+            tdp_sum = sum(int(x["tdp_total_w"]) for x in filtered)
+            min_sum = sum(int(x["psu_min_w"]) for x in filtered)
+            rek_sum = sum(int(x["psu_rekomendasi_w"]) for x in filtered)
+            est_kwh = round((tdp_sum * 24 * 30) / 1000.0)
+
+            highest_srv = max(filtered, key=lambda x: int(x["tdp_total_w"]), default=None)
+            max_tdp = int(highest_srv["tdp_total_w"]) if highest_srv else 0
+            max_srv = str(highest_srv["nama_aset"]) if highest_srv else "—"
+            max_srv_id = str(highest_srv["id_aset"]) if highest_srv else ""
+
+            ov_pool = self.all_servers_cache or normalized_all
+            ov_cnt = len(ov_pool) or self.total_items
+            ov_tdp = sum(int(x["tdp_total_w"]) for x in ov_pool)
+            ov_min = sum(int(x["psu_min_w"]) for x in ov_pool)
+            ov_rek = sum(int(x["psu_rekomendasi_w"]) for x in ov_pool)
 
             self.overall_total_servers = ov_cnt
             self.estimasi_tdp_display = _fmt_ribuan(tdp_sum)
@@ -290,9 +455,12 @@ class PowerState(rx.State):
             self.overall_psu_min_display = _fmt_ribuan(ov_min)
             self.overall_psu_rek_display = _fmt_ribuan(ov_rek)
 
-            # Update 5 KPI cards
+            # Update 5 KPI cards + donut % TDP terhadap PSU minimum
             self.kpi_total_tdp_display = f"{_fmt_ribuan(tdp_sum)} W"
             self.kpi_total_tdp_note = f"dari {self.total_items} server"
+            self.kpi_tdp_psu_pct = (
+                min(100, round((tdp_sum / min_sum) * 100)) if min_sum > 0 else 0
+            )
             self.kpi_psu_min_display = f"{_fmt_ribuan(min_sum)} W"
             self.kpi_psu_min_note = (
                 "total filter aktif" if self.has_search else "total seluruh server"
@@ -301,16 +469,16 @@ class PowerState(rx.State):
             self.kpi_est_kwh_display = f"{_fmt_ribuan(est_kwh)} kWh"
             self.kpi_max_tdp_display = f"{_fmt_ribuan(max_tdp)} W"
             self.kpi_max_tdp_server = max_srv
+            self.kpi_max_tdp_id = max_srv_id
 
-            # Sinkronkan detail drawer bila sedang terbuka
             if self.drawer_open and self.selected_id_aset:
                 updated_sel = next(
-                    (x for x in enriched_items if x["id_aset"] == self.selected_id_aset),
+                    (x for x in filtered if x["id_aset"] == self.selected_id_aset),
                     None,
                 )
                 if updated_sel:
                     self.selected_server = dict(updated_sel)
-                    self._load_selected_history(self.selected_id_aset)
+                    await self._load_selected_history(self.selected_id_aset)
         finally:
             self.is_loading = False
 
@@ -377,30 +545,39 @@ class PowerState(rx.State):
         return rx.download(data=data_bytes, filename="Rekap_Watt_Server_ITAM_Pro.xlsx")
 
     # --- HANDLERS DETAIL DRAWER ---
-    def _load_selected_history(self, asset_id: str) -> None:
-        """Ambil riwayat pengeditan server dari Audit Log."""
+    async def _load_selected_history(self, asset_id: str) -> None:
+        """Ambil riwayat pengeditan server dari Audit Log (mock & live backend)."""
         # TODO(backend): ganti dengan GET /api/v1/power/servers/{id}/history saat tersedia.
-        res = query_audit_logs(
-            filters={"search": asset_id, "hide_login_success": "false", "group": "false"},
-            page=1,
-            page_size=10,
-        )
+        if USE_MOCK:
+            res = query_audit_logs(
+                filters={"search": asset_id, "hide_login_success": "false", "group": "false"},
+                page=1,
+                page_size=10,
+            )
+        else:
+            try:
+                res = await api_client.get_audit_logs(
+                    filters={"search": asset_id}, page=1, page_size=10
+                )
+            except Exception:
+                res = {"items": []}
+
         history: list[dict[str, Any]] = []
         for item in res.get("items", []):
             tgt = str(item.get("target_id", "")).upper()
             if tgt == asset_id.upper() or asset_id.upper() in str(item.get("detail", "")).upper():
                 history.append(
                     {
-                        "id": str(item.get("kode_audit", "")),
-                        "waktu": str(item.get("waktu_wib", "—")),
-                        "pelaku": str(item.get("nama_pengguna", "—")),
+                        "id": str(item.get("kode_audit") or item.get("id") or ""),
+                        "waktu": str(item.get("waktu_wib") or item.get("timestamp") or "—"),
+                        "pelaku": str(item.get("nama_pengguna") or item.get("actor") or "—"),
                         "detail": str(item.get("detail", "")),
                     }
                 )
         self.selected_edit_history = history
 
     @rx.event
-    def open_detail_drawer(self, row_id: str) -> None:
+    async def open_detail_drawer(self, row_id: str) -> None:
         target = next(
             (x for x in self.items if x["id"] == row_id or x["id_aset"] == row_id),
             None,
@@ -408,8 +585,14 @@ class PowerState(rx.State):
         if not target:
             return
         self.selected_server = dict(target)
-        self._load_selected_history(str(target["id_aset"]))
+        await self._load_selected_history(str(target["id_aset"]))
         self.drawer_open = True
+
+    @rx.event
+    async def open_highest_tdp_drawer(self) -> None:
+        """Buka detail drawer server dengan TDP tertinggi saat kartu KPI ke-5 diklik."""
+        if self.kpi_max_tdp_id:
+            await self.open_detail_drawer(self.kpi_max_tdp_id)
 
     @rx.event
     def close_detail_drawer(self) -> None:
