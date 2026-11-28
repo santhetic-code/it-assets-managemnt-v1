@@ -271,3 +271,60 @@ def test_query_purchases_formatted_fields_and_marketplace_filter() -> None:
         filters={"aset_status": "Habis pakai · tidak perlu aset"}, page=1, page_size=10
     )
     assert all(item["aset_status_variant"] == "neutral" for item in habis["items"])
+
+
+def test_finance_state_normalizes_backend_rows_and_nearest_bill() -> None:
+    """13. Uji normalisasi payload backend (Bug 1), tagihan terdekat (Bug 2), & kompilasi UI."""
+    from itam_pro.pages.finance.purchases_view import purchases_view_page
+    from itam_pro.states.finance_state import (
+        _compute_nearest_bill,
+        _normalize_bill_item,
+        _normalize_purchase_item,
+    )
+
+    # Payload mentah FastAPI PurchasePublic (tanpa *_display / toko_chip / aset_status_label)
+    norm = _normalize_purchase_item(
+        {
+            "kode_pembelian": "PO-041",
+            "tanggal_beli": "2026-06-02",
+            "nama_item": "V-GEN RESCUE SSD SATA III 256GB",
+            "harga_satuan": 711688,
+            "jumlah": 1,
+            "total_harga": 711688,
+            "vendor": "Shopee Official",
+            "keterangan": "https://shopee.co.id/vgen-ssd",
+            "penanggung_jawab": "Ridho",
+            "id_aset": None,
+        }
+    )
+    assert norm["tanggal_display"] == "2 Jun 2026"
+    assert norm["harga_display"] == "Rp 711.688"
+    assert norm["total_display"] == "Rp 711.688"
+    assert norm["toko_chip"] == "Shopee"
+    assert norm["aset_status_label"] == "Belum didaftarkan"
+    assert norm["aset_status_variant"] == "warning"
+
+    # Uji tagihan terdekat + fallback kosong
+    assert _compute_nearest_bill([]) == ("Belum ada tagihan", "tidak ada tagihan aktif")
+    b_norm = _normalize_bill_item(
+        {
+            "kode_pembelian": "BIL-004",
+            "nama_item": "Hosting website perusahaan",
+            "total_harga": 1250000,
+            "tanggal_jatuh_tempo": "2026-12-07",
+            "siklus_tagihan": "Tahunan",
+            "aktif": True,
+        },
+        today=datetime.date(2026, 11, 28),
+    )
+    name_near, note_near = _compute_nearest_bill(
+        [b_norm], today=datetime.date(2026, 11, 28)
+    )
+    assert name_near == "Hosting website perusahaan"
+    assert "7 Des 2026" in note_near
+
+    comp = purchases_view_page()
+    assert comp is not None
+    rendered = str(comp.render())
+    assert "Pembelian & Invoice" in rendered
+

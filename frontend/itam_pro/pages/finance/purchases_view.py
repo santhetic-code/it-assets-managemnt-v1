@@ -6,11 +6,16 @@ import reflex as rx
 
 from itam_pro.components.layout.base_layout import base_layout
 from itam_pro.components.tables.data_table import reusable_data_table
-from itam_pro.components.tables.filter_bar import FilterDropdownConfig, table_filter_bar
 from itam_pro.components.tables.pagination import table_pagination
-from itam_pro.components.ui.button import action_primary_button, secondary_button
-from itam_pro.components.ui.stat_card import stat_card
-from itam_pro.components.ui.tabs import app_tabs
+from itam_pro.components.ui import (
+    action_primary_button,
+    hero_stat_card,
+    page_header,
+    pill_filter_bar,
+    secondary_button,
+    stat_card,
+    tab_bar,
+)
 from itam_pro.states.finance_state import FinanceState
 from itam_pro.styles import (
     FONT_FAMILY,
@@ -23,35 +28,76 @@ from itam_pro.styles import (
     Space,
 )
 
+_KPI_4_GRID_STYLE = rx.Style(
+    {
+        "width": "100%",
+        "display": "grid",
+        "grid_template_columns": "1.45fr 1fr 1fr 1fr",
+        "gap": Space.S4,
+        "align_items": "stretch",
+        "@media (max-width: 1150px)": {
+            "grid_template_columns": "repeat(2, minmax(0, 1fr))"
+        },
+        "@media (max-width: 599px)": {"grid_template_columns": "1fr"},
+    }
+)
+
+
+def _finance_header() -> rx.Component:
+    """Header halaman Pembelian & Invoice dengan ikon keranjang gradien biru 52px."""
+    return page_header(
+        icon="shopping-cart",
+        title="Pembelian & Invoice",
+        subtitle="Rekap belanja, invoice, dan tagihan berulang.",
+    )
+
 
 def _kpi_cards() -> rx.Component:
-    """4 Kartu Metrik Finansial Rekap Pembelian (kartu pertama Color.BRAND)."""
-    return rx.grid(
-        stat_card(
-            "TOTAL BELANJA (FILTER AKTIF)",
-            FinanceState.total_belanja_display,
-            note=FinanceState.filtered_purchases_note,
-            primary=True,
+    """4 Kartu Metrik Finansial Rekap Pembelian (Hero + donut % terdaftar + 3 kartu putih)."""
+    return rx.box(
+        hero_stat_card(
+            icon="box",
+            label="TOTAL BELANJA (FILTER AKTIF)",
+            value=FinanceState.total_belanja_display,
+            value_font_size="24px",
+            subtext=FinanceState.filtered_purchases_note,
+            percent=FinanceState.registered_percent,
+            percent_caption="terdaftar",
+            link_text="Lihat detail →",
+            on_click=FinanceState.reset_filters,
+            glow_ring=True,
         ),
         stat_card(
-            "BELANJA TERBESAR",
-            FinanceState.belanja_terbesar_display,
-            note="satu transaksi",
+            icon="circle-check",
+            tone="purple",
+            label="BELANJA TERBESAR",
+            value=FinanceState.belanja_terbesar_display,
+            subtext="satu transaksi",
+            link_text="Lihat detail →",
         ),
         stat_card(
-            "BELUM DIDAFTARKAN SEBAGAI ASET",
-            FinanceState.belum_dicatat_count,
-            value_tone="warning",
-            note=FinanceState.belum_dicatat_note,
+            icon="clock",
+            tone="success",
+            label="BELUM DIDAFTARKAN SEBAGAI ASET",
+            value=FinanceState.belum_dicatat_count,
+            value_tone=rx.cond(
+                FinanceState.belum_dicatat_count > 0, "warning", "default"
+            ),
+            subtext=FinanceState.belum_dicatat_note,
+            link_text="Lihat detail →",
+            is_active=FinanceState.status_filter == "Belum didaftarkan",
+            on_click=FinanceState.filter_unregistered_purchases,
         ),
         stat_card(
-            "TAGIHAN BERULANG TERDEKAT",
-            FinanceState.nearest_bill_name,
-            note=FinanceState.nearest_bill_note,
+            icon="shield",
+            tone="warning",
+            label="TAGIHAN BERULANG TERDEKAT",
+            value=FinanceState.nearest_bill_name,
+            subtext=FinanceState.nearest_bill_note,
+            link_text="Lihat detail →",
+            on_click=FinanceState.set_tab("tagihan"),
         ),
-        columns=rx.breakpoints(initial="1", sm="2", lg="4"),
-        spacing="4",
-        width="100%",
+        style=_KPI_4_GRID_STYLE,
     )
 
 
@@ -324,7 +370,7 @@ def _jadikan_aset_dialog() -> rx.Component:
                             width="100%",
                         ),
                         rx.cond(
-                            ~FinanceState.is_bulk_register_mode,
+                            ~rx.Var.create(FinanceState.is_bulk_register_mode),
                             rx.vstack(
                                 rx.text(
                                     "Nama Produk / Aset",
@@ -829,79 +875,136 @@ def _table_card(*children: rx.Component) -> rx.Component:
     return rx.box(
         *children,
         width="100%",
-        border=f"1px solid {Color.BORDER}",
-        border_radius=Radius.CARD,
-        background_color=Color.SURFACE,
+        style=rx.Style(
+            {
+                "background_color": Color.SURFACE,
+                "border": f"1px solid {Color.BORDER}",
+                "border_radius": Radius.KPI_CARD,
+                "box_shadow": Shadow.TABLE_CARD,
+                "overflow": "hidden",
+            }
+        ),
     )
 
 
 def _invoice_tab() -> rx.Component:
-    """Tab 2: arsip bukti pembayaran (Invoice)."""
-    link_dropdown: FilterDropdownConfig = {
-        "label": "Semua status tautan",
-        "value": FinanceState.invoice_link_filter,
-        "options": FinanceState.invoice_link_options,
-        "on_change": FinanceState.set_invoice_link_filter,
-    }
+    """Tab 2: arsip bukti pembayaran (Invoice) dengan Hero + 3 KPI & Pill Filter Bar."""
     return rx.vstack(
-        rx.grid(
-            stat_card(
-                "TOTAL INVOICE",
-                FinanceState.invoices_summary["total_invoice"],
-                note="arsip tersimpan",
-                primary=True,
+        rx.box(
+            hero_stat_card(
+                icon="file-text",
+                label="TOTAL INVOICE",
+                value=FinanceState.invoices_summary["total_invoice"],
+                subtext="arsip tersimpan",
+                percent=FinanceState.invoice_linked_percent,
+                percent_caption="tertaut",
+                link_text="Lihat detail →",
+                on_click=FinanceState.reset_filters,
+                glow_ring=True,
             ),
-            stat_card("SUDAH DITAUTKAN", FinanceState.invoices_summary["sudah_ditautkan"]),
             stat_card(
-                "BELUM DITAUTKAN",
-                FinanceState.invoices_summary["belum_ditautkan"],
-                value_tone="warning",
+                icon="circle-check",
+                tone="purple",
+                label="SUDAH DITAUTKAN",
+                value=FinanceState.invoices_summary["sudah_ditautkan"],
+                subtext="terhubung ke transaksi",
+                link_text="Lihat detail →",
+                is_active=FinanceState.invoice_link_filter == "Sudah ditautkan",
+                on_click=FinanceState.set_invoice_link_filter("Sudah ditautkan"),
             ),
             stat_card(
-                "PEMBELIAN TANPA BUKTI",
-                FinanceState.invoices_summary["tanpa_bukti"],
-                value_tone="danger",
+                icon="clock",
+                tone="warning",
+                label="BELUM DITAUTKAN",
+                value=FinanceState.invoices_summary["belum_ditautkan"],
+                value_tone=rx.cond(
+                    FinanceState.invoices_summary["belum_ditautkan"] > 0,
+                    "warning",
+                    "default",
+                ),
+                subtext="perlu ditautkan",
+                link_text="Lihat detail →",
+                is_active=FinanceState.invoice_link_filter == "Belum ditautkan",
+                on_click=FinanceState.set_invoice_link_filter("Belum ditautkan"),
             ),
-            columns="4",
-            spacing="4",
-            width="100%",
-            margin_bottom=Space.S6,
+            stat_card(
+                icon="shield",
+                tone="danger",
+                label="PEMBELIAN TANPA BUKTI",
+                value=FinanceState.invoices_summary["tanpa_bukti"],
+                value_tone=rx.cond(
+                    FinanceState.invoices_summary["tanpa_bukti"] > 0,
+                    "danger",
+                    "default",
+                ),
+                subtext="belum punya arsip invoice",
+                link_text="Lihat detail →",
+                on_click=FinanceState.set_tab("pembelian"),
+            ),
+            style=_KPI_4_GRID_STYLE,
         ),
         _table_card(
-            table_filter_bar(
+            pill_filter_bar(
+                search_placeholder="Cari no. invoice, vendor, atau tautan...",
                 search_value=FinanceState.search_query,
                 on_search_change=FinanceState.set_search_query,
-                search_placeholder="Cari no. invoice, vendor, atau tautan...",
-                dropdowns=[link_dropdown],
+                search_width="270px",
+                selects=[
+                    {
+                        "placeholder": "Semua status tautan",
+                        "options": FinanceState.invoice_link_options,
+                        "value": FinanceState.invoice_link_filter,
+                        "on_change": FinanceState.set_invoice_link_filter,
+                    }
+                ],
                 on_reset=FinanceState.reset_filters,
-                result_count_text=FinanceState.result_count_label,
+                right_slot=rx.text(
+                    FinanceState.result_count_label,
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.BOLD,
+                    color=Color.MUTED,
+                ),
             ),
             reusable_data_table(
                 items=FinanceState.invoices,
                 id_key="no_invoice",
                 columns=[
                     {
+                        "key": "no_invoice",
                         "header": "No. Invoice",
                         "accessor": "no_invoice",
-                        "render_type": "bold",
+                        "render_type": "mono_blue",
                         "width": "220px",
                     },
                     {
+                        "key": "tanggal_display",
                         "header": "Tanggal",
                         "accessor": "tanggal_display",
                         "render_type": "date",
                         "width": "120px",
                     },
-                    {"header": "Vendor", "accessor": "vendor", "width": "190px"},
                     {
+                        "key": "vendor",
+                        "header": "Vendor",
+                        "accessor": "vendor",
+                        "width": "190px",
+                    },
+                    {
+                        "key": "total_rp_display",
                         "header": "Total",
                         "accessor": "total_rp_display",
                         "render_type": "currency_bold",
                         "align": "right",
                         "width": "140px",
                     },
-                    {"header": "Berkas", "accessor": "berkas", "width": "120px"},
                     {
+                        "key": "berkas",
+                        "header": "Berkas",
+                        "accessor": "berkas",
+                        "width": "120px",
+                    },
+                    {
+                        "key": "terkait_label",
                         "header": "Terkait",
                         "accessor": "terkait_label",
                         "render_type": "badge",
@@ -920,71 +1023,112 @@ def _invoice_tab() -> rx.Component:
 
 
 def _bills_tab() -> rx.Component:
-    """Tab 3: Tagihan Berulang (siklus langganan & pengingat)."""
-    status_dropdown: FilterDropdownConfig = {
-        "label": "Semua status",
-        "value": FinanceState.bill_status_filter,
-        "options": FinanceState.bill_status_options,
-        "on_change": FinanceState.set_bill_status_filter,
-    }
+    """Tab 3: Tagihan Berulang dengan Hero + 3 KPI & Pill Filter Bar."""
     return rx.vstack(
-        rx.grid(
-            stat_card(
-                "PERLU DIBAYAR ≤ 30 HARI",
-                FinanceState.bills_perlu_dibayar_display,
-                note="termasuk terlambat",
-                primary=True,
+        rx.box(
+            hero_stat_card(
+                icon="wallet",
+                label="PERLU DIBAYAR ≤ 30 HARI",
+                value=FinanceState.bills_perlu_dibayar_display,
+                value_font_size="24px",
+                subtext="termasuk terlambat",
+                percent=FinanceState.bills_urgent_percent,
+                percent_caption="mendesak",
+                link_text="Lihat detail →",
+                on_click=FinanceState.reset_filters,
+                glow_ring=True,
             ),
             stat_card(
-                "TERLAMBAT",
-                FinanceState.bills_summary["terlambat"],
-                value_tone="danger",
-                note="melewati jatuh tempo",
+                icon="triangle-alert",
+                tone="danger",
+                label="TERLAMBAT",
+                value=FinanceState.bills_summary["terlambat"],
+                value_tone=rx.cond(
+                    FinanceState.bills_summary["terlambat"] > 0, "danger", "default"
+                ),
+                subtext="melewati jatuh tempo",
+                link_text="Lihat detail →",
+                is_active=FinanceState.bill_status_filter == "Terlambat",
+                on_click=FinanceState.set_bill_status_filter("Terlambat"),
             ),
             stat_card(
-                "SEGERA DIBAYAR (≤ 7 HARI)",
-                FinanceState.bills_summary["segera"],
-                value_tone="warning",
-                note="mendekati jatuh tempo",
+                icon="clock",
+                tone="warning",
+                label="SEGERA DIBAYAR (≤ 7 HARI)",
+                value=FinanceState.bills_summary["segera"],
+                value_tone=rx.cond(
+                    FinanceState.bills_summary["segera"] > 0, "warning", "default"
+                ),
+                subtext="mendekati jatuh tempo",
+                link_text="Lihat detail →",
+                is_active=FinanceState.bill_status_filter == "Segera",
+                on_click=FinanceState.set_bill_status_filter("Segera"),
             ),
             stat_card(
-                "TAGIHAN AKTIF",
-                FinanceState.bills_summary["tagihan_aktif"],
-                note="siklus berjalan",
+                icon="circle-check",
+                tone="success",
+                label="TAGIHAN AKTIF",
+                value=FinanceState.bills_summary["tagihan_aktif"],
+                subtext="siklus berjalan",
+                link_text="Lihat detail →",
+                on_click=FinanceState.reset_filters,
             ),
-            columns="4",
-            spacing="4",
-            width="100%",
-            margin_bottom=Space.S6,
+            style=_KPI_4_GRID_STYLE,
         ),
         _table_card(
-            table_filter_bar(
+            pill_filter_bar(
+                search_placeholder="Cari tagihan atau vendor...",
                 search_value=FinanceState.search_query,
                 on_search_change=FinanceState.set_search_query,
-                search_placeholder="Cari tagihan atau vendor...",
-                dropdowns=[status_dropdown],
+                search_width="260px",
+                selects=[
+                    {
+                        "placeholder": "Semua status",
+                        "options": FinanceState.bill_status_options,
+                        "value": FinanceState.bill_status_filter,
+                        "on_change": FinanceState.set_bill_status_filter,
+                    }
+                ],
                 on_reset=FinanceState.reset_filters,
-                result_count_text=FinanceState.result_count_label,
+                right_slot=rx.text(
+                    FinanceState.result_count_label,
+                    font_size=FontSize.SM,
+                    font_weight=FontWeight.BOLD,
+                    color=Color.MUTED,
+                ),
             ),
             reusable_data_table(
                 items=FinanceState.bills,
                 id_key="id",
                 columns=[
                     {
+                        "key": "nama",
                         "header": "Tagihan",
                         "accessor": "nama",
                         "render_type": "bold",
                         "width": "220px",
                     },
-                    {"header": "Vendor", "accessor": "vendor", "width": "135px"},
                     {
+                        "key": "vendor",
+                        "header": "Vendor",
+                        "accessor": "vendor",
+                        "width": "135px",
+                    },
+                    {
+                        "key": "kategori",
                         "header": "Kategori",
                         "accessor": "kategori",
                         "render_type": "chip",
                         "width": "110px",
                     },
-                    {"header": "Periode", "accessor": "periode", "width": "95px"},
                     {
+                        "key": "periode",
+                        "header": "Periode",
+                        "accessor": "periode",
+                        "width": "95px",
+                    },
+                    {
+                        "key": "nominal_rp_display",
                         "header": "Nominal",
                         "accessor": "nominal_rp_display",
                         "render_type": "currency_bold",
@@ -992,18 +1136,26 @@ def _bills_tab() -> rx.Component:
                         "width": "135px",
                     },
                     {
+                        "key": "jatuh_tempo_display",
                         "header": "Jatuh Tempo",
                         "accessor": "jatuh_tempo_display",
                         "render_type": "date",
                         "width": "125px",
                     },
                     {
+                        "key": "pengingat_display",
                         "header": "Pengingat",
                         "accessor": "pengingat_display",
                         "width": "145px",
                     },
-                    {"header": "Pembayar", "accessor": "pembayar", "width": "95px"},
                     {
+                        "key": "pembayar",
+                        "header": "Pembayar",
+                        "accessor": "pembayar",
+                        "width": "95px",
+                    },
+                    {
+                        "key": "status_label",
                         "header": "Status",
                         "accessor": "status_label",
                         "render_type": "badge",
@@ -1163,37 +1315,30 @@ def _pay_bill_dialog() -> rx.Component:
 
 def purchases_view_page() -> rx.Component:
     """Pusat pengeluaran IT: Rekap Pembelian, Invoice, Tagihan Berulang."""
-    dropdowns: list[FilterDropdownConfig] = [
-        {
-            "label": "Semua marketplace",
-            "value": FinanceState.marketplace_filter,
-            "options": FinanceState.marketplace_options,
-            "on_change": FinanceState.set_marketplace_filter,
-        },
-        {
-            "label": "Semua status aset",
-            "value": FinanceState.status_filter,
-            "options": FinanceState.status_options,
-            "on_change": FinanceState.set_status_filter,
-        },
-        {
-            "label": "Periode",
-            "value": FinanceState.period_filter,
-            "options": FinanceState.period_options,
-            "on_change": FinanceState.set_period_filter,
-        },
-    ]
-
     return base_layout(
         content=rx.vstack(
-            app_tabs(
-                items=[
-                    {"label": "Rekap Pembelian", "value": "pembelian"},
-                    {"label": "Invoice", "value": "invoice"},
-                    {"label": "Tagihan Berulang", "value": "tagihan"},
+            _finance_header(),
+            tab_bar(
+                tabs_with_count=[
+                    {
+                        "key": "pembelian",
+                        "label": "Rekap Pembelian",
+                        "count": FinanceState.tab_counts["pembelian"],
+                    },
+                    {
+                        "key": "invoice",
+                        "label": "Invoice",
+                        "count": FinanceState.tab_counts["invoice"],
+                    },
+                    {
+                        "key": "tagihan",
+                        "label": "Tagihan Berulang",
+                        "count": FinanceState.tab_counts["tagihan"],
+                    },
                 ],
-                active_value=FinanceState.active_tab,
+                active=FinanceState.active_tab,
                 on_change=FinanceState.set_tab,
+                card_container=True,
             ),
             rx.match(
                 FinanceState.active_tab,
@@ -1201,14 +1346,34 @@ def purchases_view_page() -> rx.Component:
                 ("tagihan", _bills_tab()),
                 rx.vstack(
                     _kpi_cards(),
-                    rx.box(
-                        table_filter_bar(
+                    _table_card(
+                        pill_filter_bar(
+                            search_placeholder="Cari produk, toko, atau pembeli...",
                             search_value=FinanceState.search_query,
                             on_search_change=FinanceState.set_search_query,
-                            search_placeholder="Cari produk, toko, atau pembeli...",
-                            dropdowns=dropdowns,
-                            extra_controls=_purchases_toolbar_actions(),
+                            search_width="240px",
+                            selects=[
+                                {
+                                    "placeholder": "Semua marketplace",
+                                    "options": FinanceState.marketplace_options,
+                                    "value": FinanceState.marketplace_filter,
+                                    "on_change": FinanceState.set_marketplace_filter,
+                                },
+                                {
+                                    "placeholder": "Semua status aset",
+                                    "options": FinanceState.status_options,
+                                    "value": FinanceState.status_filter,
+                                    "on_change": FinanceState.set_status_filter,
+                                },
+                                {
+                                    "placeholder": "Periode",
+                                    "options": FinanceState.period_options,
+                                    "value": FinanceState.period_filter,
+                                    "on_change": FinanceState.set_period_filter,
+                                },
+                            ],
                             on_reset=FinanceState.reset_filters,
+                            right_slot=_purchases_toolbar_actions(),
                         ),
                         _bulk_selection_bar(),
                         reusable_data_table(
@@ -1296,10 +1461,6 @@ def purchases_view_page() -> rx.Component:
                             show_action_header=True,
                         ),
                         _pagination(),
-                        width="100%",
-                        border=f"1px solid {Color.BORDER}",
-                        border_radius=Radius.CARD,
-                        background_color=Color.SURFACE,
                     ),
                     spacing="4",
                     width="100%",
@@ -1309,7 +1470,7 @@ def purchases_view_page() -> rx.Component:
             _add_purchase_dialog(),
             _import_purchase_dialog(),
             _pay_bill_dialog(),
-            spacing="5",
+            spacing="4",
             width="100%",
         ),
         breadcrumb=("Finance", "Pembelian & Invoice"),
